@@ -11,6 +11,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: jdx/mise-action@v3
+        with:
+          install_args: "rust go cargo:cargo-deny taplo github:knope-dev/knope"
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -40,6 +42,8 @@ jobs:
           restore-keys: ${{ runner.os }}-maven-
 
       - uses: jdx/mise-action@v3
+        with:
+          install_args: "java maven go"
 
       - name: Format check
         run: mise run format-check-java
@@ -59,6 +63,8 @@ jobs:
           restore-keys: ${{ runner.os }}-pip-
 
       - uses: jdx/mise-action@v3
+        with:
+          install_args: "python go"
 
       - name: Format check
         run: mise run format-check-python
@@ -78,6 +84,8 @@ jobs:
           restore-keys: ${{ runner.os }}-nuget-
 
       - uses: jdx/mise-action@v3
+        with:
+          install_args: "dotnet go"
 
       - name: Format check
         run: mise run format-check-csharp
@@ -97,6 +105,8 @@ jobs:
           restore-keys: ${{ runner.os }}-npm-
 
       - uses: jdx/mise-action@v3
+        with:
+          install_args: "node go"
 
       - name: Format check
         run: mise run format-check-node
@@ -110,6 +120,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: jdx/mise-action@v3
+        with:
+          install: false
 
       - name: Docker test
         run: mise run docker-test
