@@ -3,13 +3,13 @@
 ## Prerequisites
 
 1. Install [mise](https://mise.jdx.dev/installing-mise.html) for managing tools.
-2. Run `mise install` to install Go, Rust, Java, Maven, Python, and .NET from `mise.toml`.
+2. Run `mise install` to install Go, Rust, Java, Maven, Node.js, Python, and .NET from `mise.toml`.
 3. Ensure CGO is enabled for Go (it is by default on most systems).
 
 ## Workflow
 
 1. Run `mise run check` to verify your changes pass CI checks:
-   - Format checks (Rust, TOML, Python, Java, C#)
+   - Format checks (Rust, TOML, Python, Java, C#, Node.js)
    - Clippy (Rust)
    - Cargo-deny (Rust)
    - Tests (all languages)
@@ -24,7 +24,7 @@
 
 | Task | Description |
 |------|-------------|
-| `mise run test` | Run tests for Rust, Java, Python, C# |
+| `mise run test` | Run tests for Rust, Java, Python, C#, Node.js |
 | `mise run check` | Format checks, clippy, cargo-deny, tests |
 | `mise run format-check` | Verify format for all languages |
 | `mise run reformat` | Format all languages |
@@ -37,5 +37,6 @@
 - **java/** — Java library. JNA FFI + authzed gRPC clients.
 - **python/** — Python package. ctypes FFI + authzed gRPC clients.
 - **csharp/** — C# / .NET package. P/Invoke FFI + Authzed.Net.
+- **node/** — Node.js package. koffi FFI + @authzed/authzed-node.
 
 When adding support for a new language, add a new top-level directory that uses the C FFI from shared/c, plus a mise task for building and testing.

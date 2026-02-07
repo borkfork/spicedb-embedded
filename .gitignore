@@ -16,6 +16,9 @@ dist/
 build/
 .pytest_cache/
 
+# Node.js
+node_modules/
+
 # C# / .NET
 [Bb]in/
 [Oo]bj/

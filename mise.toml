@@ -7,6 +7,7 @@ rust = { version = "1.91.1", components = "rustfmt,clippy" }
 taplo = "0.10.0"
 "github:knope-dev/knope" = "knope/v0.21.7"
 go = "1.23"
+node = "22"
 python = "3.11"
 java = "temurin-17"
 maven = "3.9.9"
@@ -48,6 +49,7 @@ depends = [
   "format-check-python",
   "format-check-java",
   "format-check-csharp",
+  "format-check-node",
 ]
 
 [tasks.format-check-rust]
@@ -71,6 +73,11 @@ run = "mvn spotless:check"
 description = "Verify C# format"
 run = "dotnet format csharp/SpicedbEmbedded.sln --verify-no-changes"
 
+[tasks.format-check-node]
+description = "Verify Node.js package format"
+dir = "node"
+run = "npm install && npm run format:check"
+
 [tasks.reformat]
 description = "Reformat all languages"
 depends = [
@@ -79,6 +86,7 @@ depends = [
   "reformat-python",
   "reformat-java",
   "reformat-csharp",
+  "reformat-node",
 ]
 
 [tasks.reformat-rust]
@@ -102,12 +110,23 @@ run = "mvn spotless:apply"
 description = "Reformat C#"
 run = "dotnet format csharp/SpicedbEmbedded.sln"
 
+[tasks.reformat-node]
+description = "Reformat Node.js package"
+dir = "node"
+run = "npm run format"
+
 [tasks.clippy]
 run = "cargo clippy --locked --workspace --all-features --all-targets"
 
 [tasks.test]
 description = "Run tests for all languages"
-depends = ["rust-test", "java-test", "python-test", "csharp-test"]
+depends = [
+  "rust-test",
+  "java-test",
+  "python-test",
+  "csharp-test",
+  "node-test",
+]
 
 [tasks.docker-test]
 description = "Build and run all tests in Docker (uses BuildKit cache for faster rebuilds)"
@@ -186,4 +205,27 @@ run = """
 mise run shared-c-build
 dotnet build csharp/SpicedbEmbedded.sln
 SPICEDB_LIBRARY_PATH="$PWD/shared/c/libspicedb.$([ \"$(uname)\" = \"Darwin\" ] && echo dylib || echo so)" dotnet test csharp/SpicedbEmbedded.Tests/SpicedbEmbedded.Tests.csproj --no-build
+"""
+
+# ============================================================================
+# Node.js
+# ============================================================================
+
+[tasks.node-build]
+description = "Build the Node.js package"
+dir = "node"
+run = """
+mise run shared-c-build
+npm install
+npm run build
+"""
+
+[tasks.node-test]
+description = "Build and test the Node.js package"
+dir = "node"
+run = """
+mise run shared-c-build
+npm install
+npm run build
+SPICEDB_LIBRARY_PATH="$PWD/../shared/c" npm test
 """
