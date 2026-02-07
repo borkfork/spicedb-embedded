@@ -27,11 +27,12 @@ The **shared/c** library is the foundation—all language bindings build on top 
 |----------|--------|--------------|
 | **Rust** | [rust/README.md](rust/README.md) | `cd rust && cargo build && cargo test` |
 | **Java** | [java/README.md](java/README.md) | `mise run shared-c-build && cd java && mvn test` |
+| **Python** | [python/README.md](python/README.md) | `mise run python-test` |
 
 ## Prerequisites
 
 - **Go** 1.23+ with CGO enabled (for building shared/c)
-- **Rust** or **Java 17+** (depending on language)
+- **Rust**, **Java 17+**, or **Python 3.10+** (depending on language)
 
 ## Building shared/c
 
@@ -49,8 +50,7 @@ cd shared/c && CGO_ENABLED=1 go build -buildmode=c-shared -o libspicedb.so .    
 | `shared/c/` | Go/CGO library that embeds SpiceDB. Exposes `spicedb_start`, `spicedb_dispose`, `spicedb_free` via C FFI. |
 | `rust/`    | Rust crate — see [rust/README.md](rust/README.md). Thin FFI + [spicedb-grpc](https://docs.rs/spicedb-grpc) clients. |
 | `java/`    | Java library — see [java/README.md](java/README.md). JNA FFI + [authzed](https://central.sonatype.com/artifact/com.authzed.api/authzed) gRPC clients. |
-
-Future: `python/`, `go/`, etc. for other languages with C FFI support.
+| `python/`  | Python package — see [python/README.md](python/README.md). ctypes FFI + [authzed](https://pypi.org/project/authzed/) gRPC clients. |
 
 ## License
 

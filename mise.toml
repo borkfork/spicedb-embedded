@@ -7,6 +7,7 @@ rust = { version = "1.91.1", components = "rustfmt,clippy" }
 taplo = "0.10.0"
 "github:knope-dev/knope" = "knope/v0.21.7"
 go = "1.23"
+python = "3.11"
 
 [tasks.check]
 description = "Run the same checks as CI"
@@ -76,4 +77,25 @@ dir = "java"
 run = """
 mise run shared-c-build
 mvn test
+"""
+
+# ============================================================================
+# Python tasks
+# ============================================================================
+
+[tasks.python-build]
+description = "Build the Python package"
+dir = "python"
+run = """
+mise run shared-c-build
+pip install -e .
+"""
+
+[tasks.python-test]
+description = "Build and test the Python package"
+dir = "python"
+run = """
+mise run shared-c-build
+pip install -e ".[dev]"
+pytest
 """

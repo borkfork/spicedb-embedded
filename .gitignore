@@ -3,6 +3,18 @@
 
 # Java
 java/target/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
 **/*.rs.bk
 
 # shared/c build artifacts
