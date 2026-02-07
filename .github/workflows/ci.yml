@@ -5,45 +5,80 @@ on:
     branches: [main]
 
 jobs:
-  rust:
+  # Build shared C library once and share as artifact
+  shared-c-lib:
     runs-on: ubuntu-latest
-    env:
-      MISE_ENABLE_TOOLS: "rust,go,cargo:cargo-deny,cargo:sccache,taplo,github:knope-dev/knope"
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/cache@v4
         with:
-          path: ~/.cache/sccache
-          key: ${{ runner.os }}-sccache-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
-          restore-keys: ${{ runner.os }}-sccache-
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum', '**/go.mod') }}
+          restore-keys: ${{ runner.os }}-go-
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "rust go cargo:cargo-deny cargo:sccache taplo github:knope-dev/knope"
+          install_args: "go"
+
+      - name: Build shared C library
+        run: mise run shared-c-build
+
+      - name: Upload shared library
+        uses: actions/upload-artifact@v4
+        with:
+          name: libspicedb-shared
+          path: shared/c/libspicedb.*
+          retention-days: 1
+
+  rust:
+    needs: shared-c-lib
+    runs-on: ubuntu-latest
+    env:
+      MISE_ENABLE_TOOLS: "rust,cargo:cargo-deny,taplo,github:knope-dev/knope"
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "rust cargo:cargo-deny taplo github:knope-dev/knope"
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: . -> target
 
       - name: Format check
-        run: mise run format-check-rust && mise run check-toml-format
+        run: cargo fmt --all --check && mise run check-toml-format
 
       - name: Clippy
-        run: mise run clippy
+        run: cargo clippy --locked --workspace --all-features --all-targets
 
       - name: Cargo deny
-        run: mise run cargo-deny
+        run: cargo deny check -c deny.toml
 
       - name: Test
-        run: mise run rust-test
+        run: cargo test --locked --workspace
 
   java:
+    needs: shared-c-lib
     runs-on: ubuntu-latest
     env:
-      MISE_ENABLE_TOOLS: "java,maven,go"
+      MISE_ENABLE_TOOLS: "java,maven"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download shared library
+        uses: actions/download-artifact@v4
+        with:
+          name: libspicedb-shared
+          path: shared/c/
 
       - uses: actions/cache@v4
         with:
@@ -53,20 +88,28 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "java maven go"
+          install_args: "java maven"
 
       - name: Format check
         run: mise run format-check-java
 
       - name: Test
-        run: mise run java-test
+        working-directory: java
+        run: mvn test
 
   python:
+    needs: shared-c-lib
     runs-on: ubuntu-latest
     env:
-      MISE_ENABLE_TOOLS: "python,go"
+      MISE_ENABLE_TOOLS: "python"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download shared library
+        uses: actions/download-artifact@v4
+        with:
+          name: libspicedb-shared
+          path: shared/c/
 
       - uses: actions/cache@v4
         with:
@@ -76,20 +119,30 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "python go"
+          install_args: "python"
 
       - name: Format check
         run: mise run format-check-python
 
       - name: Test
-        run: mise run python-test
+        working-directory: python
+        run: |
+          pip install -e ".[dev]"
+          pytest
 
   csharp:
+    needs: shared-c-lib
     runs-on: ubuntu-latest
     env:
-      MISE_ENABLE_TOOLS: "dotnet,go"
+      MISE_ENABLE_TOOLS: "dotnet"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download shared library
+        uses: actions/download-artifact@v4
+        with:
+          name: libspicedb-shared
+          path: shared/c/
 
       - uses: actions/cache@v4
         with:
@@ -99,20 +152,29 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "dotnet go"
+          install_args: "dotnet"
 
       - name: Format check
         run: mise run format-check-csharp
 
       - name: Test
-        run: mise run csharp-test
+        run: |
+          dotnet build csharp/SpicedbEmbedded.sln
+          SPICEDB_LIBRARY_PATH="$PWD/shared/c/libspicedb.$([ "$(uname)" = "Darwin" ] && echo dylib || echo so)" dotnet test csharp/SpicedbEmbedded.Tests/SpicedbEmbedded.Tests.csproj --no-build
 
   node:
+    needs: shared-c-lib
     runs-on: ubuntu-latest
     env:
-      MISE_ENABLE_TOOLS: "node,go"
+      MISE_ENABLE_TOOLS: "node"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download shared library
+        uses: actions/download-artifact@v4
+        with:
+          name: libspicedb-shared
+          path: shared/c/
 
       - uses: actions/cache@v4
         with:
@@ -122,22 +184,32 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "node go"
+          install_args: "node"
 
       - name: Format check
         run: mise run format-check-node
 
       - name: Test
-        run: mise run node-test
+        working-directory: node
+        run: |
+          npm ci
+          npm run build
+          SPICEDB_LIBRARY_PATH="$PWD/../shared/c" npm test
 
   docker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: jdx/mise-action@v3
-        with:
-          install: false
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Docker test
-        run: mise run docker-test
+      - name: Build and test
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          load: true
+          tags: spicedb-embedded-test:latest
