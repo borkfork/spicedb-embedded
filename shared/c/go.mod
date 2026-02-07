@@ -3,10 +3,8 @@ module github.com/rendil/spicedb-embedded/shared/c
 go 1.23
 
 require (
-	github.com/authzed/authzed-go v1.2.0
 	github.com/authzed/spicedb v1.38.0
 	golang.org/x/sync v0.9.0
-	google.golang.org/grpc v1.68.0
 )
 
 require (
@@ -31,6 +29,7 @@ require (
 	github.com/Masterminds/squirrel v1.5.4 // indirect
 	github.com/Yiling-J/theine-go v0.4.1 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
+	github.com/authzed/authzed-go v1.2.0 // indirect
 	github.com/authzed/cel-go v0.20.2 // indirect
 	github.com/authzed/consistent v0.1.0 // indirect
 	github.com/authzed/grpcutil v0.0.0-20240123092924-129dc0a6a6e1 // indirect
@@ -214,6 +213,7 @@ require (
 	google.golang.org/genproto v0.0.0-20240903143218-8af14fe29dc1 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20241118233622-e639e219e697 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241118233622-e639e219e697 // indirect
+	google.golang.org/grpc v1.68.0 // indirect
 	google.golang.org/protobuf v1.35.2 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect

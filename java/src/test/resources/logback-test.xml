@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Suppress Netty warning: SO_KEEPALIVE doesn't apply to Unix domain sockets -->
+    <logger name="io.netty.bootstrap.AbstractBootstrap" level="ERROR"/>
+</configuration>

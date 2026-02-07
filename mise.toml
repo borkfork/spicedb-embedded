@@ -57,3 +57,23 @@ run = "taplo format --check"
 [tasks.reformat-toml]
 description = "Reformat TOML files"
 run = "taplo format"
+
+# ============================================================================
+# Java tasks
+# ============================================================================
+
+[tasks.java-build]
+description = "Build the Java library"
+dir = "java"
+run = """
+mise run shared-c-build
+mvn compile
+"""
+
+[tasks.java-test]
+description = "Build and test the Java library"
+dir = "java"
+run = """
+mise run shared-c-build
+mvn test
+"""

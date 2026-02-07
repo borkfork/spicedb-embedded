@@ -1,5 +1,8 @@
 # Rust
 /target/
+
+# Java
+java/target/
 **/*.rs.bk
 
 # shared/c build artifacts

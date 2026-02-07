@@ -21,61 +21,19 @@ Embedded [SpiceDB](https://authzed.com/spicedb) for use in application tests and
 
 The **shared/c** library is the foundation—all language bindings build on top of it via C FFI. Each instance is independent, enabling parallel testing.
 
-## Quick Start (Rust)
+## Quick Start
 
-`EmbeddedSpiceDB` is a thin wrapper that connects auto-generated tonic gRPC clients over a Unix socket. Use the full SpiceDB API via [`permissions()`](https://docs.rs/spicedb-grpc/latest/spicedb_grpc/authzed/api/v1/permissions_service_client/struct.PermissionsServiceClient.html), [`schema()`](https://docs.rs/spicedb-grpc/latest/spicedb_grpc/authzed/api/v1/schema_service_client/struct.SchemaServiceClient.html), and [`watch()`](https://docs.rs/spicedb-grpc/latest/spicedb_grpc/authzed/api/v1/watch_service_client/struct.WatchServiceClient.html):
-
-```rust
-use spicedb_embedded::{v1, EmbeddedSpiceDB};
-
-let schema = r#"
-definition user {}
-definition document {
-    relation reader: user
-    permission read = reader
-}
-"#;
-
-let relationships = vec![v1::Relationship {
-    resource: Some(v1::ObjectReference { object_type: "document".into(), object_id: "readme".into() }),
-    relation: "reader".into(),
-    subject: Some(v1::SubjectReference {
-        object: Some(v1::ObjectReference { object_type: "user".into(), object_id: "alice".into() }),
-        optional_relation: String::new(),
-    }),
-    optional_caveat: None,
-}];
-
-let spicedb = EmbeddedSpiceDB::new(schema, &relationships).await?;
-let response = spicedb
-    .permissions()
-    .check_permission(tonic::Request::new(v1::CheckPermissionRequest {
-        consistency: Some(v1::Consistency {
-            requirement: Some(v1::consistency::Requirement::FullyConsistent(true)),
-        }),
-        resource: Some(v1::ObjectReference { object_type: "document".into(), object_id: "readme".into() }),
-        permission: "read".into(),
-        subject: Some(v1::SubjectReference {
-            object: Some(v1::ObjectReference { object_type: "user".into(), object_id: "alice".into() }),
-            optional_relation: String::new(),
-        }),
-        context: None,
-        with_tracing: false,
-    }))
-    .await?;
-let allowed = response.into_inner().permissionship == v1::check_permission_response::Permissionship::HasPermission as i32;
-assert!(allowed);
-```
+| Language | README | Build & Test |
+|----------|--------|--------------|
+| **Rust** | [rust/README.md](rust/README.md) | `cd rust && cargo build && cargo test` |
+| **Java** | [java/README.md](java/README.md) | `mise run shared-c-build && cd java && mvn test` |
 
 ## Prerequisites
 
-- **Go** 1.23+ (for building shared/c)
-- **Rust** (for the Rust crate)
-- **CGO** enabled (for Go build)
+- **Go** 1.23+ with CGO enabled (for building shared/c)
+- **Rust** or **Java 17+** (depending on language)
 
-## Building
-
-### 1. Build the shared/c library
+## Building shared/c
 
 ```bash
 mise run shared-c-build
@@ -84,27 +42,13 @@ cd shared/c && CGO_ENABLED=1 go build -buildmode=c-shared -o libspicedb.dylib . 
 cd shared/c && CGO_ENABLED=1 go build -buildmode=c-shared -o libspicedb.so .      # Linux
 ```
 
-### 2. Build and test the Rust crate
-
-The Rust build script will build shared/c automatically if needed. To build and test:
-
-```bash
-cd rust && cargo build
-cargo test
-```
-
-Or from the repo root:
-
-```bash
-mise run check   # runs clippy, fmt, test, cargo-deny
-```
-
 ## Directory Structure
 
 | Directory | Description |
 |-----------|-------------|
-| `shared/c/` | Go/CGO library that embeds SpiceDB. Exposes `spicedb_new`, `spicedb_dispose`, `spicedb_free` via C FFI. |
-| `rust/`    | Rust crate `spicedb-embedded` — thin FFI wrapper + [spicedb-grpc](https://docs.rs/spicedb-grpc) clients. |
+| `shared/c/` | Go/CGO library that embeds SpiceDB. Exposes `spicedb_start`, `spicedb_dispose`, `spicedb_free` via C FFI. |
+| `rust/`    | Rust crate — see [rust/README.md](rust/README.md). Thin FFI + [spicedb-grpc](https://docs.rs/spicedb-grpc) clients. |
+| `java/`    | Java library — see [java/README.md](java/README.md). JNA FFI + [authzed](https://central.sonatype.com/artifact/com.authzed.api/authzed) gRPC clients. |
 
 Future: `python/`, `go/`, etc. for other languages with C FFI support.
 
