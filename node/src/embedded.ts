@@ -13,7 +13,6 @@ import { spicedb_dispose, spicedb_start } from "./ffi.js";
 
 const {
   NewClientWithChannelCredentials,
-  Relationship,
   RelationshipUpdate,
   RelationshipUpdate_Operation,
   WriteRelationshipsRequest,

@@ -3,7 +3,6 @@ import { v1, EmbeddedSpiceDB } from "../src/index.js";
 
 const {
   CheckPermissionRequest,
-  CheckPermissionResponse,
   CheckPermissionResponse_Permissionship,
   Consistency,
   ObjectReference,
