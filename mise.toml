@@ -14,12 +14,7 @@ dotnet = "9.0"
 
 [tasks.check]
 description = "Run format checks, lint, and tests for all languages"
-depends = [
-  "format-check",
-  "clippy",
-  "cargo-deny",
-  "test",
-]
+depends = ["format-check", "clippy", "cargo-deny", "test"]
 
 # ============================================================================
 # SpiceDB shared/c build tasks
