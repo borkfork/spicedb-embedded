@@ -14,8 +14,7 @@ java = "temurin-17"
 maven = "3.9.9"
 dotnet = "9.0"
 
-[env]
-RUSTC_WRAPPER = "sccache"
+# RUSTC_WRAPPER set per-task below (not globally—breaks mise install cargo:sccache)
 
 [tasks.check]
 description = "Run format checks, lint, and tests for all languages"
@@ -58,7 +57,7 @@ depends = [
 
 [tasks.format-check-rust]
 description = "Verify Rust format"
-run = "cargo fmt --all --check"
+run = "RUSTC_WRAPPER=sccache cargo fmt --all --check"
 
 [tasks.format-check-python]
 description = "Verify Python format"
@@ -95,7 +94,7 @@ depends = [
 
 [tasks.reformat-rust]
 description = "Reformat Rust"
-run = "cargo fmt --all"
+run = "RUSTC_WRAPPER=sccache cargo fmt --all"
 
 [tasks.reformat-python]
 description = "Reformat Python"
@@ -120,7 +119,7 @@ dir = "node"
 run = "npm run format"
 
 [tasks.clippy]
-run = "cargo clippy --locked --workspace --all-features --all-targets"
+run = "RUSTC_WRAPPER=sccache cargo clippy --locked --workspace --all-features --all-targets"
 
 [tasks.test]
 description = "Run tests for all languages"
@@ -134,10 +133,10 @@ run = "DOCKER_BUILDKIT=1 docker build -t spicedb-embedded-test -f Dockerfile ."
 
 [tasks.rust-test]
 description = "Run Rust tests"
-run = "cargo test --locked --workspace"
+run = "RUSTC_WRAPPER=sccache cargo test --locked --workspace"
 
 [tasks.cargo-deny]
-run = "cargo deny check -c deny.toml"
+run = "RUSTC_WRAPPER=sccache cargo deny check -c deny.toml"
 
 [tasks.check-toml-format]
 description = "Check TOML formatting"
