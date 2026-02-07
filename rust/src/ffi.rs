@@ -521,11 +521,18 @@ definition document {
     #[tokio::test]
     #[ignore = "performance test - run manually with --ignored flag"]
     async fn perf_check_with_1000_relationships() {
+        const NUM_CHECKS: usize = 100;
         use std::time::Instant;
 
         // Create 1000 relationships
         let relationships: Vec<Relationship> = (0..1000)
-            .map(|i| rel(&format!("document:doc{i}"), "reader", &format!("user:user{}", i % 100)))
+            .map(|i| {
+                rel(
+                    &format!("document:doc{i}"),
+                    "reader",
+                    &format!("user:user{}", i % 100),
+                )
+            })
             .collect();
 
         println!("\n=== Performance: Check with 1000 relationships ===");
@@ -544,13 +551,14 @@ definition document {
             let _ = spicedb
                 .permissions()
                 .check_permission(tonic::Request::new(check_req(
-                    "document:doc0", "read", "user:user0",
+                    "document:doc0",
+                    "read",
+                    "user:user0",
                 )))
                 .await;
         }
 
         // Benchmark permission checks
-        const NUM_CHECKS: usize = 100;
         let start = Instant::now();
         for i in 0..NUM_CHECKS {
             let doc = format!("document:doc{}", i % 1000);
@@ -563,11 +571,12 @@ definition document {
         }
         let elapsed = start.elapsed();
 
+        let num_checks_u32 = u32::try_from(NUM_CHECKS).unwrap();
         println!("Total time for {NUM_CHECKS} checks: {elapsed:?}");
-        println!("Average per check: {:?}", elapsed / NUM_CHECKS as u32);
+        println!("Average per check: {:?}", elapsed / num_checks_u32);
         println!(
             "Checks per second: {:.0}",
-            NUM_CHECKS as f64 / elapsed.as_secs_f64()
+            f64::from(num_checks_u32) / elapsed.as_secs_f64()
         );
     }
 
@@ -575,13 +584,13 @@ definition document {
     #[tokio::test]
     #[ignore = "performance test - run manually with --ignored flag"]
     async fn perf_add_individual_relationships() {
+        const NUM_ADDS: usize = 50;
         use std::time::Instant;
 
         let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &[]).await.unwrap();
 
         println!("\n=== Performance: Add individual relationships ===");
 
-        const NUM_ADDS: usize = 50;
         let start = Instant::now();
         for i in 0..NUM_ADDS {
             spicedb
@@ -602,11 +611,12 @@ definition document {
         }
         let elapsed = start.elapsed();
 
+        let num_adds_u32 = u32::try_from(NUM_ADDS).unwrap();
         println!("Total time for {NUM_ADDS} individual adds: {elapsed:?}");
-        println!("Average per add: {:?}", elapsed / NUM_ADDS as u32);
+        println!("Average per add: {:?}", elapsed / num_adds_u32);
         println!(
             "Adds per second: {:.0}",
-            NUM_ADDS as f64 / elapsed.as_secs_f64()
+            f64::from(num_adds_u32) / elapsed.as_secs_f64()
         );
     }
 
@@ -621,7 +631,8 @@ definition document {
         println!("\n=== Performance: Bulk write relationships ===");
 
         // Test different batch sizes
-        for batch_size in [5, 10, 20, 50] {
+        for batch_size in [5_i32, 10, 20, 50] {
+            let batch_size_u32 = u32::try_from(batch_size).unwrap();
             let relationships: Vec<Relationship> = (0..batch_size)
                 .map(|i| {
                     rel(
@@ -653,7 +664,7 @@ definition document {
                 "Batch of {} relationships: {:?} ({:?} per relationship)",
                 batch_size,
                 elapsed,
-                elapsed / batch_size as u32
+                elapsed / batch_size_u32
             );
         }
 
@@ -713,14 +724,14 @@ definition document {
     #[tokio::test]
     #[ignore = "performance test - run manually with --ignored flag"]
     async fn perf_embedded_50k_relationships() {
+        const TOTAL_RELS: usize = 50_000;
+        const BATCH_SIZE: usize = 1000;
+        const NUM_CHECKS: usize = 500;
         use std::time::Instant;
 
         println!("\n=== Embedded SpiceDB: 50,000 relationships ===");
 
         // Create 50,000 relationships in batches (SpiceDB max batch is 1000)
-        const TOTAL_RELS: usize = 50_000;
-        const BATCH_SIZE: usize = 1000;
-
         println!("Creating instance...");
         let start = Instant::now();
         let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &[]).await.unwrap();
@@ -765,13 +776,15 @@ definition document {
             let _ = spicedb
                 .permissions()
                 .check_permission(tonic::Request::new(check_req(
-                    "document:doc0", "read", "user:user0",
+                    "document:doc0",
+                    "read",
+                    "user:user0",
                 )))
                 .await;
         }
 
         // Benchmark permission checks
-        const NUM_CHECKS: usize = 500;
+        let num_checks_u32 = u32::try_from(NUM_CHECKS).unwrap();
         let start = Instant::now();
         for i in 0..NUM_CHECKS {
             let doc = format!("document:doc{}", i % TOTAL_RELS);
@@ -785,10 +798,10 @@ definition document {
         let elapsed = start.elapsed();
 
         println!("Total time for {NUM_CHECKS} checks: {elapsed:?}");
-        println!("Average per check: {:?}", elapsed / NUM_CHECKS as u32);
+        println!("Average per check: {:?}", elapsed / num_checks_u32);
         println!(
             "Checks per second: {:.0}",
-            NUM_CHECKS as f64 / elapsed.as_secs_f64()
+            f64::from(num_checks_u32) / elapsed.as_secs_f64()
         );
 
         // Test some negative checks too
@@ -799,13 +812,15 @@ definition document {
             let _ = spicedb
                 .permissions()
                 .check_permission(tonic::Request::new(check_req(
-                    &doc, "read", "user:nonexistent",
+                    &doc,
+                    "read",
+                    "user:nonexistent",
                 )))
                 .await
                 .unwrap();
         }
         let elapsed = start.elapsed();
         println!("\nNegative checks (user not found):");
-        println!("Average per check: {:?}", elapsed / NUM_CHECKS as u32);
+        println!("Average per check: {:?}", elapsed / num_checks_u32);
     }
 }

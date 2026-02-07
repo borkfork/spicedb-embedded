@@ -56,9 +56,7 @@ class EmbeddedSpiceDB:
                 )
                 for r in relationships
             ]
-            perm_stub.WriteRelationships(
-                WriteRelationshipsRequest(updates=updates)
-            )
+            perm_stub.WriteRelationships(WriteRelationshipsRequest(updates=updates))
 
     def permissions(self) -> PermissionsServiceStub:
         """Permissions service stub (CheckPermission, WriteRelationships, etc.)."""

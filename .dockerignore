@@ -1,0 +1,26 @@
+# Build artifacts
+target/
+java/target/
+[Bb]in/
+[Oo]bj/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.vs/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+
+# Misc
+*.log
+.env
+.env.local

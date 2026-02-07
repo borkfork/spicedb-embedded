@@ -2,20 +2,40 @@
 
 ## Prerequisites
 
-1. Install [rustup](https://rustup.rs/) for Rust.
-2. Install [mise](https://mise.jdx.dev/installing-mise.html) for managing tools.
-3. Install [Go](https://go.dev/dl/) 1.23+ for building the shared/c library.
-4. Ensure CGO is enabled for Go (it is by default on most systems).
+1. Install [mise](https://mise.jdx.dev/installing-mise.html) for managing tools.
+2. Run `mise install` to install Go, Rust, Java, Maven, Python, and .NET from `mise.toml`.
+3. Ensure CGO is enabled for Go (it is by default on most systems).
 
 ## Workflow
 
-1. Run `mise run check` to verify your changes pass CI checks (clippy, format, tests, cargo-deny).
-2. For user-facing changes, run `mise run change` to create a Knope change file.
-3. Use conventional commit messages for PRs: `feat:`, `fix:`, `docs:`, `test:`, `chore:`, etc.
+1. Run `mise run check` to verify your changes pass CI checks:
+   - Format checks (Rust, TOML, Python, Java, C#)
+   - Clippy (Rust)
+   - Cargo-deny (Rust)
+   - Tests (all languages)
+
+2. Run `mise run reformat` to format all languages before committing.
+
+3. For user-facing changes, run `mise run change` to create a Knope change file.
+
+4. Use conventional commit messages for PRs: `feat:`, `fix:`, `docs:`, `test:`, `chore:`, etc.
+
+## Key tasks
+
+| Task | Description |
+|------|-------------|
+| `mise run test` | Run tests for Rust, Java, Python, C# |
+| `mise run check` | Format checks, clippy, cargo-deny, tests |
+| `mise run format-check` | Verify format for all languages |
+| `mise run reformat` | Format all languages |
+| `mise run docker-test` | Build and run all tests in Docker |
 
 ## Project structure
 
 - **shared/c/** — Go library that builds a C-shared library. All language bindings depend on this.
-- **rust/** — Rust crate that links against shared/c and provides `EmbeddedSpiceDB`.
+- **rust/** — Rust crate. Thin FFI + spicedb-grpc.
+- **java/** — Java library. JNA FFI + authzed gRPC clients.
+- **python/** — Python package. ctypes FFI + authzed gRPC clients.
+- **csharp/** — C# / .NET package. P/Invoke FFI + Authzed.Net.
 
-When adding support for a new language, add a new top-level directory (e.g. `python/`) that uses the C FFI from shared/c.
+When adding support for a new language, add a new top-level directory that uses the C FFI from shared/c, plus a mise task for building and testing.

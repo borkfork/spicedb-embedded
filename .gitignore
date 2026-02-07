@@ -15,6 +15,17 @@ venv/
 dist/
 build/
 .pytest_cache/
+
+# C# / .NET
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+*.cache
+*.dll
+*.pdb
+*.nupkg
+.vs/
 **/*.rs.bk
 
 # shared/c build artifacts

@@ -13,8 +13,8 @@ import org.junit.jupiter.api.Test;
 
 class EmbeddedSpiceDBTest {
 
-    private static final String TEST_SCHEMA =
-            """
+  private static final String TEST_SCHEMA =
+      """
             definition user {}
 
             definition document {
@@ -26,108 +26,125 @@ class EmbeddedSpiceDBTest {
             }
             """;
 
-    static Relationship rel(String resource, String relation, String subject) {
-        String[] resParts = resource.split(":");
-        String[] subParts = subject.split(":");
-        return Relationship.newBuilder()
-                .setResource(ObjectReference.newBuilder()
-                        .setObjectType(resParts[0])
-                        .setObjectId(resParts[1])
+  static Relationship rel(String resource, String relation, String subject) {
+    String[] resParts = resource.split(":");
+    String[] subParts = subject.split(":");
+    return Relationship.newBuilder()
+        .setResource(
+            ObjectReference.newBuilder()
+                .setObjectType(resParts[0])
+                .setObjectId(resParts[1])
+                .build())
+        .setRelation(relation)
+        .setSubject(
+            SubjectReference.newBuilder()
+                .setObject(
+                    ObjectReference.newBuilder()
+                        .setObjectType(subParts[0])
+                        .setObjectId(subParts[1])
                         .build())
-                .setRelation(relation)
-                .setSubject(SubjectReference.newBuilder()
-                        .setObject(ObjectReference.newBuilder()
-                                .setObjectType(subParts[0])
-                                .setObjectId(subParts[1])
-                                .build())
-                        .build())
-                .build();
+                .build())
+        .build();
+  }
+
+  @Test
+  void checkPermission() {
+    var relationships =
+        List.of(
+            rel("document:readme", "reader", "user:alice"),
+            rel("document:readme", "writer", "user:bob"));
+
+    try (var spicedb = EmbeddedSpiceDB.create(TEST_SCHEMA, relationships)) {
+      var consistency = Consistency.newBuilder().setFullyConsistent(true).build();
+
+      var checkReq =
+          CheckPermissionRequest.newBuilder()
+              .setConsistency(consistency)
+              .setResource(
+                  ObjectReference.newBuilder()
+                      .setObjectType("document")
+                      .setObjectId("readme")
+                      .build())
+              .setPermission("read")
+              .setSubject(
+                  SubjectReference.newBuilder()
+                      .setObject(
+                          ObjectReference.newBuilder()
+                              .setObjectType("user")
+                              .setObjectId("alice")
+                              .build())
+                      .build())
+              .build();
+
+      var response = spicedb.permissions().checkPermission(checkReq);
+      assertEquals(
+          CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION,
+          response.getPermissionship());
+
+      // Alice has read, not write
+      var writeReq = checkReq.toBuilder().setPermission("write").build();
+      var writeResp = spicedb.permissions().checkPermission(writeReq);
+      assertEquals(
+          CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION,
+          writeResp.getPermissionship());
+
+      // Bob has read and write
+      var bobReadReq =
+          checkReq.toBuilder()
+              .setSubject(
+                  SubjectReference.newBuilder()
+                      .setObject(
+                          ObjectReference.newBuilder()
+                              .setObjectType("user")
+                              .setObjectId("bob")
+                              .build())
+                      .build())
+              .build();
+      var bobReadResp = spicedb.permissions().checkPermission(bobReadReq);
+      assertEquals(
+          CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION,
+          bobReadResp.getPermissionship());
     }
+  }
 
-    @Test
-    void checkPermission() {
-        var relationships = List.of(
-                rel("document:readme", "reader", "user:alice"),
-                rel("document:readme", "writer", "user:bob"));
+  @Test
+  void addRelationship() {
+    try (var spicedb = EmbeddedSpiceDB.create(TEST_SCHEMA, List.of())) {
+      spicedb
+          .permissions()
+          .writeRelationships(
+              com.authzed.api.v1.WriteRelationshipsRequest.newBuilder()
+                  .addUpdates(
+                      com.authzed.api.v1.RelationshipUpdate.newBuilder()
+                          .setOperation(
+                              com.authzed.api.v1.RelationshipUpdate.Operation.OPERATION_TOUCH)
+                          .setRelationship(rel("document:test", "reader", "user:alice"))
+                          .build())
+                  .build());
 
-        try (var spicedb = EmbeddedSpiceDB.create(TEST_SCHEMA, relationships)) {
-            var consistency = Consistency.newBuilder()
-                    .setFullyConsistent(true)
-                    .build();
+      var checkReq =
+          CheckPermissionRequest.newBuilder()
+              .setConsistency(Consistency.newBuilder().setFullyConsistent(true).build())
+              .setResource(
+                  ObjectReference.newBuilder()
+                      .setObjectType("document")
+                      .setObjectId("test")
+                      .build())
+              .setPermission("read")
+              .setSubject(
+                  SubjectReference.newBuilder()
+                      .setObject(
+                          ObjectReference.newBuilder()
+                              .setObjectType("user")
+                              .setObjectId("alice")
+                              .build())
+                      .build())
+              .build();
 
-            var checkReq = CheckPermissionRequest.newBuilder()
-                    .setConsistency(consistency)
-                    .setResource(ObjectReference.newBuilder()
-                            .setObjectType("document")
-                            .setObjectId("readme")
-                            .build())
-                    .setPermission("read")
-                    .setSubject(SubjectReference.newBuilder()
-                            .setObject(ObjectReference.newBuilder()
-                                    .setObjectType("user")
-                                    .setObjectId("alice")
-                                    .build())
-                            .build())
-                    .build();
-
-            var response = spicedb.permissions().checkPermission(checkReq);
-            assertEquals(
-                    CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION,
-                    response.getPermissionship());
-
-            // Alice has read, not write
-            var writeReq = checkReq.toBuilder().setPermission("write").build();
-            var writeResp = spicedb.permissions().checkPermission(writeReq);
-            assertEquals(
-                    CheckPermissionResponse.Permissionship.PERMISSIONSHIP_NO_PERMISSION,
-                    writeResp.getPermissionship());
-
-            // Bob has read and write
-            var bobReadReq = checkReq.toBuilder()
-                    .setSubject(SubjectReference.newBuilder()
-                            .setObject(ObjectReference.newBuilder()
-                                    .setObjectType("user")
-                                    .setObjectId("bob")
-                                    .build())
-                            .build())
-                    .build();
-            var bobReadResp = spicedb.permissions().checkPermission(bobReadReq);
-            assertEquals(
-                    CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION,
-                    bobReadResp.getPermissionship());
-        }
+      var response = spicedb.permissions().checkPermission(checkReq);
+      assertEquals(
+          CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION,
+          response.getPermissionship());
     }
-
-    @Test
-    void addRelationship() {
-        try (var spicedb = EmbeddedSpiceDB.create(TEST_SCHEMA, List.of())) {
-            spicedb.permissions()
-                    .writeRelationships(com.authzed.api.v1.WriteRelationshipsRequest.newBuilder()
-                            .addUpdates(com.authzed.api.v1.RelationshipUpdate.newBuilder()
-                                    .setOperation(com.authzed.api.v1.RelationshipUpdate.Operation.OPERATION_TOUCH)
-                                    .setRelationship(rel("document:test", "reader", "user:alice"))
-                                    .build())
-                            .build());
-
-            var checkReq = CheckPermissionRequest.newBuilder()
-                    .setConsistency(Consistency.newBuilder().setFullyConsistent(true).build())
-                    .setResource(ObjectReference.newBuilder()
-                            .setObjectType("document")
-                            .setObjectId("test")
-                            .build())
-                    .setPermission("read")
-                    .setSubject(SubjectReference.newBuilder()
-                            .setObject(ObjectReference.newBuilder()
-                                    .setObjectType("user")
-                                    .setObjectId("alice")
-                                    .build())
-                            .build())
-                    .build();
-
-            var response = spicedb.permissions().checkPermission(checkReq);
-            assertEquals(
-                    CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION,
-                    response.getPermissionship());
-        }
-    }
+  }
 }

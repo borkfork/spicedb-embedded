@@ -5,15 +5,10 @@ description = "Embedded SpiceDB for Python — in-memory server via shared/c FFI
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
-dependencies = [
-    "authzed>=1.4.0",
-    "grpcio>=1.60.0",
-]
+dependencies = ["authzed>=1.4.0", "grpcio>=1.60.0"]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=7.0.0",
-]
+dev = ["pytest>=7.0.0", "ruff>=0.8.0"]
 
 [build-system]
 requires = ["hatchling"]

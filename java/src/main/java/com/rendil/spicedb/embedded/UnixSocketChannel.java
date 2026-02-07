@@ -17,32 +17,32 @@ import java.io.File;
  */
 final class UnixSocketChannel {
 
-    private UnixSocketChannel() {}
+  private UnixSocketChannel() {}
 
-    static ManagedChannel build(String socketPath) {
-        File f = new File(socketPath);
-        if (!f.exists()) {
-            throw new IllegalArgumentException("Socket path does not exist: " + socketPath);
-        }
-        DomainSocketAddress address = new DomainSocketAddress(socketPath);
-
-        String os = System.getProperty("os.name").toLowerCase();
-        if (os.contains("linux")) {
-            EventLoopGroup group = new EpollEventLoopGroup();
-            return NettyChannelBuilder.forAddress(address)
-                    .eventLoopGroup(group)
-                    .channelType(EpollDomainSocketChannel.class)
-                    .usePlaintext()
-                    .build();
-        } else if (os.contains("mac")) {
-            EventLoopGroup group = new KQueueEventLoopGroup();
-            return NettyChannelBuilder.forAddress(address)
-                    .eventLoopGroup(group)
-                    .channelType(KQueueDomainSocketChannel.class)
-                    .usePlaintext()
-                    .build();
-        } else {
-            throw new UnsupportedOperationException("Unix domain sockets not supported on " + os);
-        }
+  static ManagedChannel build(String socketPath) {
+    File f = new File(socketPath);
+    if (!f.exists()) {
+      throw new IllegalArgumentException("Socket path does not exist: " + socketPath);
     }
+    DomainSocketAddress address = new DomainSocketAddress(socketPath);
+
+    String os = System.getProperty("os.name").toLowerCase();
+    if (os.contains("linux")) {
+      EventLoopGroup group = new EpollEventLoopGroup();
+      return NettyChannelBuilder.forAddress(address)
+          .eventLoopGroup(group)
+          .channelType(EpollDomainSocketChannel.class)
+          .usePlaintext()
+          .build();
+    } else if (os.contains("mac")) {
+      EventLoopGroup group = new KQueueEventLoopGroup();
+      return NettyChannelBuilder.forAddress(address)
+          .eventLoopGroup(group)
+          .channelType(KQueueDomainSocketChannel.class)
+          .usePlaintext()
+          .build();
+    } else {
+      throw new UnsupportedOperationException("Unix domain sockets not supported on " + os);
+    }
+  }
 }

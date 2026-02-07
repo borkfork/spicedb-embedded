@@ -8,10 +8,18 @@ taplo = "0.10.0"
 "github:knope-dev/knope" = "knope/v0.21.7"
 go = "1.23"
 python = "3.11"
+java = "temurin-17"
+maven = "3.9.9"
+dotnet = "9.0"
 
 [tasks.check]
-description = "Run the same checks as CI"
-depends = ["clippy", "reformat", "reformat-toml", "test", "cargo-deny"]
+description = "Run format checks, lint, and tests for all languages"
+depends = [
+  "format-check",
+  "clippy",
+  "cargo-deny",
+  "test",
+]
 
 # ============================================================================
 # SpiceDB shared/c build tasks
@@ -38,14 +46,80 @@ go build -buildmode=c-shared -o libspicedb.$([ "$(uname)" = "Darwin" ] && echo "
 run = "knope document-change"
 
 [tasks.format-check]
-run = "cargo fmt --all -- --check"
+description = "Verify format for all languages"
+depends = [
+  "format-check-rust",
+  "check-toml-format",
+  "format-check-python",
+  "format-check-java",
+  "format-check-csharp",
+]
+
+[tasks.format-check-rust]
+description = "Verify Rust format"
+run = "cargo fmt --all --check"
+
+[tasks.format-check-python]
+description = "Verify Python format"
+dir = "python"
+run = """
+pip install -e ".[dev]" -q
+ruff format --check .
+"""
+
+[tasks.format-check-java]
+description = "Verify Java format"
+dir = "java"
+run = "mvn spotless:check"
+
+[tasks.format-check-csharp]
+description = "Verify C# format"
+run = "dotnet format csharp/SpicedbEmbedded.sln --verify-no-changes"
+
 [tasks.reformat]
+description = "Reformat all languages"
+depends = [
+  "reformat-rust",
+  "reformat-toml",
+  "reformat-python",
+  "reformat-java",
+  "reformat-csharp",
+]
+
+[tasks.reformat-rust]
+description = "Reformat Rust"
 run = "cargo fmt --all"
+
+[tasks.reformat-python]
+description = "Reformat Python"
+dir = "python"
+run = """
+pip install -e ".[dev]" -q
+ruff format .
+"""
+
+[tasks.reformat-java]
+description = "Reformat Java"
+dir = "java"
+run = "mvn spotless:apply"
+
+[tasks.reformat-csharp]
+description = "Reformat C#"
+run = "dotnet format csharp/SpicedbEmbedded.sln"
 
 [tasks.clippy]
 run = "cargo clippy --locked --workspace --all-features --all-targets"
 
 [tasks.test]
+description = "Run tests for all languages"
+depends = ["rust-test", "java-test", "python-test", "csharp-test"]
+
+[tasks.docker-test]
+description = "Build and run all tests in Docker (uses BuildKit cache for faster rebuilds)"
+run = "DOCKER_BUILDKIT=1 docker build --platform linux/amd64 -t spicedb-embedded-test -f Dockerfile ."
+
+[tasks.rust-test]
+description = "Run Rust tests"
 run = "cargo test --locked --workspace"
 
 [tasks.cargo-deny]
@@ -98,4 +172,23 @@ run = """
 mise run shared-c-build
 pip install -e ".[dev]"
 pytest
+"""
+
+# ============================================================================
+# C# / .NET tasks
+# ============================================================================
+
+[tasks.csharp-build]
+description = "Build the C# library"
+run = """
+mise run shared-c-build
+dotnet build csharp/SpicedbEmbedded.sln
+"""
+
+[tasks.csharp-test]
+description = "Build and test the C# library"
+run = """
+mise run shared-c-build
+dotnet build csharp/SpicedbEmbedded.sln
+SPICEDB_LIBRARY_PATH="$PWD/shared/c/libspicedb.$([ \"$(uname)\" = \"Darwin\" ] && echo dylib || echo so)" dotnet test csharp/SpicedbEmbedded.Tests/SpicedbEmbedded.Tests.csproj --no-build
 """

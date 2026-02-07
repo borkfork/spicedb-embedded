@@ -21,7 +21,9 @@ def rel(resource: str, relation: str, subject: str) -> Relationship:
     return Relationship(
         resource=ObjectReference(object_type=res_type, object_id=res_id),
         relation=relation,
-        subject=SubjectReference(object=ObjectReference(object_type=sub_type, object_id=sub_id)),
+        subject=SubjectReference(
+            object=ObjectReference(object_type=sub_type, object_id=sub_id)
+        ),
     )
 
 
@@ -51,31 +53,46 @@ def test_check_permission():
             consistency=consistency,
             resource=ObjectReference(object_type="document", object_id="readme"),
             permission="read",
-            subject=SubjectReference(object=ObjectReference(object_type="user", object_id="alice")),
+            subject=SubjectReference(
+                object=ObjectReference(object_type="user", object_id="alice")
+            ),
         )
 
         response = spicedb.permissions().CheckPermission(check_req)
-        assert response.permissionship == CheckPermissionResponse.PERMISSIONSHIP_HAS_PERMISSION
+        assert (
+            response.permissionship
+            == CheckPermissionResponse.PERMISSIONSHIP_HAS_PERMISSION
+        )
 
         # Alice has read, not write
         write_req = CheckPermissionRequest(
             consistency=consistency,
             resource=ObjectReference(object_type="document", object_id="readme"),
             permission="write",
-            subject=SubjectReference(object=ObjectReference(object_type="user", object_id="alice")),
+            subject=SubjectReference(
+                object=ObjectReference(object_type="user", object_id="alice")
+            ),
         )
         write_resp = spicedb.permissions().CheckPermission(write_req)
-        assert write_resp.permissionship == CheckPermissionResponse.PERMISSIONSHIP_NO_PERMISSION
+        assert (
+            write_resp.permissionship
+            == CheckPermissionResponse.PERMISSIONSHIP_NO_PERMISSION
+        )
 
         # Bob has read and write
         bob_read_req = CheckPermissionRequest(
             consistency=consistency,
             resource=ObjectReference(object_type="document", object_id="readme"),
             permission="read",
-            subject=SubjectReference(object=ObjectReference(object_type="user", object_id="bob")),
+            subject=SubjectReference(
+                object=ObjectReference(object_type="user", object_id="bob")
+            ),
         )
         bob_read_resp = spicedb.permissions().CheckPermission(bob_read_req)
-        assert bob_read_resp.permissionship == CheckPermissionResponse.PERMISSIONSHIP_HAS_PERMISSION
+        assert (
+            bob_read_resp.permissionship
+            == CheckPermissionResponse.PERMISSIONSHIP_HAS_PERMISSION
+        )
 
 
 def test_add_relationship():
@@ -96,7 +113,12 @@ def test_add_relationship():
             consistency=Consistency(fully_consistent=True),
             resource=ObjectReference(object_type="document", object_id="test"),
             permission="read",
-            subject=SubjectReference(object=ObjectReference(object_type="user", object_id="alice")),
+            subject=SubjectReference(
+                object=ObjectReference(object_type="user", object_id="alice")
+            ),
         )
         response = spicedb.permissions().CheckPermission(check_req)
-        assert response.permissionship == CheckPermissionResponse.PERMISSIONSHIP_HAS_PERMISSION
+        assert (
+            response.permissionship
+            == CheckPermissionResponse.PERMISSIONSHIP_HAS_PERMISSION
+        )

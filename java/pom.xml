@@ -113,6 +113,16 @@
                     <argLine>-Djava.library.path=${project.basedir}/../shared/c --enable-native-access=ALL-UNNAMED --add-opens=jdk.unsupported/sun.misc=ALL-UNNAMED -XX:+IgnoreUnrecognizedVMOptions --sun-misc-unsafe-memory-access=allow</argLine>
                 </configuration>
             </plugin>
+            <plugin>
+                <groupId>com.diffplug.spotless</groupId>
+                <artifactId>spotless-maven-plugin</artifactId>
+                <version>2.43.0</version>
+                <configuration>
+                    <java>
+                        <googleJavaFormat/>
+                    </java>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 </project>
