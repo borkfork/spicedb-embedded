@@ -120,13 +120,7 @@ run = "cargo clippy --locked --workspace --all-features --all-targets"
 
 [tasks.test]
 description = "Run tests for all languages"
-depends = [
-  "rust-test",
-  "java-test",
-  "python-test",
-  "csharp-test",
-  "node-test",
-]
+depends = ["rust-test", "java-test", "python-test", "csharp-test", "node-test"]
 
 [tasks.docker-test]
 description = "Build and run all tests in Docker (uses BuildKit cache for faster rebuilds)"
