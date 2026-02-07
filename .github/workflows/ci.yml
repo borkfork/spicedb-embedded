@@ -5,7 +5,30 @@ on:
     branches: [main]
 
 jobs:
-  check:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v3
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
+      - name: Format check
+        run: mise run format-check-rust && mise run check-toml-format
+
+      - name: Clippy
+        run: mise run clippy
+
+      - name: Cargo deny
+        run: mise run cargo-deny
+
+      - name: Test
+        run: mise run rust-test
+
+  java:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,17 +39,56 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-maven-
 
+      - uses: jdx/mise-action@v3
+
+      - name: Format check
+        run: mise run format-check-java
+
+      - name: Test
+        run: mise run java-test
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml', '**/requirements*.txt') }}
           restore-keys: ${{ runner.os }}-pip-
 
+      - uses: jdx/mise-action@v3
+
+      - name: Format check
+        run: mise run format-check-python
+
+      - name: Test
+        run: mise run python-test
+
+  csharp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
           restore-keys: ${{ runner.os }}-nuget-
+
+      - uses: jdx/mise-action@v3
+
+      - name: Format check
+        run: mise run format-check-csharp
+
+      - name: Test
+        run: mise run csharp-test
+
+  node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
       - uses: actions/cache@v4
         with:
@@ -36,12 +98,18 @@ jobs:
 
       - uses: jdx/mise-action@v3
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: . -> target
+      - name: Format check
+        run: mise run format-check-node
 
-      - name: Run check
-        run: mise run check
+      - name: Test
+        run: mise run node-test
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v3
 
       - name: Docker test
         run: mise run docker-test
