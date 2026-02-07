@@ -1,0 +1,59 @@
+# Minimum required mise version
+min_version = '2025.9.19'
+
+[tools]
+rust = { version = "1.91.1", components = "rustfmt,clippy" }
+"cargo:cargo-deny" = "0.19"
+taplo = "0.10.0"
+"github:knope-dev/knope" = "knope/v0.21.7"
+go = "1.23"
+
+[tasks.check]
+description = "Run the same checks as CI"
+depends = ["clippy", "reformat", "reformat-toml", "test", "cargo-deny"]
+
+# ============================================================================
+# SpiceDB shared/c build tasks
+# ============================================================================
+
+[tasks.shared-c-build]
+description = "Build the SpiceDB C-shared library from Go source (CGO)"
+dir = "shared/c"
+run = """
+CGO_ENABLED=1 go mod tidy
+go build -buildmode=c-shared -o libspicedb.$([ "$(uname)" = "Darwin" ] && echo "dylib" || echo "so") .
+"""
+
+[tasks.shared-c-rebuild]
+description = "Force rebuild the SpiceDB C-shared library"
+dir = "shared/c"
+run = """
+rm -f libspicedb.so libspicedb.dylib libspicedb.h
+CGO_ENABLED=1 go mod tidy
+go build -buildmode=c-shared -o libspicedb.$([ "$(uname)" = "Darwin" ] && echo "dylib" || echo "so") .
+"""
+
+[tasks.change]
+run = "knope document-change"
+
+[tasks.format-check]
+run = "cargo fmt --all -- --check"
+[tasks.reformat]
+run = "cargo fmt --all"
+
+[tasks.clippy]
+run = "cargo clippy --locked --workspace --all-features --all-targets"
+
+[tasks.test]
+run = "cargo test --locked --workspace"
+
+[tasks.cargo-deny]
+run = "cargo deny check -c deny.toml"
+
+[tasks.check-toml-format]
+description = "Check TOML formatting"
+run = "taplo format --check"
+
+[tasks.reformat-toml]
+description = "Reformat TOML files"
+run = "taplo format"

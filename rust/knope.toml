@@ -1,0 +1,5 @@
+[package]
+versioned_files = ["rust/Cargo.toml", "Cargo.lock"]
+
+[bot.releases]
+enabled = true

@@ -1,0 +1,21 @@
+[workspace]
+resolver = "3"
+members = ["rust"]
+
+[workspace.lints.clippy]
+all = "deny"
+pedantic = "deny"
+panicking_unwrap = "deny"
+unnecessary_unwrap = "deny"
+unnecessary_literal_unwrap = "deny"
+unwrap_in_result = "deny"
+or_fun_call = "deny"
+redundant_clone = "deny"
+missing_const_for_fn = "deny"
+needless_collect = "deny"
+
+[workspace.lints.rust]
+nonstandard-style = "deny"
+future-incompatible = "deny"
+non_local_definitions = "allow"
+unexpected_cfgs = { level = "allow" }
