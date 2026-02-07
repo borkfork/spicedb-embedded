@@ -4,7 +4,6 @@ min_version = '2025.9.19'
 [tools]
 rust = { version = "1.91.1", components = "rustfmt,clippy" }
 "cargo:cargo-deny" = "0.19"
-"cargo:sccache" = "0.10"
 taplo = "0.10.0"
 "github:knope-dev/knope" = "knope/v0.21.7"
 go = "1.23"
@@ -13,8 +12,6 @@ python = "3.11"
 java = "temurin-17"
 maven = "3.9.9"
 dotnet = "9.0"
-
-# RUSTC_WRAPPER set per-task below (not globally—breaks mise install cargo:sccache)
 
 [tasks.check]
 description = "Run format checks, lint, and tests for all languages"
@@ -57,7 +54,7 @@ depends = [
 
 [tasks.format-check-rust]
 description = "Verify Rust format"
-run = "RUSTC_WRAPPER=sccache cargo fmt --all --check"
+run = "cargo fmt --all --check"
 
 [tasks.format-check-python]
 description = "Verify Python format"
@@ -94,7 +91,7 @@ depends = [
 
 [tasks.reformat-rust]
 description = "Reformat Rust"
-run = "RUSTC_WRAPPER=sccache cargo fmt --all"
+run = "cargo fmt --all"
 
 [tasks.reformat-python]
 description = "Reformat Python"
@@ -119,7 +116,7 @@ dir = "node"
 run = "npm run format"
 
 [tasks.clippy]
-run = "RUSTC_WRAPPER=sccache cargo clippy --locked --workspace --all-features --all-targets"
+run = "cargo clippy --locked --workspace --all-features --all-targets"
 
 [tasks.test]
 description = "Run tests for all languages"
@@ -133,10 +130,10 @@ run = "DOCKER_BUILDKIT=1 docker build -t spicedb-embedded-test -f Dockerfile ."
 
 [tasks.rust-test]
 description = "Run Rust tests"
-run = "RUSTC_WRAPPER=sccache cargo test --locked --workspace"
+run = "cargo test --locked --workspace"
 
 [tasks.cargo-deny]
-run = "RUSTC_WRAPPER=sccache cargo deny check -c deny.toml"
+run = "cargo deny check -c deny.toml"
 
 [tasks.check-toml-format]
 description = "Check TOML formatting"
