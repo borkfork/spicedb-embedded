@@ -8,7 +8,7 @@
 
 When working on a single language, you can install only the tools needed:
 
-- **Rust:** `mise install rust go cargo:cargo-deny taplo github:knope-dev/knope`
+- **Rust:** `mise install rust go cargo:cargo-deny cargo:sccache taplo github:knope-dev/knope`
 - **Java:** `mise install java maven go`
 - **Python:** `mise install python go`
 - **C#:** `mise install dotnet go`

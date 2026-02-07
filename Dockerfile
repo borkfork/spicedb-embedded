@@ -9,6 +9,7 @@ RUN apt-get update \
     git \
     ca-certificates \
     build-essential \
+    libicu72 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install mise
@@ -30,9 +31,13 @@ RUN mise trust
 RUN --mount=type=cache,target=/mise \
     mise install
 
-# Build shared/c and run all tests (cargo registry + target cached between builds)
-# Filter jemalloc QEMU warnings (harmless when running x86_64 under emulation)
+# Build shared/c once, then run all tests in parallel
+# Cache mounts: cargo (registry, git, target), sccache, Maven, pip, nuget
 RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
     --mount=type=cache,target=/workspace/target \
-    mise run test 2> >(grep -v 'MADV_DONTNEED\|running under QEMU' >&2)
+    --mount=type=cache,target=/root/.cache/sccache \
+    --mount=type=cache,target=/root/.m2/repository \
+    --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=cache,target=/root/.nuget/packages \
+    mise run shared-c-build && mise run test 2> >(grep -v 'MADV_DONTNEED\|running under QEMU' >&2)

@@ -8,13 +8,19 @@ jobs:
   rust:
     runs-on: ubuntu-latest
     env:
-      MISE_ENABLE_TOOLS: "rust,go,cargo:cargo-deny,taplo,github:knope-dev/knope"
+      MISE_ENABLE_TOOLS: "rust,go,cargo:cargo-deny,cargo:sccache,taplo,github:knope-dev/knope"
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/sccache
+          key: ${{ runner.os }}-sccache-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-sccache-
+
       - uses: jdx/mise-action@v3
         with:
-          install_args: "rust go cargo:cargo-deny taplo github:knope-dev/knope"
+          install_args: "rust go cargo:cargo-deny cargo:sccache taplo github:knope-dev/knope"
 
       - uses: Swatinem/rust-cache@v2
         with:

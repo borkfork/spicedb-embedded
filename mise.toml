@@ -4,6 +4,10 @@ min_version = '2025.9.19'
 [tools]
 rust = { version = "1.91.1", components = "rustfmt,clippy" }
 "cargo:cargo-deny" = "0.19"
+"cargo:sccache" = "0.10"
+
+[env]
+RUSTC_WRAPPER = "sccache"
 taplo = "0.10.0"
 "github:knope-dev/knope" = "knope/v0.21.7"
 go = "1.23"
@@ -124,7 +128,9 @@ depends = ["rust-test", "java-test", "python-test", "csharp-test", "node-test"]
 
 [tasks.docker-test]
 description = "Build and run all tests in Docker (uses BuildKit cache for faster rebuilds)"
-run = "DOCKER_BUILDKIT=1 docker build --platform linux/amd64 -t spicedb-embedded-test -f Dockerfile ."
+# Use native platform (omit --platform) for speed—QEMU emulation on ARM is ~5–10x slower.
+# For amd64-only testing: docker build --platform linux/amd64 ...
+run = "DOCKER_BUILDKIT=1 docker build -t spicedb-embedded-test -f Dockerfile ."
 
 [tasks.rust-test]
 description = "Run Rust tests"
