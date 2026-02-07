@@ -7,6 +7,8 @@ on:
 jobs:
   rust:
     runs-on: ubuntu-latest
+    env:
+      MISE_ENABLE_TOOLS: "rust,go,cargo:cargo-deny,taplo,github:knope-dev/knope"
     steps:
       - uses: actions/checkout@v4
 
@@ -32,6 +34,8 @@ jobs:
 
   java:
     runs-on: ubuntu-latest
+    env:
+      MISE_ENABLE_TOOLS: "java,maven,go"
     steps:
       - uses: actions/checkout@v4
 
@@ -53,6 +57,8 @@ jobs:
 
   python:
     runs-on: ubuntu-latest
+    env:
+      MISE_ENABLE_TOOLS: "python,go"
     steps:
       - uses: actions/checkout@v4
 
@@ -74,6 +80,8 @@ jobs:
 
   csharp:
     runs-on: ubuntu-latest
+    env:
+      MISE_ENABLE_TOOLS: "dotnet,go"
     steps:
       - uses: actions/checkout@v4
 
@@ -95,6 +103,8 @@ jobs:
 
   node:
     runs-on: ubuntu-latest
+    env:
+      MISE_ENABLE_TOOLS: "node,go"
     steps:
       - uses: actions/checkout@v4
 
