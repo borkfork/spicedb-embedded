@@ -13,7 +13,16 @@ export interface SpiceDBStartResult {
 }
 
 function findLibrary(): string {
-  const ext = platform() === "darwin" ? "dylib" : "so";
+  const currentPlatform = platform();
+
+  // Explicitly check for Windows and throw an error
+  if (currentPlatform === "win32") {
+    throw new Error(
+      "Windows is not currently supported. SpiceDB embedded requires Unix-like systems (Linux/macOS)."
+    );
+  }
+
+  const ext = currentPlatform === "darwin" ? "dylib" : "so";
   const libName = `libspicedb.${ext}`;
 
   const explicit = process.env.SPICEDB_LIBRARY_PATH;
@@ -25,8 +34,12 @@ function findLibrary(): string {
     try {
       accessSync(candidate);
       return candidate;
-    } catch {
-      return candidate;
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message ? err.message : String(err);
+      throw new Error(
+        `Unable to access SpiceDB library at '${candidate}' specified by SPICEDB_LIBRARY_PATH: ${message}`
+      );
     }
   }
 
@@ -64,9 +77,7 @@ function getLib(): SpiceDBLib {
   const loaded = koffi.load(path);
 
   const spicedb_free = loaded.func("void spicedb_free(char* ptr)");
-  const HeapStr = koffi.disposable("HeapStr", "str", (ptr: unknown) =>
-    spicedb_free(ptr)
-  );
+  koffi.disposable("HeapStr", "str", (ptr: unknown) => spicedb_free(ptr));
 
   lib = {
     spicedb_start: loaded.func("HeapStr spicedb_start()"),
