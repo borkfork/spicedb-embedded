@@ -2,7 +2,7 @@
 min_version = '2025.9.19'
 
 [tools]
-rust = { version = "1.91.1", components = ["rustfmt", "clippy"] }
+rust = { version = "1.91.1", components = "rustfmt,clippy" }
 "cargo:cargo-deny" = "0.19"
 taplo = "0.10.0"
 "github:knope-dev/knope" = "knope/v0.21.7"
@@ -54,7 +54,7 @@ depends = [
 
 [tasks.format-check-rust]
 description = "Verify Rust format"
-run = "cargo fmt --all --check"
+run = "rustup toolchain install nightly && cargo +nightly fmt --all --check"
 
 [tasks.format-check-python]
 description = "Verify Python format"
@@ -91,7 +91,7 @@ depends = [
 
 [tasks.reformat-rust]
 description = "Reformat Rust"
-run = "cargo fmt --all"
+run = "rustup toolchain install nightly && cargo +nightly fmt --all"
 
 [tasks.reformat-python]
 description = "Reformat Python"

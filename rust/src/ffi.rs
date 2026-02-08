@@ -4,8 +4,10 @@
 //! connects tonic-generated gRPC clients over a Unix socket.
 //! Schema and relationships are written via gRPC (not JSON).
 
-use std::ffi::CStr;
-use std::os::raw::{c_char, c_ulonglong};
+use std::{
+    ffi::CStr,
+    os::raw::{c_char, c_ulonglong},
+};
 
 use serde::Deserialize;
 use spicedb_grpc::authzed::api::v1::{
@@ -220,10 +222,10 @@ mod tests {
         ReadRelationshipsRequest, Relationship, RelationshipFilter, RelationshipUpdate,
         SubjectReference, WriteRelationshipsRequest,
     };
+    use tokio_stream::StreamExt;
 
     use super::*;
     use crate::v1::check_permission_response::Permissionship;
-    use tokio_stream::StreamExt;
 
     const TEST_SCHEMA: &str = r"
 definition user {}
