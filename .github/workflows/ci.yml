@@ -8,6 +8,8 @@ jobs:
   # Build shared C library once and share as artifact
   shared-c-lib:
     runs-on: ubuntu-latest
+    env:
+      MISE_ENABLE_TOOLS: "go"
     steps:
       - uses: actions/checkout@v4
 
@@ -34,7 +36,6 @@ jobs:
           retention-days: 1
 
   rust:
-    needs: shared-c-lib
     runs-on: ubuntu-latest
     env:
       MISE_ENABLE_TOOLS: "rust,cargo:cargo-deny,taplo,github:knope-dev/knope"
@@ -55,16 +56,16 @@ jobs:
           workspaces: . -> target
 
       - name: Format check
-        run: cargo fmt --all --check && mise run check-toml-format
+        run: mise run format-check-rust && mise run check-toml-format
 
       - name: Clippy
-        run: cargo clippy --locked --workspace --all-features --all-targets
+        run: mise run clippy
 
       - name: Cargo deny
-        run: cargo deny check -c deny.toml
+        run: mise run cargo-deny
 
       - name: Test
-        run: cargo test --locked --workspace
+        run: mise run rust-test
 
   java:
     needs: shared-c-lib
@@ -201,15 +202,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and test
-        uses: docker/build-push-action@v6
+      - uses: jdx/mise-action@v3
         with:
-          context: .
-          push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          load: true
-          tags: spicedb-embedded-test:latest
+          install: false
+
+      - name: Docker test
+        run: mise run docker-test
