@@ -26,10 +26,9 @@ function findLibrary(): string {
   const explicit = process.env.SPICEDB_LIBRARY_PATH;
   if (explicit) {
     const libExtensions = [".so", ".dylib", ".dll"];
-    const candidate =
-      libExtensions.some((e) => explicit.endsWith(e))
-        ? explicit
-        : resolve(explicit, libName);
+    const candidate = libExtensions.some((e) => explicit.endsWith(e))
+      ? explicit
+      : resolve(explicit, libName);
     try {
       accessSync(candidate);
       return candidate;

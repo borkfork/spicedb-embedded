@@ -15,14 +15,13 @@ use spicedb_grpc::authzed::api::v1::{
     schema_service_client::SchemaServiceClient, watch_service_client::WatchServiceClient,
     RelationshipUpdate, WriteRelationshipsRequest, WriteSchemaRequest,
 };
+#[cfg(unix)]
+use tokio::net::UnixStream;
 use tonic::transport::{Channel, Endpoint, Uri};
 use tower::service_fn;
 use tracing::debug;
 
 use crate::SpiceDBError;
-
-#[cfg(unix)]
-use tokio::net::UnixStream;
 
 // FFI declarations for the C-shared library
 #[link(name = "spicedb")]
@@ -122,7 +121,10 @@ impl EmbeddedSpiceDB {
         let new_resp: NewResponse = serde_json::from_value(data)
             .map_err(|e| SpiceDBError::Protocol(format!("invalid new response: {e}")))?;
 
-        debug!("Connecting to SpiceDB at {} ({})", new_resp.address, new_resp.transport);
+        debug!(
+            "Connecting to SpiceDB at {} ({})",
+            new_resp.address, new_resp.transport
+        );
 
         let channel = connect_to_spicedb(&new_resp.transport, &new_resp.address)
             .await

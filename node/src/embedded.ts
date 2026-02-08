@@ -49,8 +49,7 @@ export class EmbeddedSpiceDB {
     const data = spicedb_start();
     const { handle, transport, address } = data;
 
-    const target =
-      transport === "unix" ? `unix://${address}` : address;
+    const target = transport === "unix" ? `unix://${address}` : address;
     const creds = grpc.credentials.createInsecure();
     const client = NewClientWithChannelCredentials(target, creds);
 

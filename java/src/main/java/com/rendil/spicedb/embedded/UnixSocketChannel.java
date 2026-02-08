@@ -13,8 +13,8 @@ import java.io.File;
 import java.net.InetSocketAddress;
 
 /**
- * Builds a gRPC ManagedChannel that connects to a Unix domain socket (Linux/macOS)
- * or TCP (Windows).
+ * Builds a gRPC ManagedChannel that connects to a Unix domain socket (Linux/macOS) or TCP
+ * (Windows).
  */
 final class UnixSocketChannel {
 
