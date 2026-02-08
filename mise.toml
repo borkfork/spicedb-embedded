@@ -104,7 +104,8 @@ dir = "node"
 run = "npm run format"
 
 [tasks.clippy]
-env = { RUSTC_WRAPPER = "sccache" }
+description = "Run Clippy linter (sccache disabled; incompatible with clippy-driver)"
+env = { RUSTC_WRAPPER = "" }
 run = "cargo clippy --locked --workspace --all-features --all-targets"
 
 [tasks.test]
