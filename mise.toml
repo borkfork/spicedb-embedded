@@ -2,7 +2,7 @@
 min_version = '2025.9.19'
 
 [tools]
-rust = { version = "1.91.1", components = ["rustfmt", "clippy"] }
+rust = { version = "1.91.1", components = "rustfmt,clippy" }
 "cargo:cargo-deny" = "0.19"
 taplo = "0.10.0"
 "github:knope-dev/knope" = "knope/v0.21.7"
