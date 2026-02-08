@@ -240,7 +240,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: libspicedb-shared-windows
-          path: shared/c/spicedb.*
+          path: shared/c/
 
   windows:
     needs: shared-c-windows
