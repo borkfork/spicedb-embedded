@@ -255,6 +255,12 @@ jobs:
         with:
           install_args: "go rust java maven python node dotnet github:mozilla/sccache"
 
+      - name: "add-path"
+        shell: cmd
+        run: |
+          echo ::add-path::C:\msys64\usr\bin
+          dir C:\msys64\usr\bin
+
       - name: Build shared C library (Windows)
         shell: bash
         run: mise run shared-c-build
