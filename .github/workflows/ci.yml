@@ -71,6 +71,8 @@ jobs:
         run: rustup component add clippy
 
       - name: Clippy
+        env:
+          RUSTC_WRAPPER: ""
         run: mise run clippy
 
       - name: Cargo deny
