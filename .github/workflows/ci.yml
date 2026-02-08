@@ -257,6 +257,11 @@ jobs:
         with:
           install_args: "go rust java maven python node dotnet github:mozilla/sccache"
 
+      - name: Set library path
+        shell: bash
+        run: |
+          eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
+
       - name: Build shared C library (Windows)
         shell: bash
         run: mise run shared-c-build
