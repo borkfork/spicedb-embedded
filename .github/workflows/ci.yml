@@ -35,6 +35,7 @@ jobs:
           retention-days: 1
 
   rust:
+    needs: shared-c-lib
     runs-on: ubuntu-latest
     env:
       MISE_ENABLE_TOOLS: "rust,cargo:cargo-deny,taplo,github:knope-dev/knope"
@@ -42,6 +43,12 @@ jobs:
       RUSTC_WRAPPER: "sccache"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download shared library
+        uses: actions/download-artifact@v4
+        with:
+          name: libspicedb-shared
+          path: shared/c/
 
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.6
