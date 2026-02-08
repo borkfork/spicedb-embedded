@@ -257,11 +257,6 @@ jobs:
         with:
           install_args: "go rust java maven python node dotnet github:mozilla/sccache"
 
-      - name: "Setup bash using msys64"
-        shell: cmd
-        run: |
-          echo "C:\msys64\usr\bin" >> "$Path"
-
       - name: Build shared C library (Windows)
         shell: bash
         run: mise run shared-c-build
