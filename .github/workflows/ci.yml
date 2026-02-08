@@ -67,6 +67,9 @@ jobs:
       - name: Format check
         run: mise run format-check-rust && mise run check-toml-format
 
+      - name: Install clippy
+        run: rustup component add clippy
+
       - name: Clippy
         run: mise run clippy
 
