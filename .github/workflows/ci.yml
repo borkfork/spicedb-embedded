@@ -255,11 +255,10 @@ jobs:
         with:
           install_args: "go rust java maven python node dotnet github:mozilla/sccache"
 
-      - name: "add-path"
+      - name: "Setup bash using msys64"
         shell: cmd
         run: |
-          echo ::add-path::C:\msys64\usr\bin
-          dir C:\msys64\usr\bin
+          echo "C:\msys64\usr\bin" >> "$GITHUB_PATH"
 
       - name: Build shared C library (Windows)
         shell: bash
