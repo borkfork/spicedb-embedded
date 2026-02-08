@@ -25,12 +25,12 @@ depends = ["format-check", "clippy", "cargo-deny", "test"]
 [tasks.shared-c-build]
 description = "Build the SpiceDB C-shared library from Go source (CGO)"
 dir = "shared/c"
-run = "out=$(../../scripts/lib-path.sh) && CGO_ENABLED=1 go mod tidy && go build -buildmode=c-shared -o \"$out\" ."
+run = "bash -c 'out=$(../../scripts/lib-path.sh) && CGO_ENABLED=1 go mod tidy && go build -buildmode=c-shared -o \"$out\" .'"
 
 [tasks.shared-c-rebuild]
 description = "Force rebuild the SpiceDB C-shared library"
 dir = "shared/c"
-run = "rm -f libspicedb.so libspicedb.dylib libspicedb.h spicedb.dll spicedb.h && out=$(../../scripts/lib-path.sh) && CGO_ENABLED=1 go mod tidy && go build -buildmode=c-shared -o \"$out\" ."
+run = "bash -c 'rm -f libspicedb.so libspicedb.dylib libspicedb.h spicedb.dll spicedb.h && out=$(../../scripts/lib-path.sh) && CGO_ENABLED=1 go mod tidy && go build -buildmode=c-shared -o \"$out\" .'"
 
 [tasks.change]
 run = "knope document-change"
@@ -172,7 +172,7 @@ run = "mise run shared-c-build && dotnet build csharp/SpicedbEmbedded.sln"
 
 [tasks.csharp-test]
 description = "Build and test the C# library"
-run = "mise run shared-c-build && dotnet build csharp/SpicedbEmbedded.sln && SPICEDB_LIBRARY_PATH=\"$(./scripts/lib-path.sh)\" dotnet test csharp/SpicedbEmbedded.Tests/SpicedbEmbedded.Tests.csproj --no-build"
+run = "bash -c 'mise run shared-c-build && dotnet build csharp/SpicedbEmbedded.sln && SPICEDB_LIBRARY_PATH=\"$(./scripts/lib-path.sh)\" dotnet test csharp/SpicedbEmbedded.Tests/SpicedbEmbedded.Tests.csproj --no-build'"
 
 # ============================================================================
 # Node.js
@@ -186,4 +186,4 @@ run = "mise run shared-c-build && npm ci && npm run build"
 [tasks.node-test]
 description = "Build and test the Node.js package"
 dir = "node"
-run = "mise run shared-c-build && npm ci && npm run build && SPICEDB_LIBRARY_PATH=\"$PWD/../shared/c\" npm test"
+run = "bash -c 'mise run shared-c-build && npm ci && npm run build && SPICEDB_LIBRARY_PATH=\"$PWD/../shared/c\" npm test'"
