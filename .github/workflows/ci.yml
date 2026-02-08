@@ -260,7 +260,7 @@ jobs:
       - name: "Setup bash using msys64"
         shell: cmd
         run: |
-          echo "C:\msys64\usr\bin" >> "$GITHUB_PATH"
+          echo "C:\msys64\usr\bin" >> "$Path"
 
       - name: Build shared C library (Windows)
         shell: bash
