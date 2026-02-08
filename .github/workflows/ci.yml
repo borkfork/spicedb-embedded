@@ -51,6 +51,8 @@ jobs:
           path: shared/c/
 
       - uses: jdx/mise-action@v3
+        env:
+          RUSTC_WRAPPER: ""
         with:
           install_args: "rust cargo:cargo-deny github:mozilla/sccache taplo github:knope-dev/knope go"
 
