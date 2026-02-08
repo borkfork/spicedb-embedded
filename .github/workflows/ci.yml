@@ -5,7 +5,38 @@ on:
     branches: [main]
 
 jobs:
+  # Build shared C library once and share as artifact
+  shared-c-lib:
+    runs-on: ubuntu-latest
+    env:
+      MISE_ENABLE_TOOLS: "go"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum', '**/go.mod') }}
+          restore-keys: ${{ runner.os }}-go-
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "go"
+
+      - name: Build shared C library
+        run: mise run shared-c-build
+
+      - name: Upload shared library
+        uses: actions/upload-artifact@v4
+        with:
+          name: libspicedb-shared
+          path: shared/c/libspicedb.*
+          retention-days: 1
+
   rust:
+    needs: shared-c-lib
     runs-on: ubuntu-latest
     env:
       MISE_ENABLE_TOOLS: "rust,go,cargo:cargo-deny,taplo,github:knope-dev/knope"
@@ -38,11 +69,18 @@ jobs:
         run: mise run rust-test
 
   java:
+    needs: shared-c-lib
     runs-on: ubuntu-latest
     env:
-      MISE_ENABLE_TOOLS: "java,maven,go"
+      MISE_ENABLE_TOOLS: "java,maven"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download shared library
+        uses: actions/download-artifact@v4
+        with:
+          name: libspicedb-shared
+          path: shared/c/
 
       - uses: actions/cache@v4
         with:
@@ -52,20 +90,28 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "java maven go"
+          install_args: "java maven"
 
       - name: Format check
         run: mise run format-check-java
 
       - name: Test
-        run: mise run java-test
+        working-directory: java
+        run: mvn test
 
   python:
+    needs: shared-c-lib
     runs-on: ubuntu-latest
     env:
-      MISE_ENABLE_TOOLS: "python,go"
+      MISE_ENABLE_TOOLS: "python"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download shared library
+        uses: actions/download-artifact@v4
+        with:
+          name: libspicedb-shared
+          path: shared/c/
 
       - uses: actions/cache@v4
         with:
@@ -75,20 +121,30 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "python go"
+          install_args: "python"
 
       - name: Format check
         run: mise run format-check-python
 
       - name: Test
-        run: mise run python-test
+        working-directory: python
+        run: |
+          pip install -e ".[dev]"
+          pytest
 
   csharp:
+    needs: shared-c-lib
     runs-on: ubuntu-latest
     env:
-      MISE_ENABLE_TOOLS: "dotnet,go"
+      MISE_ENABLE_TOOLS: "dotnet"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download shared library
+        uses: actions/download-artifact@v4
+        with:
+          name: libspicedb-shared
+          path: shared/c/
 
       - uses: actions/cache@v4
         with:
@@ -98,20 +154,29 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "dotnet go"
+          install_args: "dotnet"
 
       - name: Format check
         run: mise run format-check-csharp
 
       - name: Test
-        run: mise run csharp-test
+        run: |
+          dotnet build csharp/SpicedbEmbedded.sln
+          SPICEDB_LIBRARY_PATH="$PWD/shared/c/libspicedb.$([ "$(uname)" = "Darwin" ] && echo dylib || echo so)" dotnet test csharp/SpicedbEmbedded.Tests/SpicedbEmbedded.Tests.csproj --no-build
 
   node:
+    needs: shared-c-lib
     runs-on: ubuntu-latest
     env:
-      MISE_ENABLE_TOOLS: "node,go"
+      MISE_ENABLE_TOOLS: "node"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download shared library
+        uses: actions/download-artifact@v4
+        with:
+          name: libspicedb-shared
+          path: shared/c/
 
       - uses: actions/cache@v4
         with:
@@ -121,13 +186,17 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "node go"
+          install_args: "node"
 
       - name: Format check
         run: mise run format-check-node
 
       - name: Test
-        run: mise run node-test
+        working-directory: node
+        run: |
+          npm ci
+          npm run build
+          SPICEDB_LIBRARY_PATH="$PWD/../shared/c" npm test
 
   docker:
     runs-on: ubuntu-latest
