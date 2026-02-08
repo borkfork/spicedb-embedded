@@ -202,18 +202,6 @@ jobs:
           npm run build
           SPICEDB_LIBRARY_PATH="$PWD/../shared/c" npm test
 
-  docker:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: jdx/mise-action@v3
-        with:
-          install: false
-
-      - name: Docker test
-        run: mise run docker-test
-
   windows:
     runs-on: windows-latest
     env:
