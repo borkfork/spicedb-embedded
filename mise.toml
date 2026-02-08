@@ -7,6 +7,7 @@ rust = { version = "1.91.1", components = "rustfmt,clippy" }
 taplo = "0.10.0"
 "github:knope-dev/knope" = "knope/v0.21.7"
 go = "1.23"
+node = "22"
 python = "3.11"
 java = "temurin-17"
 maven = "3.9.9"
@@ -48,11 +49,12 @@ depends = [
   "format-check-python",
   "format-check-java",
   "format-check-csharp",
+  "format-check-node",
 ]
 
 [tasks.format-check-rust]
 description = "Verify Rust format"
-run = "cargo fmt --all --check"
+run = "rustup toolchain install nightly && rustup component add --toolchain nightly rustfmt && cargo +nightly fmt --all --check"
 
 [tasks.format-check-python]
 description = "Verify Python format"
@@ -71,6 +73,11 @@ run = "mvn spotless:check"
 description = "Verify C# format"
 run = "dotnet format csharp/SpicedbEmbedded.sln --verify-no-changes"
 
+[tasks.format-check-node]
+description = "Verify Node.js package format"
+dir = "node"
+run = "npm ci && npm run format:check"
+
 [tasks.reformat]
 description = "Reformat all languages"
 depends = [
@@ -79,11 +86,12 @@ depends = [
   "reformat-python",
   "reformat-java",
   "reformat-csharp",
+  "reformat-node",
 ]
 
 [tasks.reformat-rust]
 description = "Reformat Rust"
-run = "cargo fmt --all"
+run = "rustup toolchain install nightly && rustup component add --toolchain nightly rustfmt && cargo +nightly fmt --all"
 
 [tasks.reformat-python]
 description = "Reformat Python"
@@ -102,16 +110,23 @@ run = "mvn spotless:apply"
 description = "Reformat C#"
 run = "dotnet format csharp/SpicedbEmbedded.sln"
 
+[tasks.reformat-node]
+description = "Reformat Node.js package"
+dir = "node"
+run = "npm run format"
+
 [tasks.clippy]
 run = "cargo clippy --locked --workspace --all-features --all-targets"
 
 [tasks.test]
 description = "Run tests for all languages"
-depends = ["rust-test", "java-test", "python-test", "csharp-test"]
+depends = ["rust-test", "java-test", "python-test", "csharp-test", "node-test"]
 
 [tasks.docker-test]
 description = "Build and run all tests in Docker (uses BuildKit cache for faster rebuilds)"
-run = "DOCKER_BUILDKIT=1 docker build --platform linux/amd64 -t spicedb-embedded-test -f Dockerfile ."
+# Use native platform (omit --platform) for speed—QEMU emulation on ARM is ~5–10x slower.
+# For amd64-only testing: docker build --platform linux/amd64 ...
+run = "DOCKER_BUILDKIT=1 docker build -t spicedb-embedded-test -f Dockerfile ."
 
 [tasks.rust-test]
 description = "Run Rust tests"
@@ -186,4 +201,27 @@ run = """
 mise run shared-c-build
 dotnet build csharp/SpicedbEmbedded.sln
 SPICEDB_LIBRARY_PATH="$PWD/shared/c/libspicedb.$([ \"$(uname)\" = \"Darwin\" ] && echo dylib || echo so)" dotnet test csharp/SpicedbEmbedded.Tests/SpicedbEmbedded.Tests.csproj --no-build
+"""
+
+# ============================================================================
+# Node.js
+# ============================================================================
+
+[tasks.node-build]
+description = "Build the Node.js package"
+dir = "node"
+run = """
+mise run shared-c-build
+npm ci
+npm run build
+"""
+
+[tasks.node-test]
+description = "Build and test the Node.js package"
+dir = "node"
+run = """
+mise run shared-c-build
+npm ci
+npm run build
+SPICEDB_LIBRARY_PATH="$PWD/../shared/c" npm test
 """

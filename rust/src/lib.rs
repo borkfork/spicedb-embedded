@@ -47,7 +47,6 @@
 mod ffi;
 
 pub use ffi::EmbeddedSpiceDB;
-
 // Re-export spicedb-grpc so users have direct access to all generated types
 pub use spicedb_grpc::authzed::api::v1;
 

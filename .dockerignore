@@ -20,6 +20,9 @@ build/
 # OS
 .DS_Store
 
+# Node
+node_modules/
+
 # Misc
 *.log
 .env

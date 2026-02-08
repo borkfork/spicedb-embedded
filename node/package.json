@@ -1,0 +1,45 @@
+{
+  "name": "spicedb-embedded",
+  "version": "0.1.0",
+  "description": "Embedded SpiceDB for TypeScript/Node.js — in-memory server via shared/c FFI + gRPC over Unix socket",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "npm run format:check"
+  },
+  "dependencies": {
+    "@authzed/authzed-node": "^1.5.0",
+    "@grpc/grpc-js": "^1.14.3",
+    "koffi": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.4.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=18.18.0"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rendil/spicedb-embedded"
+  }
+}

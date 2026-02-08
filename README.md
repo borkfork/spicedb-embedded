@@ -6,9 +6,9 @@ Embedded [SpiceDB](https://authzed.com/spicedb) for use in application tests and
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Your Application (Rust, Java, Python, C#, etc.)                 │
+│  Your Application (Rust, Java, Python, C#, TypeScript, etc.)     │
 ├─────────────────────────────────────────────────────────────────┤
-│  Language bindings (rust/, java/, python/, csharp/)               │
+│  Language bindings (rust/, java/, python/, csharp/, node/)        │
 │  - FFI/cbindgen to shared/c                                     │
 │  - Native gRPC (tonic/protobuf) over Unix socket                 │
 ├─────────────────────────────────────────────────────────────────┤
@@ -31,13 +31,14 @@ Install [mise](https://mise.jdx.dev/installing-mise.html), then run `mise instal
 | **Java** | [java/README.md](java/README.md) | `mise run java-test` |
 | **Python** | [python/README.md](python/README.md) | `mise run python-test` |
 | **C# / .NET** | [csharp/README.md](csharp/README.md) | `mise run csharp-test` |
+| **Node.js** | [node/README.md](node/README.md) | `mise run node-test` |
 
 Run all tests: `mise run test`
 
 ## Prerequisites
 
 - **Go** 1.23+ with CGO enabled (for building shared/c)
-- **Rust** 1.91.1, **Java 17** (Temurin), **Python 3.11**, or **.NET 9** (depending on language) — managed by mise
+- **Rust** 1.91.1, **Node.js 22**, **Java 17** (Temurin), **Python 3.11**, or **.NET 9** (depending on language) — managed by mise
 
 ## Building shared/c
 
@@ -67,6 +68,7 @@ Or: `docker build -t spicedb-embedded-test -f Dockerfile .`
 | `java/`    | Java library — see [java/README.md](java/README.md). JNA FFI + [authzed](https://central.sonatype.com/artifact/com.authzed.api/authzed) gRPC clients. |
 | `python/`  | Python package — see [python/README.md](python/README.md). ctypes FFI + [authzed](https://pypi.org/project/authzed/) gRPC clients. |
 | `csharp/`  | C# / .NET package — see [csharp/README.md](csharp/README.md). P/Invoke FFI + [Authzed.Net](https://www.nuget.org/packages/Authzed.Net) gRPC clients. |
+| `node/` | Node.js package — see [node/README.md](node/README.md). koffi FFI + [@authzed/authzed-node](https://www.npmjs.com/package/@authzed/authzed-node) gRPC clients. |
 
 ## License
 
