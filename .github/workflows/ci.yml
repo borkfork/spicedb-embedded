@@ -7,19 +7,25 @@ jobs:
   # Build shared C library once and share as artifact
   shared-c-lib:
     runs-on: ubuntu-latest
+    env:
+      MISE_ENABLE_TOOLS: "go"
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/cache@v4
         with:
-          go-version: "1.23"
-          cache-dependency-path: shared/c/go.sum
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum', '**/go.mod') }}
+          restore-keys: ${{ runner.os }}-go-
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "go"
 
       - name: Build shared C library
-        run: |
-          cd shared/c
-          CGO_ENABLED=1 go mod tidy
-          go build -buildmode=c-shared -o libspicedb.so .
+        run: mise run shared-c-build
 
       - name: Upload shared library
         uses: actions/upload-artifact@v4
@@ -289,6 +295,22 @@ jobs:
         with:
           install_args: "go rust java maven python node dotnet github:mozilla/sccache"
 
-      - name: Test all languages
+      - name: Rust test
         shell: bash
-        run: mise run test
+        run: mise run rust-test
+
+      - name: Java test
+        shell: bash
+        run: mise run java-test
+
+      - name: Python test
+        shell: bash
+        run: mise run python-test
+
+      - name: C# test
+        shell: bash
+        run: mise run csharp-test
+
+      - name: Node test
+        shell: bash
+        run: mise run node-test
