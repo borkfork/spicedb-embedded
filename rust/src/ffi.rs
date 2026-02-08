@@ -1,7 +1,7 @@
 //! FFI bindings for the `SpiceDB` C-shared library (CGO).
 //!
 //! This module provides a thin wrapper that starts `SpiceDB` via FFI and
-//! connects tonic-generated gRPC clients over a Unix socket.
+//! connects tonic-generated gRPC clients over a Unix socket (Unix) or TCP (Windows).
 //! Schema and relationships are written via gRPC (not JSON).
 
 use std::{
@@ -15,12 +15,14 @@ use spicedb_grpc::authzed::api::v1::{
     schema_service_client::SchemaServiceClient, watch_service_client::WatchServiceClient,
     RelationshipUpdate, WriteRelationshipsRequest, WriteSchemaRequest,
 };
-use tokio::net::UnixStream;
 use tonic::transport::{Channel, Endpoint, Uri};
 use tower::service_fn;
 use tracing::debug;
 
 use crate::SpiceDBError;
+
+#[cfg(unix)]
+use tokio::net::UnixStream;
 
 // FFI declarations for the C-shared library
 #[link(name = "spicedb")]
@@ -42,7 +44,8 @@ struct CResponse {
 #[derive(Debug, Deserialize)]
 struct NewResponse {
     handle: u64,
-    socket_path: String,
+    transport: String,
+    address: String,
 }
 
 /// Helper to call a C function and parse the JSON response
@@ -119,9 +122,9 @@ impl EmbeddedSpiceDB {
         let new_resp: NewResponse = serde_json::from_value(data)
             .map_err(|e| SpiceDBError::Protocol(format!("invalid new response: {e}")))?;
 
-        debug!("Connecting to SpiceDB at {}", new_resp.socket_path);
+        debug!("Connecting to SpiceDB at {} ({})", new_resp.address, new_resp.transport);
 
-        let channel = connect_unix_socket(&new_resp.socket_path)
+        let channel = connect_to_spicedb(&new_resp.transport, &new_resp.address)
             .await
             .map_err(|e| {
                 unsafe {
@@ -197,11 +200,12 @@ impl Drop for EmbeddedSpiceDB {
     }
 }
 
-async fn connect_unix_socket(
-    path: &str,
+#[cfg(unix)]
+async fn connect_to_spicedb(
+    _transport: &str,
+    address: &str,
 ) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
-    let path = path.to_string();
-
+    let path = address.to_string();
     let channel = Endpoint::try_from("http://[::]:50051")?
         .connect_with_connector(service_fn(move |_: Uri| {
             let path = path.clone();
@@ -211,7 +215,17 @@ async fn connect_unix_socket(
             }
         }))
         .await?;
+    Ok(channel)
+}
 
+#[cfg(windows)]
+async fn connect_to_spicedb(
+    _transport: &str,
+    address: &str,
+) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
+    let channel = Endpoint::from_shared(format!("http://{}", address))?
+        .connect()
+        .await?;
     Ok(channel)
 }
 

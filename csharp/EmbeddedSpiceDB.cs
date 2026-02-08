@@ -33,16 +33,28 @@ public sealed class EmbeddedSpiceDB : IDisposable
     /// <returns>New EmbeddedSpiceDB instance</returns>
     public static EmbeddedSpiceDB Create(string schema, IReadOnlyList<Relationship>? relationships = null)
     {
-        var (handle, socketPath) = SpiceDBFFI.Start();
+        var (handle, transport, address) = SpiceDBFFI.Start();
 
         var httpHandler = new SocketsHttpHandler
         {
             ConnectCallback = async (ctx, ct) =>
             {
-                var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.IP);
-                var endpoint = new UnixDomainSocketEndPoint(socketPath);
-                await socket.ConnectAsync(endpoint, ct);
-                return new NetworkStream(socket, ownsSocket: true);
+                if (transport == "tcp")
+                {
+                    var colonIdx = address.LastIndexOf(':');
+                    if (colonIdx > 0 && int.TryParse(address.Substring(colonIdx + 1), out var port))
+                    {
+                        var host = address.Substring(0, colonIdx);
+                        var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                        await socket.ConnectAsync(new DnsEndPoint(host, port), ct);
+                        return new NetworkStream(socket, ownsSocket: true);
+                    }
+                    throw new SpiceDBException("Invalid TCP address: " + address);
+                }
+                var unixSocket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.IP);
+                var endpoint = new UnixDomainSocketEndPoint(address);
+                await unixSocket.ConnectAsync(endpoint, ct);
+                return new NetworkStream(unixSocket, ownsSocket: true);
             },
         };
 

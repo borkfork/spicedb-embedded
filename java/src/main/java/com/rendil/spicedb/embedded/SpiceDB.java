@@ -29,6 +29,8 @@ interface SpiceDB extends Library {
       libName = "libspicedb.dylib";
     } else if (os.contains("linux")) {
       libName = "libspicedb.so";
+    } else if (os.contains("win")) {
+      libName = "spicedb.dll";
     } else {
       return null;
     }
@@ -46,7 +48,7 @@ interface SpiceDB extends Library {
 
   /**
    * Start a new SpiceDB instance. Returns JSON: {"success": true, "data": {"handle": N,
-   * "socket_path": "..."}}
+   * "transport": "unix"|"tcp", "address": "..."}}
    */
   Pointer spicedb_start();
 

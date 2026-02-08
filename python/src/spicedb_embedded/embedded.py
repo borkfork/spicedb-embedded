@@ -31,10 +31,10 @@ class EmbeddedSpiceDB:
     def __init__(self, schema: str, relationships: list[Relationship] | None = None):
         data = spicedb_start()
         self._handle = data["handle"]
-        socket_path = data["socket_path"]
+        transport = data["transport"]
+        address = data["address"]
 
-        # gRPC Unix socket: unix:///absolute/path
-        target = f"unix://{socket_path}"
+        target = f"unix://{address}" if transport == "unix" else address
         self._channel = grpc.insecure_channel(target)
 
         try:

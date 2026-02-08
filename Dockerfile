@@ -40,4 +40,4 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.m2/repository \
     --mount=type=cache,target=/root/.cache/pip \
     --mount=type=cache,target=/root/.nuget/packages \
-    mise run shared-c-build && mise run test 2> >(grep -v 'MADV_DONTNEED\|running under QEMU' >&2)
+    RUSTC_WRAPPER=sccache mise run shared-c-build && mise run test 2> >(grep -v 'MADV_DONTNEED\|running under QEMU' >&2)

@@ -9,26 +9,25 @@ import { resolve } from "path";
 
 export interface SpiceDBStartResult {
   handle: number;
-  socket_path: string;
+  transport: "unix" | "tcp";
+  address: string;
 }
 
 function findLibrary(): string {
   const currentPlatform = platform();
 
-  // Explicitly check for Windows and throw an error
-  if (currentPlatform === "win32") {
-    throw new Error(
-      "Windows is not currently supported. SpiceDB embedded requires Unix-like systems (Linux/macOS)."
-    );
-  }
-
-  const ext = currentPlatform === "darwin" ? "dylib" : "so";
-  const libName = `libspicedb.${ext}`;
+  const libName =
+    currentPlatform === "win32"
+      ? "spicedb.dll"
+      : currentPlatform === "darwin"
+        ? "libspicedb.dylib"
+        : "libspicedb.so";
 
   const explicit = process.env.SPICEDB_LIBRARY_PATH;
   if (explicit) {
+    const libExtensions = [".so", ".dylib", ".dll"];
     const candidate =
-      explicit.endsWith(".so") || explicit.endsWith(".dylib")
+      libExtensions.some((e) => explicit.endsWith(e))
         ? explicit
         : resolve(explicit, libName);
     try {

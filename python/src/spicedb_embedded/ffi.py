@@ -16,7 +16,12 @@ def _find_library() -> str | None:
     if explicit:
         return explicit
 
-    lib_name = "libspicedb.dylib" if sys.platform == "darwin" else "libspicedb.so"
+    if sys.platform == "darwin":
+        lib_name = "libspicedb.dylib"
+    elif sys.platform == "win32":
+        lib_name = "spicedb.dll"
+    else:
+        lib_name = "libspicedb.so"
     base = Path.cwd()
     for rel in ("shared/c", "../shared/c", "python/../shared/c"):
         path = (base / rel / lib_name).resolve()
@@ -48,7 +53,7 @@ def _get_lib():
 
 
 def spicedb_start() -> dict:
-    """Start a new SpiceDB instance. Returns dict with handle and socket_path."""
+    """Start a new SpiceDB instance. Returns dict with handle, transport, and address."""
     lib = _get_lib()
     ptr = lib.spicedb_start()
     if not ptr:

@@ -60,10 +60,12 @@ internal static class SpiceDBFFI
 
             var data = root.GetProperty("data");
             var handle = data.GetProperty("handle").GetUInt64();
-            var socketPath = data.GetProperty("socket_path").GetString()
-                ?? throw new SpiceDBException("Missing socket_path in response");
+            var transport = data.GetProperty("transport").GetString()
+                ?? throw new SpiceDBException("Missing transport in response");
+            var address = data.GetProperty("address").GetString()
+                ?? throw new SpiceDBException("Missing address in response");
 
-            return new StartResponse(handle, socketPath);
+            return new StartResponse(handle, transport, address);
         }
         finally
         {
@@ -106,7 +108,11 @@ internal static class SpiceDBFFI
             return explicitPath;
         }
 
-        var libName = OperatingSystem.IsMacOS() ? "libspicedb.dylib" : "libspicedb.so";
+        var libName = OperatingSystem.IsMacOS()
+            ? "libspicedb.dylib"
+            : OperatingSystem.IsWindows()
+                ? "spicedb.dll"
+                : "libspicedb.so";
 
         // Search from CWD and from assembly location (for tests running from bin/Debug/net9.0)
         var searchDirs = new List<string> { Directory.GetCurrentDirectory() };
@@ -135,5 +141,5 @@ internal static class SpiceDBFFI
         return null;
     }
 
-    public readonly record struct StartResponse(ulong Handle, string SocketPath);
+    public readonly record struct StartResponse(ulong Handle, string Transport, string Address);
 }

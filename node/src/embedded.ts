@@ -47,9 +47,10 @@ export class EmbeddedSpiceDB {
     relationships: v1.Relationship[] = []
   ): Promise<EmbeddedSpiceDB> {
     const data = spicedb_start();
-    const { handle, socket_path } = data;
+    const { handle, transport, address } = data;
 
-    const target = `unix://${socket_path}`;
+    const target =
+      transport === "unix" ? `unix://${address}` : address;
     const creds = grpc.credentials.createInsecure();
     const client = NewClientWithChannelCredentials(target, creds);
 

@@ -38,7 +38,7 @@ jobs:
     needs: shared-c-lib
     runs-on: ubuntu-latest
     env:
-      MISE_ENABLE_TOOLS: "rust,cargo:cargo-deny,taplo,github:knope-dev/knope"
+      MISE_ENABLE_TOOLS: "rust,cargo:cargo-deny,github:mozilla/sccache,taplo,github:knope-dev/knope,go"
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
     steps:
@@ -50,12 +50,9 @@ jobs:
           name: libspicedb-shared
           path: shared/c/
 
-      - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.6
-
       - uses: jdx/mise-action@v3
         with:
-          install_args: "rust cargo:cargo-deny taplo github:knope-dev/knope"
+          install_args: "rust cargo:cargo-deny github:mozilla/sccache taplo github:knope-dev/knope go"
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -214,3 +211,90 @@ jobs:
 
       - name: Docker test
         run: mise run docker-test
+
+  # Windows: build shared library and run all language tests (verifies TCP listener path)
+  shared-c-windows:
+    runs-on: windows-latest
+    env:
+      MISE_ENABLE_TOOLS: "go"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum', '**/go.mod') }}
+          restore-keys: ${{ runner.os }}-go-
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "go"
+
+      - name: Build shared C library (Windows)
+        shell: bash
+        run: mise run shared-c-build
+
+      - name: Upload shared library
+        uses: actions/upload-artifact@v4
+        with:
+          name: libspicedb-shared-windows
+          path: shared/c/spicedb.*
+
+  windows:
+    needs: shared-c-windows
+    runs-on: windows-latest
+    env:
+      MISE_ENABLE_TOOLS: "go,rust,java,maven,python,node,dotnet,github:mozilla/sccache"
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download shared library
+        uses: actions/download-artifact@v4
+        with:
+          name: libspicedb-shared-windows
+          path: shared/c/
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-maven-
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml', '**/requirements*.txt') }}
+          restore-keys: ${{ runner.os }}-pip-
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - uses: actions/cache@v4
+        with:
+          path: node/node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json', '**/package.json') }}
+          restore-keys: ${{ runner.os }}-npm-
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "go rust java maven python node dotnet github:mozilla/sccache"
+
+      - name: Test all languages
+        shell: bash
+        run: mise run test

@@ -4,6 +4,7 @@ min_version = '2025.9.19'
 [tools]
 rust = { version = "1.91.1", components = "rustfmt,clippy" }
 "cargo:cargo-deny" = "0.19"
+"github:mozilla/sccache" = "v0.10.0"
 taplo = "0.10.0"
 "github:knope-dev/knope" = "knope/v0.21.7"
 go = "1.23"
@@ -25,17 +26,27 @@ depends = ["format-check", "clippy", "cargo-deny", "test"]
 description = "Build the SpiceDB C-shared library from Go source (CGO)"
 dir = "shared/c"
 run = """
+case "$(uname -s)" in
+  Darwin*)  out="libspicedb.dylib" ;;
+  MINGW*|MSYS*)  out="spicedb.dll" ;;
+  *)  out="libspicedb.so" ;;
+esac
 CGO_ENABLED=1 go mod tidy
-go build -buildmode=c-shared -o libspicedb.$([ "$(uname)" = "Darwin" ] && echo "dylib" || echo "so") .
+go build -buildmode=c-shared -o "$out" .
 """
 
 [tasks.shared-c-rebuild]
 description = "Force rebuild the SpiceDB C-shared library"
 dir = "shared/c"
 run = """
-rm -f libspicedb.so libspicedb.dylib libspicedb.h
+rm -f libspicedb.so libspicedb.dylib libspicedb.h spicedb.dll spicedb.h
+case "$(uname -s)" in
+  Darwin*)  out="libspicedb.dylib" ;;
+  MINGW*|MSYS*)  out="spicedb.dll" ;;
+  *)  out="libspicedb.so" ;;
+esac
 CGO_ENABLED=1 go mod tidy
-go build -buildmode=c-shared -o libspicedb.$([ "$(uname)" = "Darwin" ] && echo "dylib" || echo "so") .
+go build -buildmode=c-shared -o "$out" .
 """
 
 [tasks.change]
@@ -116,6 +127,7 @@ dir = "node"
 run = "npm run format"
 
 [tasks.clippy]
+env = { RUSTC_WRAPPER = "sccache" }
 run = "cargo clippy --locked --workspace --all-features --all-targets"
 
 [tasks.test]
@@ -130,9 +142,14 @@ run = "DOCKER_BUILDKIT=1 docker build -t spicedb-embedded-test -f Dockerfile ."
 
 [tasks.rust-test]
 description = "Run Rust tests"
-run = "cargo test --locked --workspace"
+env = { RUSTC_WRAPPER = "sccache" }
+run = """
+mise run shared-c-build
+cargo test --locked --workspace
+"""
 
 [tasks.cargo-deny]
+env = { RUSTC_WRAPPER = "sccache" }
 run = "cargo deny check -c deny.toml"
 
 [tasks.check-toml-format]
@@ -200,7 +217,12 @@ description = "Build and test the C# library"
 run = """
 mise run shared-c-build
 dotnet build csharp/SpicedbEmbedded.sln
-SPICEDB_LIBRARY_PATH="$PWD/shared/c/libspicedb.$([ \"$(uname)\" = \"Darwin\" ] && echo dylib || echo so)" dotnet test csharp/SpicedbEmbedded.Tests/SpicedbEmbedded.Tests.csproj --no-build
+case "$(uname -s)" in
+  Darwin*)  lib="$PWD/shared/c/libspicedb.dylib" ;;
+  MINGW*|MSYS*)  lib="$PWD/shared/c/spicedb.dll" ;;
+  *)  lib="$PWD/shared/c/libspicedb.so" ;;
+esac
+SPICEDB_LIBRARY_PATH="$lib" dotnet test csharp/SpicedbEmbedded.Tests/SpicedbEmbedded.Tests.csproj --no-build
 """
 
 # ============================================================================

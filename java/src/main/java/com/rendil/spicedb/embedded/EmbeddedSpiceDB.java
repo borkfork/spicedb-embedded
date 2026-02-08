@@ -61,11 +61,12 @@ public final class EmbeddedSpiceDB implements AutoCloseable {
 
     JsonObject data = parsed.getAsJsonObject("data");
     long handle = data.getAsJsonPrimitive("handle").getAsLong();
-    String socketPath = data.getAsJsonPrimitive("socket_path").getAsString();
+    String transport = data.getAsJsonPrimitive("transport").getAsString();
+    String address = data.getAsJsonPrimitive("address").getAsString();
 
     ManagedChannel channel;
     try {
-      channel = UnixSocketChannel.build(socketPath);
+      channel = UnixSocketChannel.build(transport, address);
     } catch (Exception e) {
       // Dispose the instance on connection failure
       Pointer disposeResult = lib.spicedb_dispose(handle);
