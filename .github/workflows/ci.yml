@@ -36,10 +36,9 @@ jobs:
           retention-days: 1
 
   rust:
-    needs: shared-c-lib
     runs-on: ubuntu-latest
     env:
-      MISE_ENABLE_TOOLS: "rust,go,cargo:cargo-deny,taplo,github:knope-dev/knope"
+      MISE_ENABLE_TOOLS: "rust,cargo:cargo-deny,taplo,github:knope-dev/knope"
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
     steps:
@@ -50,7 +49,7 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "rust go cargo:cargo-deny taplo github:knope-dev/knope"
+          install_args: "rust cargo:cargo-deny taplo github:knope-dev/knope"
 
       - uses: Swatinem/rust-cache@v2
         with:
