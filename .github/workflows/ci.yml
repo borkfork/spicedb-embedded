@@ -136,7 +136,7 @@ jobs:
       - name: Test
         working-directory: python
         run: |
-          pip install -e ".[dev]"
+          pip install -e '.[dev]'
           pytest
 
   csharp:
@@ -271,7 +271,7 @@ jobs:
         shell: bash
         working-directory: python
         run: |
-          pip install -e ".[dev]"
+          pip install -e '.[dev]'
           pytest
 
       - name: C# test

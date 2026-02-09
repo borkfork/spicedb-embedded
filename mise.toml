@@ -50,7 +50,7 @@ run = "rustup toolchain install nightly && rustup component add --toolchain nigh
 [tasks.format-check-python]
 description = "Verify Python format"
 dir = "python"
-run = "pip install -e \".[dev]\" -q && ruff format --check ."
+run = "pip install -e '.[dev]' -q && ruff format --check ."
 
 [tasks.format-check-java]
 description = "Verify Java format"
@@ -84,7 +84,7 @@ run = "rustup toolchain install nightly && rustup component add --toolchain nigh
 [tasks.reformat-python]
 description = "Reformat Python"
 dir = "python"
-run = "pip install -e \".[dev]\" -q && ruff format ."
+run = "pip install -e '.[dev]' -q && ruff format ."
 
 [tasks.reformat-java]
 description = "Reformat Java"
@@ -156,7 +156,7 @@ run = "mise run shared-c-build && pip install -e ."
 [tasks.python-test]
 description = "Build and test the Python package"
 dir = "python"
-run = "mise run shared-c-build && pip install -e \".[dev]\" && pytest"
+run = "mise run shared-c-build && pip install -e '.[dev]' && pytest"
 
 # ============================================================================
 # C# / .NET tasks
