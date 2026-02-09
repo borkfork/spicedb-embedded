@@ -75,14 +75,24 @@ func spicedb_free(ptr *C.char) {
 }
 
 // StartOptions configures datastore and transport. Passed as JSON to spicedb_start.
-// Use nil or empty for defaults.
+// Supported fields:
+//   - datastore: "memory" (default), "postgres", "cockroachdb", "spanner", "mysql"
+//   - datastore_uri: connection string for remote datastores (required for postgres, cockroachdb, spanner, mysql)
+//   - grpc_transport: "unix" (default on Unix), "tcp" (default on Windows)
+//
+// Spanner-specific (when datastore=spanner):
+//   - spanner_credentials_file: path to service account JSON key (omit for Application Default Credentials)
+//   - spanner_emulator_host: e.g. "localhost:9010" for local Spanner emulator
+//
+// MySQL-specific (when datastore=mysql):
+//   - mysql_table_prefix: prefix for all SpiceDB tables (optional, for multi-tenant)
 type StartOptions struct {
-	Datastore         string `json:"datastore"`
-	DatastoreURI      string `json:"datastore_uri"`
-	GrpcTransport     string `json:"grpc_transport"`
-	SpannerCredentialsFile string `json:"spanner_credentials_file"`
-	SpannerEmulatorHost   string `json:"spanner_emulator_host"`
-	MySQLTablePrefix  string `json:"mysql_table_prefix"`
+	Datastore               string `json:"datastore"`
+	DatastoreURI            string `json:"datastore_uri"`
+	GrpcTransport           string `json:"grpc_transport"`
+	SpannerCredentialsFile  string `json:"spanner_credentials_file"`
+	SpannerEmulatorHost     string `json:"spanner_emulator_host"`
+	MySQLTablePrefix        string `json:"mysql_table_prefix"`
 }
 
 // spicedb_start creates a new SpiceDB instance (empty server).
@@ -96,6 +106,18 @@ type StartOptions struct {
 //export spicedb_start
 func spicedb_start(options_json *C.char) *C.char {
 	opts := parseStartOptions(options_json)
+
+	// Validate: remote datastores require datastore_uri
+	engine := opts.Datastore
+	if engine == "" {
+		engine = datastore.MemoryEngine
+	}
+	remoteEngines := map[string]bool{
+		"postgres": true, "cockroachdb": true, "spanner": true, "mysql": true,
+	}
+	if remoteEngines[engine] && opts.DatastoreURI == "" {
+		return makeError(fmt.Sprintf("datastore_uri is required for %s datastore", engine))
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -120,7 +142,7 @@ func spicedb_start(options_json *C.char) *C.char {
 		if transport == "unix" {
 			os.Remove(addr)
 		}
-		srv, lastErr = newSpiceDBServer(ctx, addr, transport)
+		srv, lastErr = newSpiceDBServer(ctx, addr, opts)
 		if lastErr == nil {
 			break
 		}
@@ -183,18 +205,48 @@ func listenAddr(id uint64, transport string) string {
 	return filepath.Join(os.TempDir(), fmt.Sprintf("spicedb-%d-%d.sock", os.Getpid(), id))
 }
 
-// newSpiceDBServer creates a new in-memory SpiceDB server.
-func newSpiceDBServer(ctx context.Context, addr string, transport string) (server.RunnableServer, error) {
-	ds, err := datastore.NewDatastore(ctx,
-		datastore.DefaultDatastoreConfig().ToOption(),
-		datastore.WithRequestHedgingEnabled(false),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("unable to start memdb datastore: %v", err)
+// newSpiceDBServer creates a new SpiceDB server with the given options.
+func newSpiceDBServer(ctx context.Context, addr string, opts StartOptions) (server.RunnableServer, error) {
+	engine := opts.Datastore
+	if engine == "" {
+		engine = datastore.MemoryEngine
 	}
 
+	dsOpts := []datastore.ConfigOption{
+		datastore.DefaultDatastoreConfig().ToOption(),
+		datastore.WithEngine(engine),
+		datastore.WithRequestHedgingEnabled(false),
+	}
+	if opts.DatastoreURI != "" {
+		dsOpts = append(dsOpts, datastore.WithURI(opts.DatastoreURI))
+	}
+	if engine == "spanner" {
+		if opts.SpannerCredentialsFile != "" {
+			dsOpts = append(dsOpts, datastore.WithSpannerCredentialsFile(opts.SpannerCredentialsFile))
+		}
+		if opts.SpannerEmulatorHost != "" {
+			dsOpts = append(dsOpts, datastore.WithSpannerEmulatorHost(opts.SpannerEmulatorHost))
+		}
+	}
+	if engine == "mysql" && opts.MySQLTablePrefix != "" {
+		dsOpts = append(dsOpts, datastore.WithTablePrefix(opts.MySQLTablePrefix))
+	}
+
+	ds, err := datastore.NewDatastore(ctx, dsOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("unable to start %s datastore: %v", engine, err)
+	}
+
+	transport := opts.GrpcTransport
+	if transport == "" {
+		if runtime.GOOS == "windows" {
+			transport = "tcp"
+		} else {
+			transport = "unix"
+		}
+	}
 	network := "unix"
-	if transport == "tcp" || runtime.GOOS == "windows" {
+	if transport == "tcp" {
 		network = "tcp"
 	}
 
