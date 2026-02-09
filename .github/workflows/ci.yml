@@ -268,6 +268,8 @@ jobs:
 
       - name: Rust test
         shell: bash
+        env:
+          RUSTC_WRAPPER: ""
         run: mise run rust-test
 
       - name: Java test

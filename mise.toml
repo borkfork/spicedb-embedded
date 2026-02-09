@@ -118,7 +118,6 @@ run = "DOCKER_BUILDKIT=1 docker build -t spicedb-embedded-test -f Dockerfile ."
 
 [tasks.rust-test]
 description = "Run Rust tests"
-env = { RUSTC_WRAPPER = "sccache" }
 run = "mise run shared-c-build && cargo test --locked --workspace"
 
 [tasks.cargo-deny]
