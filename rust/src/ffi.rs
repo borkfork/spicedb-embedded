@@ -925,8 +925,11 @@ definition document {
     /// Run with: cargo test --ignored `datastore_shared`
     ///
     /// Requires: Docker, and `spicedb` CLI in PATH for migrations.
-    /// On Windows set `DOCKER_DEFAULT_PLATFORM=linux/amd64` so testcontainers pulls Linux images.
+    /// We set platform to `linux/amd64` so Docker on Windows pulls Linux images (avoids
+    /// "no matching manifest for linux/amd64 10.0.x" when the host OS version is appended).
     mod datastore_shared {
+        /// Platform for testcontainers: use Linux so images work on Windows Docker Desktop.
+        const LINUX_AMD64: &str = "linux/amd64";
         use std::process::Command;
 
         use testcontainers_modules::{
@@ -1020,6 +1023,7 @@ definition document {
             // PostgreSQL 17+ required for xid8 type (SpiceDB add-xid-columns migration)
             let container = postgres::Postgres::default()
                 .with_tag("17")
+                .with_platform(LINUX_AMD64)
                 .start()
                 .await
                 .unwrap();
@@ -1031,7 +1035,11 @@ definition document {
 
         #[tokio::test]
         async fn datastore_shared_cockroachdb() {
-            let container = cockroach_db::CockroachDb::default().start().await.unwrap();
+            let container = cockroach_db::CockroachDb::default()
+                .with_platform(LINUX_AMD64)
+                .start()
+                .await
+                .unwrap();
             let host = container.get_host().await.unwrap();
             let port = container.get_host_port_ipv4(26257).await.unwrap();
             let uri = format!("postgres://root@{host}:{port}/defaultdb?sslmode=disable");
@@ -1040,7 +1048,11 @@ definition document {
 
         #[tokio::test]
         async fn datastore_shared_mysql() {
-            let container = mysql::Mysql::default().start().await.unwrap();
+            let container = mysql::Mysql::default()
+                .with_platform(LINUX_AMD64)
+                .start()
+                .await
+                .unwrap();
             let host = container.get_host().await.unwrap();
             let port = container.get_host_port_ipv4(3306).await.unwrap();
             // MySQL: user@tcp(host:port)/db format; parseTime=true required by SpiceDB
@@ -1051,10 +1063,11 @@ definition document {
         #[tokio::test]
         async fn datastore_shared_spanner() {
             // roryq/spanner-emulator: creates instance + database on startup via env vars (no gcloud exec)
-            // Call GenericImage methods (with_exposed_port, with_wait_for) before ImageExt methods (with_env_var)
+            // Call GenericImage methods (with_exposed_port, with_wait_for) before ImageExt methods (with_platform, with_env_var)
             let container = GenericImage::new("roryq/spanner-emulator", "latest")
                 .with_exposed_port(9010u16.tcp())
                 .with_wait_for(WaitFor::seconds(5))
+                .with_platform(LINUX_AMD64)
                 .with_env_var("SPANNER_PROJECT_ID", "test-project")
                 .with_env_var("SPANNER_INSTANCE_ID", "test-instance")
                 .with_env_var("SPANNER_DATABASE_ID", "test-db")
