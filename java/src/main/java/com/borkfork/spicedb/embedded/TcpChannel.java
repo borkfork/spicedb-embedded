@@ -1,4 +1,4 @@
-package com.rendil.spicedb.embedded;
+package com.borkfork.spicedb.embedded;
 
 import io.grpc.ManagedChannel;
 import io.grpc.netty.NettyChannelBuilder;

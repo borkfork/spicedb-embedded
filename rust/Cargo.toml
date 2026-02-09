@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Embedded SpiceDB for Rust - in-memory authorization via gRPC over Unix sockets"
 license = "Apache-2.0"
-repository = "https://github.com/rendil/spicedb-embedded"
+repository = "https://github.com/borkfork/spicedb-embedded"
 
 [lib]
 path = "src/lib.rs"

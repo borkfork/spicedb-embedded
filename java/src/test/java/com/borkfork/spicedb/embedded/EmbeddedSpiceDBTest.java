@@ -1,4 +1,4 @@
-package com.rendil.spicedb.embedded;
+package com.borkfork.spicedb.embedded;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 

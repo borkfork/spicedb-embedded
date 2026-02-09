@@ -40,6 +40,6 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/rendil/spicedb-embedded"
+    "url": "https://github.com/borkfork/spicedb-embedded"
   }
 }

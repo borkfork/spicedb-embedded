@@ -1,4 +1,4 @@
-package com.rendil.spicedb.embedded;
+package com.borkfork.spicedb.embedded;
 
 import com.google.gson.annotations.SerializedName;
 
