@@ -54,7 +54,7 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "rust github:EmbarkStudios/cargo-deny taplo github:knope-dev/knope go"
+          install_args: "rust github:EmbarkStudios/cargo-deny taplo github:knope-dev/knope go github:authzed/spicedb"
 
       - uses: Swatinem/rust-cache@v2
         with:
