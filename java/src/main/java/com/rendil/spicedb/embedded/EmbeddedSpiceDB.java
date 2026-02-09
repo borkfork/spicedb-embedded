@@ -43,7 +43,7 @@ public final class EmbeddedSpiceDB implements AutoCloseable {
    */
   public static EmbeddedSpiceDB create(String schema, List<Relationship> relationships) {
     SpiceDB lib = SpiceDB.load();
-    Pointer result = lib.spicedb_start();
+    Pointer result = lib.spicedb_start(null);
     if (result == null) {
       throw new SpiceDBException("Null response from C library");
     }
@@ -61,11 +61,15 @@ public final class EmbeddedSpiceDB implements AutoCloseable {
 
     JsonObject data = parsed.getAsJsonObject("data");
     long handle = data.getAsJsonPrimitive("handle").getAsLong();
-    String socketPath = data.getAsJsonPrimitive("socket_path").getAsString();
+    String grpcTransport = data.getAsJsonPrimitive("grpc_transport").getAsString();
+    String address = data.getAsJsonPrimitive("address").getAsString();
 
     ManagedChannel channel;
     try {
-      channel = UnixSocketChannel.build(socketPath);
+      channel =
+          "tcp".equals(grpcTransport)
+              ? TcpChannel.build(address)
+              : UnixSocketChannel.build(address);
     } catch (Exception e) {
       // Dispose the instance on connection failure
       Pointer disposeResult = lib.spicedb_dispose(handle);

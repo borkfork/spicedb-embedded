@@ -1,7 +1,7 @@
 //! FFI bindings for the `SpiceDB` C-shared library (CGO).
 //!
 //! This module provides a thin wrapper that starts `SpiceDB` via FFI and
-//! connects tonic-generated gRPC clients over a Unix socket.
+//! connects tonic-generated gRPC clients over a Unix socket (Unix) or TCP (Windows).
 //! Schema and relationships are written via gRPC (not JSON).
 
 use std::{
@@ -15,8 +15,12 @@ use spicedb_grpc::authzed::api::v1::{
     schema_service_client::SchemaServiceClient, watch_service_client::WatchServiceClient,
     RelationshipUpdate, WriteRelationshipsRequest, WriteSchemaRequest,
 };
+#[cfg(unix)]
 use tokio::net::UnixStream;
-use tonic::transport::{Channel, Endpoint, Uri};
+#[cfg(unix)]
+use tonic::transport::Uri;
+use tonic::transport::{Channel, Endpoint};
+#[cfg(unix)]
 use tower::service_fn;
 use tracing::debug;
 
@@ -25,7 +29,7 @@ use crate::SpiceDBError;
 // FFI declarations for the C-shared library
 #[link(name = "spicedb")]
 unsafe extern "C" {
-    fn spicedb_start() -> *mut c_char;
+    fn spicedb_start(options_json: *const c_char) -> *mut c_char;
     fn spicedb_dispose(handle: c_ulonglong) -> *mut c_char;
     fn spicedb_free(ptr: *mut c_char);
 }
@@ -42,7 +46,8 @@ struct CResponse {
 #[derive(Debug, Deserialize)]
 struct NewResponse {
     handle: u64,
-    socket_path: String,
+    grpc_transport: String,
+    address: String,
 }
 
 /// Helper to call a C function and parse the JSON response
@@ -112,16 +117,19 @@ impl EmbeddedSpiceDB {
         );
 
         let data = unsafe {
-            let result = spicedb_start();
+            let result = spicedb_start(std::ptr::null());
             call_and_parse(result)?
         };
 
         let new_resp: NewResponse = serde_json::from_value(data)
             .map_err(|e| SpiceDBError::Protocol(format!("invalid new response: {e}")))?;
 
-        debug!("Connecting to SpiceDB at {}", new_resp.socket_path);
+        debug!(
+            "Connecting to SpiceDB at {} ({})",
+            new_resp.address, new_resp.grpc_transport
+        );
 
-        let channel = connect_unix_socket(&new_resp.socket_path)
+        let channel = connect_to_spicedb(&new_resp.grpc_transport, &new_resp.address)
             .await
             .map_err(|e| {
                 unsafe {
@@ -197,11 +205,29 @@ impl Drop for EmbeddedSpiceDB {
     }
 }
 
-async fn connect_unix_socket(
-    path: &str,
+async fn connect_to_spicedb(
+    transport: &str,
+    address: &str,
 ) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
-    let path = path.to_string();
+    if transport == "tcp" {
+        connect_tcp(address).await
+    } else {
+        connect_unix_socket(address).await
+    }
+}
 
+async fn connect_tcp(address: &str) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
+    Endpoint::from_shared(format!("http://{address}"))?
+        .connect()
+        .await
+        .map_err(Into::into)
+}
+
+#[cfg(unix)]
+async fn connect_unix_socket(
+    address: &str,
+) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
+    let path = address.to_string();
     let channel = Endpoint::try_from("http://[::]:50051")?
         .connect_with_connector(service_fn(move |_: Uri| {
             let path = path.clone();
@@ -211,8 +237,14 @@ async fn connect_unix_socket(
             }
         }))
         .await?;
-
     Ok(channel)
+}
+
+#[cfg(windows)]
+async fn connect_unix_socket(
+    _address: &str,
+) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
+    Err("Unix domain sockets are not supported on Windows".into())
 }
 
 #[cfg(test)]

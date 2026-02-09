@@ -29,6 +29,8 @@ interface SpiceDB extends Library {
       libName = "libspicedb.dylib";
     } else if (os.contains("linux")) {
       libName = "libspicedb.so";
+    } else if (os.contains("win")) {
+      libName = "spicedb.dll";
     } else {
       return null;
     }
@@ -45,10 +47,13 @@ interface SpiceDB extends Library {
   }
 
   /**
-   * Start a new SpiceDB instance. Returns JSON: {"success": true, "data": {"handle": N,
-   * "socket_path": "..."}}
+   * Start a new SpiceDB instance.
+   *
+   * @param optionsJson Optional JSON options. Pass null for defaults.
+   * @return JSON: {"success": true, "data": {"handle": N, "grpc_transport": "unix"|"tcp",
+   *     "address": "..."}}
    */
-  Pointer spicedb_start();
+  Pointer spicedb_start(String optionsJson);
 
   /** Dispose a SpiceDB instance by handle. */
   Pointer spicedb_dispose(long handle);

@@ -1,6 +1,4 @@
 using System.Net.Http;
-using System.Net.Sockets;
-using System.Net;
 using Authzed.Api.V1;
 using Grpc.Core;
 using Grpc.Net.Client;
@@ -33,18 +31,11 @@ public sealed class EmbeddedSpiceDB : IDisposable
     /// <returns>New EmbeddedSpiceDB instance</returns>
     public static EmbeddedSpiceDB Create(string schema, IReadOnlyList<Relationship>? relationships = null)
     {
-        var (handle, socketPath) = SpiceDBFFI.Start();
+        var (handle, grpcTransport, address) = SpiceDBFFI.Start();
 
-        var httpHandler = new SocketsHttpHandler
-        {
-            ConnectCallback = async (ctx, ct) =>
-            {
-                var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.IP);
-                var endpoint = new UnixDomainSocketEndPoint(socketPath);
-                await socket.ConnectAsync(endpoint, ct);
-                return new NetworkStream(socket, ownsSocket: true);
-            },
-        };
+        var httpHandler = grpcTransport == "tcp"
+            ? TcpChannel.CreateHandler(address)
+            : UnixSocketChannel.CreateHandler(address);
 
         var httpClient = new HttpClient(httpHandler) { BaseAddress = new Uri("http://localhost") };
 

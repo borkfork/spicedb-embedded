@@ -7,11 +7,8 @@ allow = [
   "Apache-2.0 WITH LLVM-exception",
   "BSD-2-Clause",
   "BSD-3-Clause",
-  "CDLA-Permissive-2.0",
-  "ISC",
   "MIT",
   "Unicode-3.0",
-  "Zlib",
 ]
 confidence-threshold = 0.8
 
@@ -24,6 +21,10 @@ wildcards = "allow"
 skip-tree = [
   "getrandom@0.2",
   { crate = "windows-sys", depth = 3, reason = "Unavoidable duplicates in ecosystem" },
+  { crate = "hashbrown", depth = 1, reason = "Transitive: indexmap v1 vs v2" },
+  { crate = "indexmap", depth = 1, reason = "Transitive: tower v0.4 vs h2/hyper" },
+  { crate = "socket2", depth = 1, reason = "Transitive: tonic vs hyper-util" },
+  { crate = "tower", depth = 1, reason = "Transitive: tonic vs axum" },
 ]
 
 [sources]
@@ -31,6 +32,3 @@ unknown-registry = "warn"
 unknown-git = "warn"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = []
-
-[sources.allow-org]
-github = ["rendil"]

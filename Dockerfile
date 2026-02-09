@@ -32,11 +32,10 @@ RUN --mount=type=cache,target=/mise \
     mise install
 
 # Build shared/c once, then run all tests in parallel
-# Cache mounts: cargo (registry, git, target), sccache, Maven, pip, nuget
+# Cache mounts: cargo (registry, git, target), Maven, pip, nuget
 RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
     --mount=type=cache,target=/workspace/target \
-    --mount=type=cache,target=/root/.cache/sccache \
     --mount=type=cache,target=/root/.m2/repository \
     --mount=type=cache,target=/root/.cache/pip \
     --mount=type=cache,target=/root/.nuget/packages \

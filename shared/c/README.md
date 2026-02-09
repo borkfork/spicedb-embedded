@@ -36,21 +36,21 @@ This generates:
 
 All functions return a JSON string that must be freed with `spicedb_free()`.
 
-### `spicedb_new(schema, relationships_json) -> handle + socket_path`
+### `spicedb_start(options_json) -> handle + grpc_transport + address`
 
-Create a new SpiceDB instance with a schema and relationships. Each instance
-is independent and listens on its own Unix socket.
+Create a new SpiceDB instance (empty server). Schema and relationships should be written by the caller via gRPC.
 
-- `schema`: SpiceDB schema in ZED format
-- `relationships_json`: JSON array of Relationship objects
+- `options_json`: Optional pointer to JSON string. Use NULL for defaults. Example: `{"grpc_transport": "unix"}`
 
-Returns: `{"success": true, "data": {"handle": 123, "socket_path": "/tmp/spicedb-xxx.sock"}}`
+Returns:
+- Unix: `{"success": true, "data": {"handle": 123, "grpc_transport": "unix", "address": "/tmp/spicedb-xxx.sock"}}`
+- Windows: `{"success": true, "data": {"handle": 123, "grpc_transport": "tcp", "address": "127.0.0.1:50051"}}`
 
 ### `spicedb_dispose(handle)`
 
 Dispose of a SpiceDB instance. Frees all resources and removes the socket file.
 
-- `handle`: Instance handle from `spicedb_new`
+- `handle`: Instance handle from `spicedb_start`
 
 Returns: `{"success": true}`
 

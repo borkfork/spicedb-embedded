@@ -16,6 +16,8 @@ from authzed.api.v1.watch_service_pb2_grpc import WatchServiceStub
 
 from spicedb_embedded.errors import SpiceDBError
 from spicedb_embedded.ffi import spicedb_dispose, spicedb_start
+from spicedb_embedded.tcp_channel import get_target as get_tcp_target
+from spicedb_embedded.unix_socket_channel import get_target as get_unix_socket_target
 
 
 class EmbeddedSpiceDB:
@@ -29,12 +31,16 @@ class EmbeddedSpiceDB:
     """
 
     def __init__(self, schema: str, relationships: list[Relationship] | None = None):
-        data = spicedb_start()
+        data = spicedb_start(None)
         self._handle = data["handle"]
-        socket_path = data["socket_path"]
+        grpc_transport = data["grpc_transport"]
+        address = data["address"]
 
-        # gRPC Unix socket: unix:///absolute/path
-        target = f"unix://{socket_path}"
+        target = (
+            get_unix_socket_target(address)
+            if grpc_transport == "unix"
+            else get_tcp_target(address)
+        )
         self._channel = grpc.insecure_channel(target)
 
         try:

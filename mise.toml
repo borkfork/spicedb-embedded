@@ -3,7 +3,7 @@ min_version = '2025.9.19'
 
 [tools]
 rust = { version = "1.91.1", components = "rustfmt,clippy" }
-"cargo:cargo-deny" = "0.19"
+"github:EmbarkStudios/cargo-deny" = { version = "0.19.0", version_prefix = "" }
 taplo = "0.10.0"
 "github:knope-dev/knope" = "knope/v0.21.7"
 go = "1.23"
@@ -23,20 +23,11 @@ depends = ["format-check", "clippy", "cargo-deny", "test"]
 
 [tasks.shared-c-build]
 description = "Build the SpiceDB C-shared library from Go source (CGO)"
-dir = "shared/c"
-run = """
-CGO_ENABLED=1 go mod tidy
-go build -buildmode=c-shared -o libspicedb.$([ "$(uname)" = "Darwin" ] && echo "dylib" || echo "so") .
-"""
+run = "bash scripts/shared-c-build.sh"
 
 [tasks.shared-c-rebuild]
 description = "Force rebuild the SpiceDB C-shared library"
-dir = "shared/c"
-run = """
-rm -f libspicedb.so libspicedb.dylib libspicedb.h
-CGO_ENABLED=1 go mod tidy
-go build -buildmode=c-shared -o libspicedb.$([ "$(uname)" = "Darwin" ] && echo "dylib" || echo "so") .
-"""
+run = "bash scripts/shared-c-rebuild.sh"
 
 [tasks.change]
 run = "knope document-change"
@@ -59,10 +50,7 @@ run = "rustup toolchain install nightly && rustup component add --toolchain nigh
 [tasks.format-check-python]
 description = "Verify Python format"
 dir = "python"
-run = """
-pip install -e ".[dev]" -q
-ruff format --check .
-"""
+run = "pip install -e '.[dev]' -q && ruff format --check ."
 
 [tasks.format-check-java]
 description = "Verify Java format"
@@ -96,10 +84,7 @@ run = "rustup toolchain install nightly && rustup component add --toolchain nigh
 [tasks.reformat-python]
 description = "Reformat Python"
 dir = "python"
-run = """
-pip install -e ".[dev]" -q
-ruff format .
-"""
+run = "pip install -e '.[dev]' -q && ruff format ."
 
 [tasks.reformat-java]
 description = "Reformat Java"
@@ -116,6 +101,7 @@ dir = "node"
 run = "npm run format"
 
 [tasks.clippy]
+description = "Run Clippy linter"
 run = "cargo clippy --locked --workspace --all-features --all-targets"
 
 [tasks.test]
@@ -130,9 +116,10 @@ run = "DOCKER_BUILDKIT=1 docker build -t spicedb-embedded-test -f Dockerfile ."
 
 [tasks.rust-test]
 description = "Run Rust tests"
-run = "cargo test --locked --workspace"
+run = "mise run shared-c-build && cargo test --locked --workspace"
 
 [tasks.cargo-deny]
+description = "Run cargo-deny (license, advisory, ban checks)"
 run = "cargo deny check -c deny.toml"
 
 [tasks.check-toml-format]
@@ -150,18 +137,12 @@ run = "taplo format"
 [tasks.java-build]
 description = "Build the Java library"
 dir = "java"
-run = """
-mise run shared-c-build
-mvn compile
-"""
+run = "mise run shared-c-build && mvn compile"
 
 [tasks.java-test]
 description = "Build and test the Java library"
 dir = "java"
-run = """
-mise run shared-c-build
-mvn test
-"""
+run = "mise run shared-c-build && mvn test"
 
 # ============================================================================
 # Python tasks
@@ -170,19 +151,12 @@ mvn test
 [tasks.python-build]
 description = "Build the Python package"
 dir = "python"
-run = """
-mise run shared-c-build
-pip install -e .
-"""
+run = "mise run shared-c-build && pip install -e ."
 
 [tasks.python-test]
 description = "Build and test the Python package"
 dir = "python"
-run = """
-mise run shared-c-build
-pip install -e ".[dev]"
-pytest
-"""
+run = "mise run shared-c-build && pip install -e '.[dev]' && pytest"
 
 # ============================================================================
 # C# / .NET tasks
@@ -190,18 +164,11 @@ pytest
 
 [tasks.csharp-build]
 description = "Build the C# library"
-run = """
-mise run shared-c-build
-dotnet build csharp/SpicedbEmbedded.sln
-"""
+run = "mise run shared-c-build && dotnet build csharp/SpicedbEmbedded.sln"
 
 [tasks.csharp-test]
 description = "Build and test the C# library"
-run = """
-mise run shared-c-build
-dotnet build csharp/SpicedbEmbedded.sln
-SPICEDB_LIBRARY_PATH="$PWD/shared/c/libspicedb.$([ \"$(uname)\" = \"Darwin\" ] && echo dylib || echo so)" dotnet test csharp/SpicedbEmbedded.Tests/SpicedbEmbedded.Tests.csproj --no-build
-"""
+run = "bash -c 'mise run shared-c-build && dotnet build csharp/SpicedbEmbedded.sln && SPICEDB_LIBRARY_PATH=\"$(./scripts/lib-path.sh)\" dotnet test csharp/SpicedbEmbedded.Tests/SpicedbEmbedded.Tests.csproj --no-build'"
 
 # ============================================================================
 # Node.js
@@ -210,18 +177,9 @@ SPICEDB_LIBRARY_PATH="$PWD/shared/c/libspicedb.$([ \"$(uname)\" = \"Darwin\" ] &
 [tasks.node-build]
 description = "Build the Node.js package"
 dir = "node"
-run = """
-mise run shared-c-build
-npm ci
-npm run build
-"""
+run = "mise run shared-c-build && npm ci && npm run build"
 
 [tasks.node-test]
 description = "Build and test the Node.js package"
 dir = "node"
-run = """
-mise run shared-c-build
-npm ci
-npm run build
-SPICEDB_LIBRARY_PATH="$PWD/../shared/c" npm test
-"""
+run = "bash -c 'mise run shared-c-build && npm ci && npm run build && SPICEDB_LIBRARY_PATH=\"$PWD/../shared/c\" npm test'"

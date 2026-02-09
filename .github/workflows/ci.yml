@@ -3,6 +3,10 @@ name: CI
 on:
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # Build shared C library once and share as artifact
   shared-c-lib:
@@ -38,9 +42,7 @@ jobs:
     needs: shared-c-lib
     runs-on: ubuntu-latest
     env:
-      MISE_ENABLE_TOOLS: "rust,cargo:cargo-deny,taplo,github:knope-dev/knope"
-      SCCACHE_GHA_ENABLED: "true"
-      RUSTC_WRAPPER: "sccache"
+      MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,taplo,github:knope-dev/knope,go"
     steps:
       - uses: actions/checkout@v4
 
@@ -50,12 +52,9 @@ jobs:
           name: libspicedb-shared
           path: shared/c/
 
-      - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.6
-
       - uses: jdx/mise-action@v3
         with:
-          install_args: "rust cargo:cargo-deny taplo github:knope-dev/knope"
+          install_args: "rust github:EmbarkStudios/cargo-deny taplo github:knope-dev/knope go"
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -64,6 +63,9 @@ jobs:
       - name: Format check
         run: mise run format-check-rust && mise run check-toml-format
 
+      - name: Install clippy
+        run: rustup component add clippy
+
       - name: Clippy
         run: mise run clippy
 
@@ -71,7 +73,7 @@ jobs:
         run: mise run cargo-deny
 
       - name: Test
-        run: mise run rust-test
+        run: cargo test --locked --workspace
 
   java:
     needs: shared-c-lib
@@ -134,7 +136,7 @@ jobs:
       - name: Test
         working-directory: python
         run: |
-          pip install -e ".[dev]"
+          pip install -e '.[dev]'
           pytest
 
   csharp:
@@ -167,7 +169,7 @@ jobs:
       - name: Test
         run: |
           dotnet build csharp/SpicedbEmbedded.sln
-          SPICEDB_LIBRARY_PATH="$PWD/shared/c/libspicedb.$([ "$(uname)" = "Darwin" ] && echo dylib || echo so)" dotnet test csharp/SpicedbEmbedded.Tests/SpicedbEmbedded.Tests.csproj --no-build
+          SPICEDB_LIBRARY_PATH="$(./scripts/lib-path.sh)" dotnet test csharp/SpicedbEmbedded.Tests/SpicedbEmbedded.Tests.csproj --no-build
 
   node:
     needs: shared-c-lib
@@ -201,16 +203,87 @@ jobs:
         run: |
           npm ci
           npm run build
-          SPICEDB_LIBRARY_PATH="$PWD/../shared/c" npm test
+          SPICEDB_LIBRARY_PATH="$(../scripts/lib-path.sh)" npm test
 
-  docker:
-    runs-on: ubuntu-latest
+  windows:
+    runs-on: windows-latest
+    env:
+      MISE_ENABLE_TOOLS: "go,rust,java,maven,python,node,dotnet"
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-maven-
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml', '**/requirements*.txt') }}
+          restore-keys: ${{ runner.os }}-pip-
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - uses: actions/cache@v4
+        with:
+          path: node/node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json', '**/package.json') }}
+          restore-keys: ${{ runner.os }}-npm-
+
       - uses: jdx/mise-action@v3
         with:
-          install: false
+          install_args: "go rust java maven python node dotnet"
 
-      - name: Docker test
-        run: mise run docker-test
+      - name: Set library path
+        shell: bash
+        run: |
+          eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
+
+      - name: Build shared C library (Windows)
+        shell: bash
+        run: mise run shared-c-build
+
+      - name: Rust test
+        shell: bash
+        run: cargo test --locked --workspace
+
+      - name: Java test
+        shell: bash
+        working-directory: java
+        run: mvn test
+
+      - name: Python test
+        shell: bash
+        working-directory: python
+        run: |
+          pip install -e '.[dev]'
+          pytest
+
+      - name: C# test
+        shell: bash
+        run: |
+          dotnet build csharp/SpicedbEmbedded.sln
+          SPICEDB_LIBRARY_PATH="$(./scripts/lib-path.sh)" dotnet test csharp/SpicedbEmbedded.Tests/SpicedbEmbedded.Tests.csproj --no-build
+
+      - name: Node test
+        shell: bash
+        working-directory: node
+        run: |
+          npm ci
+          npm run build
+          SPICEDB_LIBRARY_PATH="$(../scripts/lib-path.sh)" npm test

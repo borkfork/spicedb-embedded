@@ -35,6 +35,8 @@ node_modules/
 shared/c/libspicedb.so
 shared/c/libspicedb.dylib
 shared/c/libspicedb.h
+shared/c/spicedb.dll
+shared/c/spicedb.h
 
 # IDE
 .idea/

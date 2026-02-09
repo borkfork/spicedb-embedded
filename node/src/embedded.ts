@@ -10,6 +10,8 @@
 import * as grpc from "@grpc/grpc-js";
 import { v1 } from "@authzed/authzed-node";
 import { spicedb_dispose, spicedb_start } from "./ffi.js";
+import { getTarget as getTcpTarget } from "./tcp_channel.js";
+import { getTarget as getUnixSocketTarget } from "./unix_socket_channel.js";
 
 const {
   NewClientWithChannelCredentials,
@@ -47,9 +49,12 @@ export class EmbeddedSpiceDB {
     relationships: v1.Relationship[] = []
   ): Promise<EmbeddedSpiceDB> {
     const data = spicedb_start();
-    const { handle, socket_path } = data;
+    const { handle, grpc_transport, address } = data;
 
-    const target = `unix://${socket_path}`;
+    const target =
+      grpc_transport === "unix"
+        ? getUnixSocketTarget(address)
+        : getTcpTarget(address);
     const creds = grpc.credentials.createInsecure();
     const client = NewClientWithChannelCredentials(target, creds);
 
