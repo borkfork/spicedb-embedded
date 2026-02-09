@@ -86,6 +86,7 @@ func spicedb_free(ptr *C.char) {
 //
 // MySQL-specific (when datastore=mysql):
 //   - mysql_table_prefix: prefix for all SpiceDB tables (optional, for multi-tenant)
+//   - metrics_enabled: enable datastore Prometheus metrics (default: false; disabled allows multiple instances in same process)
 type StartOptions struct {
 	Datastore               string `json:"datastore"`
 	DatastoreURI            string `json:"datastore_uri"`
@@ -93,6 +94,7 @@ type StartOptions struct {
 	SpannerCredentialsFile  string `json:"spanner_credentials_file"`
 	SpannerEmulatorHost     string `json:"spanner_emulator_host"`
 	MySQLTablePrefix        string `json:"mysql_table_prefix"`
+	MetricsEnabled          bool   `json:"metrics_enabled"`
 }
 
 // spicedb_start creates a new SpiceDB instance (empty server).
@@ -216,6 +218,7 @@ func newSpiceDBServer(ctx context.Context, addr string, opts StartOptions) (serv
 		datastore.DefaultDatastoreConfig().ToOption(),
 		datastore.WithEngine(engine),
 		datastore.WithRequestHedgingEnabled(false),
+		datastore.WithEnableDatastoreMetrics(opts.MetricsEnabled),
 	}
 	if opts.DatastoreURI != "" {
 		dsOpts = append(dsOpts, datastore.WithURI(opts.DatastoreURI))

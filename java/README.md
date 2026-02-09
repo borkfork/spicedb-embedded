@@ -107,6 +107,7 @@ try (var spicedb = EmbeddedSpiceDB.create(schema, List.of(), options)) {
 - **grpc_transport**: `"unix"` (default on Unix), `"tcp"` (default on Windows)
 - **spanner_credentials_file**, **spanner_emulator_host**: Spanner-only
 - **mysql_table_prefix**: MySQL-only (optional)
+- **metrics_enabled**: Enable datastore Prometheus metrics (default: false)
 
 ## JVM Warnings
 

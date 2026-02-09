@@ -26,6 +26,8 @@ export interface SpiceDBStartOptions {
   spanner_emulator_host?: string;
   /** Prefix for all tables (MySQL only) */
   mysql_table_prefix?: string;
+  /** Enable datastore Prometheus metrics (default: false; disabled allows multiple instances in same process) */
+  metrics_enabled?: boolean;
 }
 
 function findLibrary(): string {

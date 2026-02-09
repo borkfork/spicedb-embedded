@@ -10,7 +10,9 @@
 //! ```ignore
 //! use spicedb_embedded::{v1, EmbeddedSpiceDB};
 //!
-//! let schema = r#"
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let schema = r#"
 //! definition user {}
 //! definition document {
 //!     relation reader: user
@@ -18,30 +20,32 @@
 //! }
 //! "#;
 //!
-//! let relationships = vec![v1::Relationship {
-//!     resource: Some(v1::ObjectReference { object_type: "document".into(), object_id: "readme".into() }),
-//!     relation: "reader".into(),
-//!     subject: Some(v1::SubjectReference {
-//!         object: Some(v1::ObjectReference { object_type: "user".into(), object_id: "alice".into() }),
-//!         optional_relation: String::new(),
-//!     }),
-//!     optional_caveat: None,
-//! }];
+//!     let relationships = vec![v1::Relationship {
+//!         resource: Some(v1::ObjectReference { object_type: "document".into(), object_id: "readme".into() }),
+//!         relation: "reader".into(),
+//!         subject: Some(v1::SubjectReference {
+//!             object: Some(v1::ObjectReference { object_type: "user".into(), object_id: "alice".into() }),
+//!             optional_relation: String::new(),
+//!         }),
+//!         optional_caveat: None,
+//!     }];
 //!
-//! let spicedb = EmbeddedSpiceDB::new(schema, &relationships).await?;
-//! let mut permissions = spicedb.permissions();
-//! // Use the full SpiceDB API via the generated client
-//! let response = permissions.check_permission(tonic::Request::new(v1::CheckPermissionRequest {
-//!     consistency: None,
-//!     resource: Some(v1::ObjectReference { object_type: "document".into(), object_id: "readme".into() }),
-//!     permission: "read".into(),
-//!     subject: Some(v1::SubjectReference {
-//!         object: Some(v1::ObjectReference { object_type: "user".into(), object_id: "alice".into() }),
-//!         optional_relation: String::new(),
-//!     }),
-//!     context: None,
-//!     with_tracing: false,
-//! })).await?;
+//!     let spicedb = EmbeddedSpiceDB::new(schema, &relationships).await?;
+//!     let mut permissions = spicedb.permissions();
+//!     // Use the full SpiceDB API via the generated client
+//!     let response = permissions.check_permission(tonic::Request::new(v1::CheckPermissionRequest {
+//!         consistency: None,
+//!         resource: Some(v1::ObjectReference { object_type: "document".into(), object_id: "readme".into() }),
+//!         permission: "read".into(),
+//!         subject: Some(v1::SubjectReference {
+//!             object: Some(v1::ObjectReference { object_type: "user".into(), object_id: "alice".into() }),
+//!             optional_relation: String::new(),
+//!         }),
+//!         context: None,
+//!         with_tracing: false,
+//!     })).await?;
+//!     Ok(())
+//! }
 //! ```
 
 mod ffi;

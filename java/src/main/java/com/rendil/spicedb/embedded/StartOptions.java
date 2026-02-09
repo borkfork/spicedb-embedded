@@ -41,6 +41,13 @@ public final class StartOptions {
   @SerializedName("mysql_table_prefix")
   public String mysqlTablePrefix;
 
+  /**
+   * Enable datastore Prometheus metrics (default: false). Disabled allows multiple instances in
+   * same process.
+   */
+  @SerializedName("metrics_enabled")
+  public Boolean metricsEnabled;
+
   /** Create with defaults. Use setters or builder pattern. */
   public StartOptions() {}
 
@@ -79,6 +86,11 @@ public final class StartOptions {
 
     public Builder mysqlTablePrefix(String prefix) {
       opts.mysqlTablePrefix = prefix;
+      return this;
+    }
+
+    public Builder metricsEnabled(boolean enabled) {
+      opts.metricsEnabled = enabled;
       return this;
     }
 

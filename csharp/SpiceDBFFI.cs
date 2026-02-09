@@ -186,4 +186,7 @@ public record struct StartOptions
 
     /// <summary>Prefix for all tables (MySQL only).</summary>
     public string? MySQLTablePrefix { get; init; }
+
+    /// <summary>Enable datastore Prometheus metrics (default: false; disabled allows multiple instances in same process).</summary>
+    public bool? MetricsEnabled { get; init; }
 }
