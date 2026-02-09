@@ -17,7 +17,10 @@ use spicedb_grpc::authzed::api::v1::{
 };
 #[cfg(unix)]
 use tokio::net::UnixStream;
-use tonic::transport::{Channel, Endpoint, Uri};
+use tonic::transport::{Channel, Endpoint};
+#[cfg(unix)]
+use tonic::transport::Uri;
+#[cfg(unix)]
 use tower::service_fn;
 use tracing::debug;
 

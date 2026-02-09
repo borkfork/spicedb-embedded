@@ -1,0 +1,7 @@
+; Import library definition for spicedb.dll (Go c-shared build)
+; Required for MSVC linking on Windows - Go does not produce .lib automatically.
+LIBRARY spicedb
+EXPORTS
+    spicedb_free
+    spicedb_start
+    spicedb_dispose
