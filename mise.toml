@@ -3,7 +3,7 @@ min_version = '2025.9.19'
 
 [tools]
 rust = { version = "1.91.1", components = "rustfmt,clippy" }
-"cargo:cargo-deny" = "0.19"
+"github:EmbarkStudios/cargo-deny" = { version = "0.19.0", version_prefix = "" }
 "github:mozilla/sccache" = "v0.10.0"
 taplo = "0.10.0"
 "github:knope-dev/knope" = "knope/v0.21.7"
@@ -122,7 +122,8 @@ env = { RUSTC_WRAPPER = "sccache" }
 run = "mise run shared-c-build && cargo test --locked --workspace"
 
 [tasks.cargo-deny]
-env = { RUSTC_WRAPPER = "sccache" }
+description = "Run cargo-deny (license, advisory, ban checks); sccache disabled"
+env = { RUSTC_WRAPPER = "" }
 run = "cargo deny check -c deny.toml"
 
 [tasks.check-toml-format]

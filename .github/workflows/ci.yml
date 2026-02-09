@@ -42,7 +42,7 @@ jobs:
     needs: shared-c-lib
     runs-on: ubuntu-latest
     env:
-      MISE_ENABLE_TOOLS: "rust,cargo:cargo-deny,github:mozilla/sccache,taplo,github:knope-dev/knope,go"
+      MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,github:mozilla/sccache,taplo,github:knope-dev/knope,go"
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
     steps:
@@ -58,7 +58,7 @@ jobs:
         env:
           RUSTC_WRAPPER: ""
         with:
-          install_args: "rust cargo:cargo-deny github:mozilla/sccache taplo github:knope-dev/knope go"
+          install_args: "rust github:EmbarkStudios/cargo-deny github:mozilla/sccache taplo github:knope-dev/knope go"
 
       - uses: Swatinem/rust-cache@v2
         with:
