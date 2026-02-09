@@ -924,7 +924,8 @@ definition document {
     /// Shared-datastore tests: two embedded servers using the same remote datastore.
     /// Run with: cargo test --ignored `datastore_shared`
     ///
-    /// Requires: Docker, and `spicedb` CLI in PATH for migrations (go install github.com/authzed/spicedb/cmd/spicedb@latest)
+    /// Requires: Docker, and `spicedb` CLI in PATH for migrations.
+    /// On Windows set DOCKER_DEFAULT_PLATFORM=linux/amd64 so testcontainers pulls Linux images.
     mod datastore_shared {
         use std::process::Command;
 

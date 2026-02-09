@@ -209,6 +209,8 @@ jobs:
     runs-on: windows-latest
     env:
       MISE_ENABLE_TOOLS: "go,rust,java,maven,python,node,dotnet"
+      # Force Linux container images; testcontainers uses this for pulls (no windows/amd64 manifests).
+      DOCKER_DEFAULT_PLATFORM: linux/amd64
     steps:
       - uses: actions/checkout@v4
 
