@@ -73,7 +73,7 @@ jobs:
         run: mise run cargo-deny
 
       - name: Test
-        run: mise run rust-test
+        run: cargo test --locked --workspace
 
   java:
     needs: shared-c-lib
@@ -169,7 +169,7 @@ jobs:
       - name: Test
         run: |
           dotnet build csharp/SpicedbEmbedded.sln
-          SPICEDB_LIBRARY_PATH="$PWD/shared/c/libspicedb.$([ "$(uname)" = "Darwin" ] && echo dylib || echo so)" dotnet test csharp/SpicedbEmbedded.Tests/SpicedbEmbedded.Tests.csproj --no-build
+          SPICEDB_LIBRARY_PATH="$(./scripts/lib-path.sh)" dotnet test csharp/SpicedbEmbedded.Tests/SpicedbEmbedded.Tests.csproj --no-build
 
   node:
     needs: shared-c-lib
@@ -203,7 +203,7 @@ jobs:
         run: |
           npm ci
           npm run build
-          SPICEDB_LIBRARY_PATH="$PWD/../shared/c" npm test
+          SPICEDB_LIBRARY_PATH="$(../scripts/lib-path.sh)" npm test
 
   windows:
     runs-on: windows-latest
@@ -260,20 +260,30 @@ jobs:
 
       - name: Rust test
         shell: bash
-        run: mise run rust-test
+        run: cargo test --locked --workspace
 
       - name: Java test
         shell: bash
-        run: mise run java-test
+        working-directory: java
+        run: mvn test
 
       - name: Python test
         shell: bash
-        run: mise run python-test
+        working-directory: python
+        run: |
+          pip install -e ".[dev]"
+          pytest
 
       - name: C# test
         shell: bash
-        run: mise run csharp-test
+        run: |
+          dotnet build csharp/SpicedbEmbedded.sln
+          SPICEDB_LIBRARY_PATH="$(./scripts/lib-path.sh)" dotnet test csharp/SpicedbEmbedded.Tests/SpicedbEmbedded.Tests.csproj --no-build
 
       - name: Node test
         shell: bash
-        run: mise run node-test
+        working-directory: node
+        run: |
+          npm ci
+          npm run build
+          SPICEDB_LIBRARY_PATH="$(../scripts/lib-path.sh)" npm test
