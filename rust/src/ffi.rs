@@ -925,7 +925,7 @@ definition document {
     /// Run with: cargo test --ignored `datastore_shared`
     ///
     /// Requires: Docker, and `spicedb` CLI in PATH for migrations.
-    /// On Windows set DOCKER_DEFAULT_PLATFORM=linux/amd64 so testcontainers pulls Linux images.
+    /// On Windows set `DOCKER_DEFAULT_PLATFORM=linux/amd64` so testcontainers pulls Linux images.
     mod datastore_shared {
         use std::process::Command;
 
