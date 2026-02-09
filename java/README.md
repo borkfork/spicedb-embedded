@@ -8,7 +8,7 @@ Add to your `pom.xml`:
 
 ```xml
 <dependency>
-    <groupId>com.rendil</groupId>
+    <groupId>com.borkfork</groupId>
     <artifactId>spicedb-embedded</artifactId>
     <version>0.1.0-SNAPSHOT</version>
 </dependency>
@@ -26,7 +26,7 @@ The library looks for `libspicedb.dylib` (macOS) or `libspicedb.so` (Linux) in `
 ## Usage
 
 ```java
-import com.rendil.spicedb.embedded.EmbeddedSpiceDB;
+import com.borkfork.spicedb.embedded.EmbeddedSpiceDB;
 import com.authzed.api.v1.*;
 
 String schema = """
@@ -107,6 +107,7 @@ try (var spicedb = EmbeddedSpiceDB.create(schema, List.of(), options)) {
 - **grpc_transport**: `"unix"` (default on Unix), `"tcp"` (default on Windows)
 - **spanner_credentials_file**, **spanner_emulator_host**: Spanner-only
 - **mysql_table_prefix**: MySQL-only (optional)
+- **metrics_enabled**: Enable datastore Prometheus metrics (default: false)
 
 ## JVM Warnings
 

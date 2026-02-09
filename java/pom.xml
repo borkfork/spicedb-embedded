@@ -3,13 +3,13 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.rendil</groupId>
+    <groupId>com.borkfork</groupId>
     <artifactId>spicedb-embedded</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <packaging>jar</packaging>
     <name>spicedb-embedded</name>
     <description>Embedded SpiceDB for JVM — in-memory server via shared/c FFI + gRPC over Unix socket</description>
-    <url>https://github.com/rendil/spicedb-embedded</url>
+    <url>https://github.com/borkfork/spicedb-embedded</url>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>

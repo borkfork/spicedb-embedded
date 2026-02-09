@@ -96,6 +96,7 @@ let options = StartOptions {
     spanner_credentials_file: None,
     spanner_emulator_host: None,
     mysql_table_prefix: None,
+    metrics_enabled: None, // default false; set Some(true) to enable Prometheus metrics
 };
 
 let spicedb = EmbeddedSpiceDB::new_with_options(schema, &relationships, Some(&options)).await?;

@@ -84,6 +84,7 @@ options = {
     "spanner_credentials_file": "/path/to/key.json",  # Spanner only
     "spanner_emulator_host": "localhost:9010",       # Spanner emulator
     "mysql_table_prefix": "spicedb_",                 # MySQL only (optional)
+    "metrics_enabled": False,                         # default; set True to enable Prometheus metrics
 }
 
 with EmbeddedSpiceDB(schema, [], options=options) as spicedb:

@@ -1,4 +1,4 @@
-package com.rendil.spicedb.embedded;
+package com.borkfork.spicedb.embedded;
 
 /** Thrown when SpiceDB operations fail. */
 public class SpiceDBException extends RuntimeException {

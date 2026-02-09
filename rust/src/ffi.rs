@@ -72,6 +72,9 @@ pub struct StartOptions {
     /// Prefix for all tables (`MySQL` only)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mysql_table_prefix: Option<String>,
+    /// Enable datastore Prometheus metrics (default: false; disabled allows multiple instances in same process)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metrics_enabled: Option<bool>,
 }
 
 /// Helper to call a C function and parse the JSON response
@@ -916,5 +919,213 @@ definition document {
         let elapsed = start.elapsed();
         println!("\nNegative checks (user not found):");
         println!("Average per check: {:?}", elapsed / num_checks_u32);
+    }
+
+    /// Shared-datastore tests: two embedded servers using the same remote datastore.
+    /// Run with: cargo test --ignored `datastore_shared`
+    ///
+    /// Requires: Docker, and `spicedb` CLI in PATH for migrations.
+    /// Disabled on Windows (does not work in Github Actions).
+    #[cfg(not(target_os = "windows"))]
+    mod datastore_shared {
+        /// Platform for testcontainers: use Linux so images work on Windows Docker Desktop.
+        const LINUX_AMD64: &str = "linux/amd64";
+        use std::process::Command;
+
+        use testcontainers_modules::{
+            cockroach_db, mysql, postgres,
+            testcontainers::{
+                core::{IntoContainerPort, WaitFor},
+                runners::AsyncRunner,
+                GenericImage, ImageExt,
+            },
+        };
+
+        use super::*;
+        use crate::StartOptions;
+
+        /// Run `spicedb datastore migrate head` for the given engine and URI.
+        /// Returns Ok(()) on success, Err on failure. Fails the test if spicedb not found.
+        fn run_migrate(engine: &str, uri: &str, extra_args: &[(&str, &str)]) -> Result<(), String> {
+            let mut cmd = Command::new("spicedb");
+            cmd.args([
+                "datastore",
+                "migrate",
+                "head",
+                "--datastore-engine",
+                engine,
+                "--datastore-conn-uri",
+                uri,
+            ]);
+            for (k, v) in extra_args {
+                cmd.arg(format!("--{k}={v}"));
+            }
+            let output = cmd
+                .output()
+                .map_err(|e| format!("spicedb migrate failed (is spicedb in PATH?): {e}"))?;
+            if output.status.success() {
+                Ok(())
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                Err(format!("spicedb migrate failed: {stderr}"))
+            }
+        }
+
+        /// Two servers, shared datastore: write via server 1, read via server 2.
+        async fn run_shared_datastore_test(datastore: &str, datastore_uri: &str) {
+            run_migrate(datastore, datastore_uri, &[]).expect("migration must succeed");
+
+            let opts = StartOptions {
+                datastore: Some(datastore.into()),
+                datastore_uri: Some(datastore_uri.into()),
+                grpc_transport: Some("tcp".into()),
+                ..Default::default()
+            };
+
+            let schema = TEST_SCHEMA;
+            let db1 = EmbeddedSpiceDB::new_with_options(schema, &[], Some(&opts))
+                .await
+                .unwrap();
+            let db2 = EmbeddedSpiceDB::new_with_options(schema, &[], Some(&opts))
+                .await
+                .unwrap();
+
+            // Write via server 1
+            db1.permissions()
+                .write_relationships(tonic::Request::new(WriteRelationshipsRequest {
+                    updates: vec![RelationshipUpdate {
+                        operation: Operation::Touch as i32,
+                        relationship: Some(rel("document:shared", "reader", "user:alice")),
+                    }],
+                    optional_preconditions: vec![],
+                }))
+                .await
+                .unwrap();
+
+            // Read via server 2 (shared datastore)
+            let r = db2
+                .permissions()
+                .check_permission(tonic::Request::new(check_req(
+                    "document:shared",
+                    "read",
+                    "user:alice",
+                )))
+                .await
+                .unwrap();
+            assert_eq!(
+                r.into_inner().permissionship,
+                Permissionship::HasPermission as i32
+            );
+        }
+
+        #[tokio::test]
+        async fn datastore_shared_postgres() {
+            // PostgreSQL 17+ required for xid8 type (SpiceDB add-xid-columns migration)
+            let container = postgres::Postgres::default()
+                .with_tag("17")
+                .with_platform(LINUX_AMD64)
+                .start()
+                .await
+                .unwrap();
+            let host = container.get_host().await.unwrap();
+            let port = container.get_host_port_ipv4(5432).await.unwrap();
+            let uri = format!("postgres://postgres:postgres@{host}:{port}/postgres");
+            run_shared_datastore_test("postgres", &uri).await;
+        }
+
+        #[tokio::test]
+        async fn datastore_shared_cockroachdb() {
+            let container = cockroach_db::CockroachDb::default()
+                .with_platform(LINUX_AMD64)
+                .start()
+                .await
+                .unwrap();
+            let host = container.get_host().await.unwrap();
+            let port = container.get_host_port_ipv4(26257).await.unwrap();
+            let uri = format!("postgres://root@{host}:{port}/defaultdb?sslmode=disable");
+            run_shared_datastore_test("cockroachdb", &uri).await;
+        }
+
+        #[tokio::test]
+        async fn datastore_shared_mysql() {
+            let container = mysql::Mysql::default()
+                .with_platform(LINUX_AMD64)
+                .start()
+                .await
+                .unwrap();
+            let host = container.get_host().await.unwrap();
+            let port = container.get_host_port_ipv4(3306).await.unwrap();
+            // MySQL: user@tcp(host:port)/db format; parseTime=true required by SpiceDB
+            let uri = format!("root@tcp({host}:{port})/test?parseTime=true");
+            run_shared_datastore_test("mysql", &uri).await;
+        }
+
+        #[tokio::test]
+        async fn datastore_shared_spanner() {
+            // roryq/spanner-emulator: creates instance + database on startup via env vars (no gcloud exec)
+            // Call GenericImage methods (with_exposed_port, with_wait_for) before ImageExt methods (with_platform, with_env_var)
+            let container = GenericImage::new("roryq/spanner-emulator", "latest")
+                .with_exposed_port(9010u16.tcp())
+                .with_wait_for(WaitFor::seconds(5))
+                .with_platform(LINUX_AMD64)
+                .with_env_var("SPANNER_PROJECT_ID", "test-project")
+                .with_env_var("SPANNER_INSTANCE_ID", "test-instance")
+                .with_env_var("SPANNER_DATABASE_ID", "test-db")
+                .start()
+                .await
+                .unwrap();
+            let host = container.get_host().await.unwrap();
+            let port = container.get_host_port_ipv4(9010u16.tcp()).await.unwrap();
+            let emulator_host = format!("{host}:{port}");
+            let uri = "projects/test-project/instances/test-instance/databases/test-db".to_string();
+
+            run_migrate(
+                "spanner",
+                &uri,
+                &[("datastore-spanner-emulator-host", &emulator_host)],
+            )
+            .expect("migration must succeed");
+
+            let opts = StartOptions {
+                datastore: Some("spanner".into()),
+                datastore_uri: Some(uri),
+                grpc_transport: Some("tcp".into()),
+                spanner_emulator_host: Some(emulator_host),
+                ..Default::default()
+            };
+
+            let schema = TEST_SCHEMA;
+            let db1 = EmbeddedSpiceDB::new_with_options(schema, &[], Some(&opts))
+                .await
+                .unwrap();
+            let db2 = EmbeddedSpiceDB::new_with_options(schema, &[], Some(&opts))
+                .await
+                .unwrap();
+
+            db1.permissions()
+                .write_relationships(tonic::Request::new(WriteRelationshipsRequest {
+                    updates: vec![RelationshipUpdate {
+                        operation: Operation::Touch as i32,
+                        relationship: Some(rel("document:shared", "reader", "user:alice")),
+                    }],
+                    optional_preconditions: vec![],
+                }))
+                .await
+                .unwrap();
+
+            let r = db2
+                .permissions()
+                .check_permission(tonic::Request::new(check_req(
+                    "document:shared",
+                    "read",
+                    "user:alice",
+                )))
+                .await
+                .unwrap();
+            assert_eq!(
+                r.into_inner().permissionship,
+                Permissionship::HasPermission as i32
+            );
+        }
     }
 }

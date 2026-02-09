@@ -64,6 +64,7 @@ def spicedb_start(options: dict | None = None) -> dict:
             - spanner_credentials_file: Path to service account JSON (Spanner only)
             - spanner_emulator_host: e.g. "localhost:9010" (Spanner emulator)
             - mysql_table_prefix: Prefix for all tables (MySQL only, optional)
+            - metrics_enabled: Enable datastore Prometheus metrics (default: False; disabled allows multiple instances in same process)
     """
     lib = _get_lib()
     options_json = json.dumps(options) if options else None

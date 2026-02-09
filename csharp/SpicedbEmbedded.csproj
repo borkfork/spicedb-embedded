@@ -14,7 +14,7 @@
     <Description>Embedded SpiceDB for .NET — in-memory server via shared/c P/Invoke + gRPC over Unix socket</Description>
     <Authors>Rendil</Authors>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-    <RepositoryUrl>https://github.com/rendil/spicedb-embedded</RepositoryUrl>
+    <RepositoryUrl>https://github.com/borkfork/spicedb-embedded</RepositoryUrl>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 

@@ -1,4 +1,4 @@
-package com.rendil.spicedb.embedded;
+package com.borkfork.spicedb.embedded;
 
 import com.authzed.api.v1.PermissionsServiceGrpc;
 import com.authzed.api.v1.Relationship;

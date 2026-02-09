@@ -127,6 +127,7 @@ const options: SpiceDBStartOptions = {
   spanner_credentials_file: "/path/to/key.json", // Spanner only
   spanner_emulator_host: "localhost:9010", // Spanner emulator
   mysql_table_prefix: "spicedb_", // MySQL only (optional)
+  metrics_enabled: false, // default; set true to enable Prometheus metrics
 };
 
 const spicedb = await EmbeddedSpiceDB.create(schema, [], options);

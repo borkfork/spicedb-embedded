@@ -47,6 +47,7 @@ Create a new SpiceDB instance (empty server). Schema and relationships should be
   - **spanner_credentials_file**: Path to service account JSON (Spanner only; omit for ADC)
   - **spanner_emulator_host**: e.g. `localhost:9010` (Spanner emulator)
   - **mysql_table_prefix**: Prefix for all tables (MySQL only, optional)
+  - **metrics_enabled**: Enable datastore Prometheus metrics (default: false; disabled allows multiple instances in same process)
 
 Returns:
 - Unix: `{"success": true, "data": {"handle": 123, "grpc_transport": "unix", "address": "/tmp/spicedb-xxx.sock"}}`

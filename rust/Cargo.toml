@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Embedded SpiceDB for Rust - in-memory authorization via gRPC over Unix sockets"
 license = "Apache-2.0"
-repository = "https://github.com/rendil/spicedb-embedded"
+repository = "https://github.com/borkfork/spicedb-embedded"
 
 [lib]
 path = "src/lib.rs"
@@ -26,6 +26,11 @@ tracing = "0.1"
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tokio-stream = "0.1"
+testcontainers-modules = { version = "0.14", features = [
+  "postgres",
+  "mysql",
+  "cockroach_db",
+] }
 
 [lints]
 workspace = true

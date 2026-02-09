@@ -83,6 +83,7 @@ var options = new StartOptions
     SpannerCredentialsFile = "/path/to/key.json",  // Spanner only
     SpannerEmulatorHost = "localhost:9010",       // Spanner emulator
     MySQLTablePrefix = "spicedb_",                 // MySQL only (optional)
+    MetricsEnabled = false,                        // default; set true to enable Prometheus metrics
 };
 
 using var spicedb = EmbeddedSpiceDB.Create(schema, relationships, options);

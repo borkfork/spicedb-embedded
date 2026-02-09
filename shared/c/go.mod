@@ -1,4 +1,4 @@
-module github.com/rendil/spicedb-embedded/shared/c
+module github.com/borkfork/spicedb-embedded/shared/c
 
 go 1.23
 
