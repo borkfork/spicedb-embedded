@@ -40,7 +40,13 @@ All functions return a JSON string that must be freed with `spicedb_free()`.
 
 Create a new SpiceDB instance (empty server). Schema and relationships should be written by the caller via gRPC.
 
-- `options_json`: Optional pointer to JSON string. Use NULL for defaults. Example: `{"grpc_transport": "unix"}`
+- `options_json`: Optional pointer to JSON string. Use `NULL` for defaults.
+  - **datastore**: `"memory"` (default), `"postgres"`, `"cockroachdb"`, `"spanner"`, `"mysql"`
+  - **datastore_uri**: Connection string (required for postgres, cockroachdb, spanner, mysql). E.g. `postgres://user:pass@localhost:5432/spicedb`
+  - **grpc_transport**: `"unix"` (default on Unix), `"tcp"` (default on Windows)
+  - **spanner_credentials_file**: Path to service account JSON (Spanner only; omit for ADC)
+  - **spanner_emulator_host**: e.g. `localhost:9010` (Spanner emulator)
+  - **mysql_table_prefix**: Prefix for all tables (MySQL only, optional)
 
 Returns:
 - Unix: `{"success": true, "data": {"handle": 123, "grpc_transport": "unix", "address": "/tmp/spicedb-xxx.sock"}}`

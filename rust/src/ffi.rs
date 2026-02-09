@@ -5,11 +5,11 @@
 //! Schema and relationships are written via gRPC (not JSON).
 
 use std::{
-    ffi::CStr,
+    ffi::{CStr, CString},
     os::raw::{c_char, c_ulonglong},
 };
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use spicedb_grpc::authzed::api::v1::{
     permissions_service_client::PermissionsServiceClient, relationship_update::Operation,
     schema_service_client::SchemaServiceClient, watch_service_client::WatchServiceClient,
@@ -48,6 +48,30 @@ struct NewResponse {
     handle: u64,
     grpc_transport: String,
     address: String,
+}
+
+/// Options for starting an embedded `SpiceDB` instance.
+#[derive(Debug, Default, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct StartOptions {
+    /// Datastore: "memory" (default), "postgres", "cockroachdb", "spanner", "mysql"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub datastore: Option<String>,
+    /// Connection string for remote datastores. Required for postgres, cockroachdb, spanner, mysql.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub datastore_uri: Option<String>,
+    /// gRPC transport: "unix" (default on Unix), "tcp" (default on Windows)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub grpc_transport: Option<String>,
+    /// Path to Spanner service account JSON (Spanner only)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spanner_credentials_file: Option<String>,
+    /// Spanner emulator host, e.g. "localhost:9010" (Spanner only)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spanner_emulator_host: Option<String>,
+    /// Prefix for all tables (`MySQL` only)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mysql_table_prefix: Option<String>,
 }
 
 /// Helper to call a C function and parse the JSON response
@@ -96,7 +120,7 @@ impl EmbeddedSpiceDB {
     /// Create a new embedded `SpiceDB` instance with a schema and relationships.
     ///
     /// This starts a `SpiceDB` server via the C-shared library, connects over a Unix
-    /// socket, then bootstraps schema and relationships via gRPC.
+    /// socket or TCP, then bootstraps schema and relationships via gRPC.
     ///
     /// # Arguments
     ///
@@ -110,14 +134,50 @@ impl EmbeddedSpiceDB {
         schema: &str,
         relationships: &[spicedb_grpc::authzed::api::v1::Relationship],
     ) -> Result<Self, SpiceDBError> {
+        Self::new_with_options(schema, relationships, None).await
+    }
+
+    /// Create a new embedded `SpiceDB` instance with options.
+    ///
+    /// This starts a `SpiceDB` server via the C-shared library, connects over a Unix
+    /// socket or TCP, then bootstraps schema and relationships via gRPC.
+    ///
+    /// # Arguments
+    ///
+    /// * `schema` - The `SpiceDB` schema definition (ZED language)
+    /// * `relationships` - Initial relationships (uses types from `spicedb_grpc::authzed::api::v1`)
+    /// * `options` - Optional configuration (`datastore`, `grpc_transport`). Use `None` for defaults.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the server fails to start, connection fails, or gRPC writes fail.
+    pub async fn new_with_options(
+        schema: &str,
+        relationships: &[spicedb_grpc::authzed::api::v1::Relationship],
+        options: Option<&StartOptions>,
+    ) -> Result<Self, SpiceDBError> {
         debug!(
             "Starting SpiceDB instance with schema ({} bytes), {} relationships",
             schema.len(),
             relationships.len()
         );
 
+        let (options_ptr, _cstr_guard): (*const c_char, Option<CString>) = match options {
+            Some(opts) => {
+                let json = serde_json::to_string(opts).map_err(|e| {
+                    SpiceDBError::Protocol(format!("failed to serialize options: {e}"))
+                })?;
+                let cstr = CString::new(json).map_err(|e| {
+                    SpiceDBError::Protocol(format!("options contains null byte: {e}"))
+                })?;
+                let ptr = cstr.as_ptr();
+                (ptr, Some(cstr))
+            }
+            None => (std::ptr::null(), None),
+        };
+
         let data = unsafe {
-            let result = spicedb_start(std::ptr::null());
+            let result = spicedb_start(options_ptr);
             call_and_parse(result)?
         };
 

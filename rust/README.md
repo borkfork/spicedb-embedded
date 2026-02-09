@@ -1,6 +1,6 @@
 # spicedb-embedded (Rust)
 
-Embedded [SpiceDB](https://authzed.com/spicedb) for Rust — in-memory authorization server for tests and development. Uses the shared/c C library via FFI and connects over gRPC via Unix sockets.
+Embedded [SpiceDB](https://authzed.com/spicedb) for Rust — authorization server for tests and development. Uses the shared/c C library via FFI and connects over gRPC via Unix sockets or TCP. Supports memory (default), postgres, cockroachdb, spanner, and mysql datastores.
 
 ## Installation
 
@@ -77,11 +77,29 @@ let allowed = response.into_inner().permissionship
 ## API
 
 - **`EmbeddedSpiceDB::new(schema, relationships)`** — Create an instance with schema and optional initial relationships.
+- **`EmbeddedSpiceDB::new_with_options(schema, relationships, options)`** — Create with `StartOptions` (datastore, `grpc_transport`, etc.). Pass `None` for defaults.
 - **`permissions()`** — `PermissionsServiceClient` for CheckPermission, WriteRelationships, ReadRelationships, etc.
 - **`schema()`** — `SchemaServiceClient` for ReadSchema, WriteSchema, ReflectSchema, etc.
 - **`watch()`** — `WatchServiceClient` for watching relationship changes.
 
 All types are re-exported from `spicedb_grpc::authzed::api::v1` as `spicedb_embedded::v1`.
+
+### StartOptions
+
+```rust
+use spicedb_embedded::{v1, EmbeddedSpiceDB, StartOptions};
+
+let options = StartOptions {
+    datastore: Some("memory".into()),           // or "postgres", "cockroachdb", "spanner", "mysql"
+    grpc_transport: Some("unix".into()),        // or "tcp"; default by platform
+    datastore_uri: Some("postgres://...".into()), // required for remote
+    spanner_credentials_file: None,
+    spanner_emulator_host: None,
+    mysql_table_prefix: None,
+};
+
+let spicedb = EmbeddedSpiceDB::new_with_options(schema, &relationships, Some(&options)).await?;
+```
 
 ## Building & Testing
 

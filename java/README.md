@@ -1,6 +1,6 @@
 # spicedb-embedded (Java)
 
-Embedded [SpiceDB](https://authzed.com/spicedb) for the JVM — in-memory authorization server for tests and development. Uses the shared/c C library via JNA and connects over gRPC via Unix sockets.
+Embedded [SpiceDB](https://authzed.com/spicedb) for the JVM — authorization server for tests and development. Uses the shared/c C library via JNA and connects over gRPC via Unix sockets or TCP. Supports memory (default), postgres, cockroachdb, spanner, and mysql datastores.
 
 ## Installation
 
@@ -77,6 +77,7 @@ try (var spicedb = EmbeddedSpiceDB.create(schema, List.of(rel))) {
 ## API
 
 - **`EmbeddedSpiceDB.create(schema, relationships)`** — Create an instance. Pass `List.of()` for no initial relationships.
+- **`EmbeddedSpiceDB.create(schema, relationships, options)`** — Create with options (datastore, `grpc_transport`, etc.). Pass `null` for defaults.
 - **`permissions()`** — Blocking stub for CheckPermission, WriteRelationships, ReadRelationships, etc.
 - **`schema()`** — Blocking stub for ReadSchema, WriteSchema, ReflectSchema, etc.
 - **`watch()`** — Blocking stub for watching relationship changes.
@@ -84,6 +85,28 @@ try (var spicedb = EmbeddedSpiceDB.create(schema, List.of(rel))) {
 - **`close()`** — Implements `AutoCloseable`; dispose the instance and close the channel.
 
 Use types from `com.authzed.api.v1` (ObjectReference, SubjectReference, Relationship, etc.).
+
+### StartOptions
+
+Configure datastore and transport via `StartOptions`:
+
+```java
+var options = StartOptions.builder()
+    .datastore("memory")           // default; or "postgres", "cockroachdb", "spanner", "mysql"
+    .grpcTransport("unix")          // or "tcp"; default by platform
+    .datastoreUri("postgres://...")  // required for postgres, cockroachdb, spanner, mysql
+    .build();
+
+try (var spicedb = EmbeddedSpiceDB.create(schema, List.of(), options)) {
+    // ...
+}
+```
+
+- **datastore**: `"memory"` (default), `"postgres"`, `"cockroachdb"`, `"spanner"`, `"mysql"`
+- **datastore_uri**: Connection string (required for remote datastores)
+- **grpc_transport**: `"unix"` (default on Unix), `"tcp"` (default on Windows)
+- **spanner_credentials_file**, **spanner_emulator_host**: Spanner-only
+- **mysql_table_prefix**: MySQL-only (optional)
 
 ## JVM Warnings
 

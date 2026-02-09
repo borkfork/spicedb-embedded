@@ -29,9 +29,22 @@ public sealed class EmbeddedSpiceDB : IDisposable
     /// <param name="schema">The SpiceDB schema definition (ZED language)</param>
     /// <param name="relationships">Initial relationships (empty list or null allowed)</param>
     /// <returns>New EmbeddedSpiceDB instance</returns>
-    public static EmbeddedSpiceDB Create(string schema, IReadOnlyList<Relationship>? relationships = null)
+    public static EmbeddedSpiceDB Create(string schema, IReadOnlyList<Relationship>? relationships = null) =>
+        Create(schema, relationships, null);
+
+    /// <summary>
+    /// Create a new embedded SpiceDB instance with a schema, relationships, and options.
+    /// </summary>
+    /// <param name="schema">The SpiceDB schema definition (ZED language)</param>
+    /// <param name="relationships">Initial relationships (empty list or null allowed)</param>
+    /// <param name="options">Optional configuration (datastore, grpc_transport). Pass null for defaults.</param>
+    /// <returns>New EmbeddedSpiceDB instance</returns>
+    public static EmbeddedSpiceDB Create(
+        string schema,
+        IReadOnlyList<Relationship>? relationships = null,
+        StartOptions? options = null)
     {
-        var (handle, grpcTransport, address) = SpiceDBFFI.Start();
+        var (handle, grpcTransport, address) = SpiceDBFFI.Start(options);
 
         var httpHandler = grpcTransport == "tcp"
             ? TcpChannel.CreateHandler(address)
@@ -39,7 +52,7 @@ public sealed class EmbeddedSpiceDB : IDisposable
 
         var httpClient = new HttpClient(httpHandler) { BaseAddress = new Uri("http://localhost") };
 
-        var options = new GrpcChannelOptions
+        var channelOptions = new GrpcChannelOptions
         {
             HttpClient = httpClient,
             Credentials = ChannelCredentials.Insecure,
@@ -48,7 +61,7 @@ public sealed class EmbeddedSpiceDB : IDisposable
         GrpcChannel channel;
         try
         {
-            channel = GrpcChannel.ForAddress("http://localhost", options);
+            channel = GrpcChannel.ForAddress("http://localhost", channelOptions);
         }
         catch (Exception ex)
         {

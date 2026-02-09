@@ -1,6 +1,6 @@
 # spicedb-embedded (C# / .NET)
 
-Embedded [SpiceDB](https://authzed.com/spicedb) for .NET — in-memory authorization server for tests and development. Uses the shared/c C library via P/Invoke and connects over gRPC via Unix sockets.
+Embedded [SpiceDB](https://authzed.com/spicedb) for .NET — authorization server for tests and development. Uses the shared/c C library via P/Invoke and connects over gRPC via Unix sockets or TCP. Supports memory (default), postgres, cockroachdb, spanner, and mysql datastores.
 
 ## Installation
 
@@ -63,7 +63,7 @@ var allowed = resp.Permissionship == CheckPermissionResponse.Types.Permissionshi
 
 ## API
 
-- **`EmbeddedSpiceDB.Create(schema, relationships)`** — Create an instance. Pass `null` or `Array.Empty<Relationship>()` for no initial relationships. Implements `IDisposable`.
+- **`EmbeddedSpiceDB.Create(schema, relationships, options?)`** — Create an instance. Pass `null` or `Array.Empty<Relationship>()` for no initial relationships. Pass `StartOptions` for datastore/transport config. Implements `IDisposable`.
 - **`Permissions()`** — Permissions service client (CheckPermission, WriteRelationships, ReadRelationships, etc.).
 - **`Schema()`** — Schema service client (ReadSchema, WriteSchema, ReflectSchema, etc.).
 - **`Watch()`** — Watch service client for relationship changes.
@@ -71,6 +71,22 @@ var allowed = resp.Permissionship == CheckPermissionResponse.Types.Permissionshi
 - **`Dispose()`** — Dispose the instance and close the channel.
 
 Use types from `Authzed.Api.V1` (ObjectReference, SubjectReference, Relationship, etc.).
+
+### StartOptions
+
+```csharp
+var options = new StartOptions
+{
+    Datastore = "memory",           // or "postgres", "cockroachdb", "spanner", "mysql"
+    GrpcTransport = "unix",         // or "tcp"; default by platform
+    DatastoreUri = "postgres://...", // required for postgres, cockroachdb, spanner, mysql
+    SpannerCredentialsFile = "/path/to/key.json",  // Spanner only
+    SpannerEmulatorHost = "localhost:9010",       // Spanner emulator
+    MySQLTablePrefix = "spicedb_",                 // MySQL only (optional)
+};
+
+using var spicedb = EmbeddedSpiceDB.Create(schema, relationships, options);
+```
 
 ## Building & Testing
 

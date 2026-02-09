@@ -3,7 +3,7 @@
  */
 
 export { EmbeddedSpiceDB, SpiceDBError } from "./embedded.js";
-export type { SpiceDBStartResult } from "./ffi.js";
+export type { SpiceDBStartOptions, SpiceDBStartResult } from "./ffi.js";
 
 // Re-export authzed v1 for types and client creation
 export { v1 } from "@authzed/authzed-node";

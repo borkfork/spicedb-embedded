@@ -9,7 +9,11 @@
 
 import * as grpc from "@grpc/grpc-js";
 import { v1 } from "@authzed/authzed-node";
-import { spicedb_dispose, spicedb_start } from "./ffi.js";
+import {
+  spicedb_dispose,
+  spicedb_start,
+  type SpiceDBStartOptions,
+} from "./ffi.js";
 import { getTarget as getTcpTarget } from "./tcp_channel.js";
 import { getTarget as getUnixSocketTarget } from "./unix_socket_channel.js";
 
@@ -42,13 +46,15 @@ export class EmbeddedSpiceDB {
    *
    * @param schema - The SpiceDB schema definition (ZED language)
    * @param relationships - Initial relationships (empty array allowed)
+   * @param options - Optional configuration (datastore, grpc_transport). Omit for defaults.
    * @returns New EmbeddedSpiceDB instance
    */
   static async create(
     schema: string,
-    relationships: v1.Relationship[] = []
+    relationships: v1.Relationship[] = [],
+    options?: SpiceDBStartOptions | null
   ): Promise<EmbeddedSpiceDB> {
-    const data = spicedb_start();
+    const data = spicedb_start(options ?? undefined);
     const { handle, grpc_transport, address } = data;
 
     const target =
