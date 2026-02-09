@@ -74,15 +74,29 @@ func spicedb_free(ptr *C.char) {
 	C.free(unsafe.Pointer(ptr))
 }
 
+// StartOptions configures datastore and transport. Passed as JSON to spicedb_start.
+// Use nil or empty for defaults.
+type StartOptions struct {
+	Datastore         string `json:"datastore"`
+	DatastoreURI      string `json:"datastore_uri"`
+	GrpcTransport     string `json:"grpc_transport"`
+	SpannerCredentialsFile string `json:"spanner_credentials_file"`
+	SpannerEmulatorHost   string `json:"spanner_emulator_host"`
+	MySQLTablePrefix  string `json:"mysql_table_prefix"`
+}
+
 // spicedb_start creates a new SpiceDB instance (empty server).
 // Schema and relationships should be written by the caller via gRPC.
 //
-// Returns JSON response with handle, transport, and address:
-// Unix:   {"success": true, "data": {"handle": 123, "transport": "unix", "address": "/tmp/spicedb-xxx.sock"}}
-// Windows: {"success": true, "data": {"handle": 123, "transport": "tcp", "address": "127.0.0.1:50051"}}
+// options_json: optional JSON string. Use NULL for defaults.
+// Returns JSON: {"success": true, "data": {"handle": N, "grpc_transport": "unix"|"tcp", "address": "..."}}
+// Unix:   {"success": true, "data": {"handle": 123, "grpc_transport": "unix", "address": "/tmp/spicedb-xxx.sock"}}
+// Windows: {"success": true, "data": {"handle": 123, "grpc_transport": "tcp", "address": "127.0.0.1:50051"}}
 //
 //export spicedb_start
-func spicedb_start() *C.char {
+func spicedb_start(options_json *C.char) *C.char {
+	opts := parseStartOptions(options_json)
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	const maxRetries = 3
@@ -91,18 +105,22 @@ func spicedb_start() *C.char {
 	var id uint64
 	var lastErr error
 
-	transport := "unix"
-	if runtime.GOOS == "windows" {
-		transport = "tcp"
+	transport := opts.GrpcTransport
+	if transport == "" {
+		if runtime.GOOS == "windows" {
+			transport = "tcp"
+		} else {
+			transport = "unix"
+		}
 	}
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		id = atomic.AddUint64(&nextID, 1)
-		addr = listenAddr(id)
-		if runtime.GOOS != "windows" {
+		addr = listenAddr(id, transport)
+		if transport == "unix" {
 			os.Remove(addr)
 		}
-		srv, lastErr = newSpiceDBServer(ctx, addr)
+		srv, lastErr = newSpiceDBServer(ctx, addr, transport)
 		if lastErr == nil {
 			break
 		}
@@ -138,22 +156,35 @@ func spicedb_start() *C.char {
 	instanceMu.Unlock()
 
 	return makeSuccess(map[string]interface{}{
-		"handle":    id,
-		"transport": transport,
-		"address":   addr,
+		"handle":         id,
+		"grpc_transport": transport,
+		"address":        addr,
 	})
 }
 
+func parseStartOptions(options_json *C.char) StartOptions {
+	opts := StartOptions{}
+	if options_json == nil {
+		return opts
+	}
+	s := C.GoString(options_json)
+	if s == "" {
+		return opts
+	}
+	_ = json.Unmarshal([]byte(s), &opts)
+	return opts
+}
+
 // listenAddr returns the address for a new instance (Unix socket path or TCP host:port).
-func listenAddr(id uint64) string {
-	if runtime.GOOS == "windows" {
+func listenAddr(id uint64, transport string) string {
+	if transport == "tcp" || runtime.GOOS == "windows" {
 		return fmt.Sprintf("127.0.0.1:%d", 50051+(id%5000))
 	}
 	return filepath.Join(os.TempDir(), fmt.Sprintf("spicedb-%d-%d.sock", os.Getpid(), id))
 }
 
-// newSpiceDBServer creates a new in-memory SpiceDB server listening on a Unix socket (Unix) or TCP (Windows).
-func newSpiceDBServer(ctx context.Context, addr string) (server.RunnableServer, error) {
+// newSpiceDBServer creates a new in-memory SpiceDB server.
+func newSpiceDBServer(ctx context.Context, addr string, transport string) (server.RunnableServer, error) {
 	ds, err := datastore.NewDatastore(ctx,
 		datastore.DefaultDatastoreConfig().ToOption(),
 		datastore.WithRequestHedgingEnabled(false),
@@ -163,7 +194,7 @@ func newSpiceDBServer(ctx context.Context, addr string) (server.RunnableServer, 
 	}
 
 	network := "unix"
-	if runtime.GOOS == "windows" {
+	if transport == "tcp" || runtime.GOOS == "windows" {
 		network = "tcp"
 	}
 

@@ -28,7 +28,7 @@ internal static class SpiceDBFFI
     }
 
     [DllImport(LibraryName, EntryPoint = "spicedb_start", CallingConvention = CallingConvention.Cdecl)]
-    private static extern IntPtr SpicedbStart();
+    private static extern IntPtr SpicedbStart(IntPtr optionsJson);
 
     [DllImport(LibraryName, EntryPoint = "spicedb_dispose", CallingConvention = CallingConvention.Cdecl)]
     private static extern IntPtr SpicedbDispose(ulong handle);
@@ -36,40 +36,60 @@ internal static class SpiceDBFFI
     [DllImport(LibraryName, EntryPoint = "spicedb_free", CallingConvention = CallingConvention.Cdecl)]
     private static extern void SpicedbFree(IntPtr ptr);
 
-    public static StartResponse Start()
+    public static StartResponse Start(StartOptions? options = null)
     {
-        var ptr = SpicedbStart();
-        if (ptr == IntPtr.Zero)
+        var optionsPtr = IntPtr.Zero;
+        if (options.HasValue)
         {
-            throw new SpiceDBException("Null response from C library");
+            var opts = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
+            var json = JsonSerializer.Serialize(options.Value, opts);
+            var bytes = System.Text.Encoding.UTF8.GetBytes(json + "\0");
+            optionsPtr = Marshal.AllocHGlobal(bytes.Length);
+            Marshal.Copy(bytes, 0, optionsPtr, bytes.Length);
         }
 
         try
         {
-            var json = Marshal.PtrToStringUTF8(ptr) ?? throw new SpiceDBException("Invalid UTF-8 from C library");
-            var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-
-            if (!root.TryGetProperty("success", out var successProp) || !successProp.GetBoolean())
+            var ptr = SpicedbStart(optionsPtr);
+            if (ptr == IntPtr.Zero)
             {
-                var err = root.TryGetProperty("error", out var errProp)
-                    ? errProp.GetString()
-                    : "Unknown error";
-                throw new SpiceDBException(err ?? "Unknown error");
+                throw new SpiceDBException("Null response from C library");
             }
 
-            var data = root.GetProperty("data");
-            var handle = data.GetProperty("handle").GetUInt64();
-            var transport = data.GetProperty("transport").GetString()
-                ?? throw new SpiceDBException("Missing transport in response");
-            var address = data.GetProperty("address").GetString()
-                ?? throw new SpiceDBException("Missing address in response");
+            try
+            {
+                var json = Marshal.PtrToStringUTF8(ptr) ?? throw new SpiceDBException("Invalid UTF-8 from C library");
+                var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
 
-            return new StartResponse(handle, transport, address);
+                if (!root.TryGetProperty("success", out var successProp) || !successProp.GetBoolean())
+                {
+                    var err = root.TryGetProperty("error", out var errProp)
+                        ? errProp.GetString()
+                        : "Unknown error";
+                    throw new SpiceDBException(err ?? "Unknown error");
+                }
+
+                var data = root.GetProperty("data");
+                var handle = data.GetProperty("handle").GetUInt64();
+                var grpcTransport = data.GetProperty("grpc_transport").GetString()
+                    ?? throw new SpiceDBException("Missing grpc_transport in response");
+                var address = data.GetProperty("address").GetString()
+                    ?? throw new SpiceDBException("Missing address in response");
+
+                return new StartResponse(handle, grpcTransport, address);
+            }
+            finally
+            {
+                SpicedbFree(ptr);
+            }
         }
         finally
         {
-            SpicedbFree(ptr);
+            if (optionsPtr != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(optionsPtr);
+            }
         }
     }
 
@@ -142,4 +162,28 @@ internal static class SpiceDBFFI
     }
 
     public readonly record struct StartResponse(ulong Handle, string Transport, string Address);
+}
+
+/// <summary>
+/// Options for starting an embedded SpiceDB instance.
+/// </summary>
+public record struct StartOptions
+{
+    /// <summary>Datastore: "memory" (default), "postgres", "cockroachdb", "spanner", "mysql".</summary>
+    public string? Datastore { get; init; }
+
+    /// <summary>Connection string for remote datastores.</summary>
+    public string? DatastoreUri { get; init; }
+
+    /// <summary>gRPC transport: "unix" (default on Unix), "tcp" (default on Windows).</summary>
+    public string? GrpcTransport { get; init; }
+
+    /// <summary>Path to Spanner service account JSON (Spanner only).</summary>
+    public string? SpannerCredentialsFile { get; init; }
+
+    /// <summary>Spanner emulator host (Spanner only).</summary>
+    public string? SpannerEmulatorHost { get; init; }
+
+    /// <summary>Prefix for all tables (MySQL only).</summary>
+    public string? MySQLTablePrefix { get; init; }
 }

@@ -36,13 +36,15 @@ This generates:
 
 All functions return a JSON string that must be freed with `spicedb_free()`.
 
-### `spicedb_start() -> handle + transport + address`
+### `spicedb_start(options_json) -> handle + grpc_transport + address`
 
 Create a new SpiceDB instance (empty server). Schema and relationships should be written by the caller via gRPC.
 
+- `options_json`: Optional pointer to JSON string. Use NULL for defaults. Example: `{"grpc_transport": "unix"}`
+
 Returns:
-- Unix: `{"success": true, "data": {"handle": 123, "transport": "unix", "address": "/tmp/spicedb-xxx.sock"}}`
-- Windows: `{"success": true, "data": {"handle": 123, "transport": "tcp", "address": "127.0.0.1:50051"}}`
+- Unix: `{"success": true, "data": {"handle": 123, "grpc_transport": "unix", "address": "/tmp/spicedb-xxx.sock"}}`
+- Windows: `{"success": true, "data": {"handle": 123, "grpc_transport": "tcp", "address": "127.0.0.1:50051"}}`
 
 ### `spicedb_dispose(handle)`
 

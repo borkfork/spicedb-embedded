@@ -47,10 +47,13 @@ interface SpiceDB extends Library {
   }
 
   /**
-   * Start a new SpiceDB instance. Returns JSON: {"success": true, "data": {"handle": N,
-   * "transport": "unix"|"tcp", "address": "..."}}
+   * Start a new SpiceDB instance.
+   *
+   * @param optionsJson Optional JSON options. Pass null for defaults.
+   * @return JSON: {"success": true, "data": {"handle": N, "grpc_transport": "unix"|"tcp",
+   *     "address": "..."}}
    */
-  Pointer spicedb_start();
+  Pointer spicedb_start(String optionsJson);
 
   /** Dispose a SpiceDB instance by handle. */
   Pointer spicedb_dispose(long handle);

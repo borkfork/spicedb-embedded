@@ -7,34 +7,16 @@ import io.netty.channel.epoll.EpollDomainSocketChannel;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.kqueue.KQueueDomainSocketChannel;
 import io.netty.channel.kqueue.KQueueEventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.unix.DomainSocketAddress;
 import java.io.File;
-import java.net.InetSocketAddress;
 
-/**
- * Builds a gRPC ManagedChannel that connects to a Unix domain socket (Linux/macOS) or TCP
- * (Windows).
- */
+/** Builds a gRPC ManagedChannel that connects to a Unix domain socket (Linux/macOS). */
 final class UnixSocketChannel {
 
   private UnixSocketChannel() {}
 
-  static ManagedChannel build(String transport, String address) {
-    if ("tcp".equals(transport)) {
-      int colon = address.lastIndexOf(':');
-      if (colon > 0) {
-        String host = address.substring(0, colon);
-        int port = Integer.parseInt(address.substring(colon + 1));
-        return NettyChannelBuilder.forAddress(new InetSocketAddress(host, port))
-            .eventLoopGroup(new NioEventLoopGroup())
-            .usePlaintext()
-            .build();
-      }
-      throw new IllegalArgumentException("Invalid TCP address: " + address);
-    }
-
-    // Unix: address is socket file path
+  static ManagedChannel build(String address) {
+    // address is socket file path
     File f = new File(address);
     if (!f.exists()) {
       throw new IllegalArgumentException("Socket path does not exist: " + address);

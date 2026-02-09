@@ -9,8 +9,23 @@ import { resolve } from "path";
 
 export interface SpiceDBStartResult {
   handle: number;
-  transport: "unix" | "tcp";
+  grpc_transport: "unix" | "tcp";
   address: string;
+}
+
+export interface SpiceDBStartOptions {
+  /** Datastore: "memory" (default), "postgres", "cockroachdb", "spanner", "mysql" */
+  datastore?: string;
+  /** Connection string for remote datastores */
+  datastore_uri?: string;
+  /** gRPC transport: "unix" (default on Unix), "tcp" (default on Windows) */
+  grpc_transport?: string;
+  /** Path to Spanner service account JSON (Spanner only) */
+  spanner_credentials_file?: string;
+  /** Spanner emulator host (Spanner only) */
+  spanner_emulator_host?: string;
+  /** Prefix for all tables (MySQL only) */
+  mysql_table_prefix?: string;
 }
 
 function findLibrary(): string {
@@ -62,7 +77,7 @@ function findLibrary(): string {
 }
 
 interface SpiceDBLib {
-  spicedb_start: () => string;
+  spicedb_start: (optionsJson: string | null) => string;
   spicedb_dispose: (handle: number) => string;
 }
 
@@ -78,7 +93,9 @@ function getLib(): SpiceDBLib {
   koffi.disposable("HeapStr", "str", (ptr: unknown) => spicedb_free(ptr));
 
   lib = {
-    spicedb_start: loaded.func("HeapStr spicedb_start()"),
+    spicedb_start: loaded.func(
+      "HeapStr spicedb_start(const char* optionsJson)"
+    ),
     spicedb_dispose: loaded.func(
       "HeapStr spicedb_dispose(unsigned long long handle)"
     ),
@@ -87,9 +104,12 @@ function getLib(): SpiceDBLib {
   return lib;
 }
 
-export function spicedb_start(): SpiceDBStartResult {
+export function spicedb_start(
+  options?: SpiceDBStartOptions | null
+): SpiceDBStartResult {
   const l = getLib();
-  const raw = l.spicedb_start();
+  const optionsJson = options != null ? JSON.stringify(options) : null;
+  const raw = l.spicedb_start(optionsJson);
   if (!raw) throw new Error("Null response from C library");
 
   const data = JSON.parse(raw);

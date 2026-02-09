@@ -29,7 +29,7 @@ use crate::SpiceDBError;
 // FFI declarations for the C-shared library
 #[link(name = "spicedb")]
 unsafe extern "C" {
-    fn spicedb_start() -> *mut c_char;
+    fn spicedb_start(options_json: *const c_char) -> *mut c_char;
     fn spicedb_dispose(handle: c_ulonglong) -> *mut c_char;
     fn spicedb_free(ptr: *mut c_char);
 }
@@ -46,7 +46,7 @@ struct CResponse {
 #[derive(Debug, Deserialize)]
 struct NewResponse {
     handle: u64,
-    transport: String,
+    grpc_transport: String,
     address: String,
 }
 
@@ -117,7 +117,7 @@ impl EmbeddedSpiceDB {
         );
 
         let data = unsafe {
-            let result = spicedb_start();
+            let result = spicedb_start(std::ptr::null());
             call_and_parse(result)?
         };
 
@@ -126,10 +126,10 @@ impl EmbeddedSpiceDB {
 
         debug!(
             "Connecting to SpiceDB at {} ({})",
-            new_resp.address, new_resp.transport
+            new_resp.address, new_resp.grpc_transport
         );
 
-        let channel = connect_to_spicedb(&new_resp.transport, &new_resp.address)
+        let channel = connect_to_spicedb(&new_resp.grpc_transport, &new_resp.address)
             .await
             .map_err(|e| {
                 unsafe {
@@ -205,9 +205,26 @@ impl Drop for EmbeddedSpiceDB {
     }
 }
 
-#[cfg(unix)]
 async fn connect_to_spicedb(
-    _transport: &str,
+    transport: &str,
+    address: &str,
+) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
+    if transport == "tcp" {
+        connect_tcp(address).await
+    } else {
+        connect_unix_socket(address).await
+    }
+}
+
+async fn connect_tcp(address: &str) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
+    Endpoint::from_shared(format!("http://{address}"))?
+        .connect()
+        .await
+        .map_err(Into::into)
+}
+
+#[cfg(unix)]
+async fn connect_unix_socket(
     address: &str,
 ) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
     let path = address.to_string();
@@ -224,14 +241,10 @@ async fn connect_to_spicedb(
 }
 
 #[cfg(windows)]
-async fn connect_to_spicedb(
-    _transport: &str,
-    address: &str,
+async fn connect_unix_socket(
+    _address: &str,
 ) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
-    let channel = Endpoint::from_shared(format!("http://{}", address))?
-        .connect()
-        .await?;
-    Ok(channel)
+    Err("Unix domain sockets are not supported on Windows".into())
 }
 
 #[cfg(test)]
