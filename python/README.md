@@ -1,6 +1,6 @@
 # spicedb-embedded (Python)
 
-Embedded [SpiceDB](https://authzed.com/spicedb) for Python — in-memory authorization server for tests and development. Uses the shared/c C library via ctypes and connects over gRPC via Unix sockets.
+Embedded [SpiceDB](https://authzed.com/spicedb) for Python — authorization server for tests and development. Uses the shared/c C library via ctypes and connects over gRPC via Unix sockets or TCP. Supports memory (default), postgres, cockroachdb, spanner, and mysql datastores.
 
 ## Installation
 
@@ -65,7 +65,7 @@ with EmbeddedSpiceDB(schema, [rel]) as spicedb:
 
 ## API
 
-- **`EmbeddedSpiceDB(schema, relationships)`** — Create an instance. Pass `[]` for no initial relationships. Supports context manager (`with`).
+- **`EmbeddedSpiceDB(schema, relationships, options=None)`** — Create an instance. Pass `[]` for no initial relationships. Pass `options` dict for datastore/transport config. Supports context manager (`with`).
 - **`permissions()`** — Permissions service stub (CheckPermission, WriteRelationships, ReadRelationships, etc.).
 - **`schema()`** — Schema service stub (ReadSchema, WriteSchema, ReflectSchema, etc.).
 - **`watch()`** — Watch service stub for relationship changes.
@@ -73,6 +73,22 @@ with EmbeddedSpiceDB(schema, [rel]) as spicedb:
 - **`close()`** — Dispose the instance and close the channel.
 
 Use types from `authzed.api.v1` (ObjectReference, SubjectReference, Relationship, etc.).
+
+### Options
+
+```python
+options = {
+    "datastore": "memory",          # or "postgres", "cockroachdb", "spanner", "mysql"
+    "grpc_transport": "unix",       # or "tcp"; default by platform
+    "datastore_uri": "postgres://user:pass@localhost:5432/spicedb",  # required for remote
+    "spanner_credentials_file": "/path/to/key.json",  # Spanner only
+    "spanner_emulator_host": "localhost:9010",       # Spanner emulator
+    "mysql_table_prefix": "spicedb_",                 # MySQL only (optional)
+}
+
+with EmbeddedSpiceDB(schema, [], options=options) as spicedb:
+    ...
+```
 
 ## Building & Testing
 

@@ -42,8 +42,22 @@ public final class EmbeddedSpiceDB implements AutoCloseable {
    * @return New EmbeddedSpiceDB instance
    */
   public static EmbeddedSpiceDB create(String schema, List<Relationship> relationships) {
+    return create(schema, relationships, null);
+  }
+
+  /**
+   * Create a new embedded SpiceDB instance with a schema, relationships, and options.
+   *
+   * @param schema The SpiceDB schema definition (ZED language)
+   * @param relationships Initial relationships (empty list allowed)
+   * @param options Optional configuration (datastore, grpc_transport). Pass null for defaults.
+   * @return New EmbeddedSpiceDB instance
+   */
+  public static EmbeddedSpiceDB create(
+      String schema, List<Relationship> relationships, StartOptions options) {
     SpiceDB lib = SpiceDB.load();
-    Pointer result = lib.spicedb_start(null);
+    String optionsJson = options != null ? new Gson().toJson(options) : null;
+    Pointer result = lib.spicedb_start(optionsJson);
     if (result == null) {
       throw new SpiceDBException("Null response from C library");
     }

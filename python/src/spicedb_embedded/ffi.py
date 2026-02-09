@@ -57,8 +57,13 @@ def spicedb_start(options: dict | None = None) -> dict:
     """Start a new SpiceDB instance. Returns dict with handle, grpc_transport, and address.
 
     Args:
-        options: Optional config: {"datastore": "memory", "grpc_transport": "unix"|"tcp", ...}.
-            Use None for defaults.
+        options: Optional config. Use None for defaults. Supported keys:
+            - datastore: "memory" (default), "postgres", "cockroachdb", "spanner", "mysql"
+            - datastore_uri: Connection string (required for remote datastores)
+            - grpc_transport: "unix" (default on Unix), "tcp" (default on Windows)
+            - spanner_credentials_file: Path to service account JSON (Spanner only)
+            - spanner_emulator_host: e.g. "localhost:9010" (Spanner emulator)
+            - mysql_table_prefix: Prefix for all tables (MySQL only, optional)
     """
     lib = _get_lib()
     options_json = json.dumps(options) if options else None

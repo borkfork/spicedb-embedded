@@ -1,6 +1,6 @@
 # spicedb-embedded
 
-Embedded [SpiceDB](https://authzed.com/spicedb) for use in application tests and development. This repository provides an in-memory SpiceDB server that you can communicate with over gRPC using Unix sockets.
+Embedded [SpiceDB](https://authzed.com/spicedb) for use in application tests and development. This repository provides a SpiceDB server (memory, postgres, cockroachdb, spanner, or mysql) that you can communicate with over gRPC using Unix sockets or TCP.
 
 ## Architecture
 
@@ -14,12 +14,12 @@ Embedded [SpiceDB](https://authzed.com/spicedb) for use in application tests and
 ├─────────────────────────────────────────────────────────────────┤
 │  shared/c: C-shared library (Go/CGO)                             │
 │  - Embeds SpiceDB server                                        │
-│  - In-memory datastore, one instance per handle                  │
-│  - Listens on unique Unix socket per instance                   │
+│  - Datastore: memory (default), postgres, cockroachdb, spanner, mysql │
+│  - Listens on unique Unix socket or TCP per instance            │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-The **shared/c** library is the foundation—all language bindings build on top of it via C FFI. Each instance is independent, enabling parallel testing.
+The **shared/c** library is the foundation—all language bindings build on top of it via C FFI. Each instance is independent, enabling parallel testing. Supports multiple datastores: **memory** (default), **postgres**, **cockroachdb**, **spanner**, and **mysql**.
 
 ## Quick Start
 

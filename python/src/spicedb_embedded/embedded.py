@@ -25,13 +25,28 @@ class EmbeddedSpiceDB:
     Embedded SpiceDB instance.
 
     A thin wrapper that starts SpiceDB via the C-shared library, connects over a Unix
-    socket, and bootstraps schema and relationships via gRPC.
+    socket or TCP, and bootstraps schema and relationships via gRPC.
 
     Use permissions(), schema(), and watch() to access the full SpiceDB API.
     """
 
-    def __init__(self, schema: str, relationships: list[Relationship] | None = None):
-        data = spicedb_start(None)
+    def __init__(
+        self,
+        schema: str,
+        relationships: list[Relationship] | None = None,
+        *,
+        options: dict | None = None,
+    ):
+        """
+        Create an embedded SpiceDB instance.
+
+        Args:
+            schema: The SpiceDB schema definition (ZED language).
+            relationships: Initial relationships. Defaults to [].
+            options: Optional config: {"datastore": "memory", "grpc_transport": "unix"|"tcp",
+                "datastore_uri": "...", ...}. Use None for defaults.
+        """
+        data = spicedb_start(options)
         self._handle = data["handle"]
         grpc_transport = data["grpc_transport"]
         address = data["address"]

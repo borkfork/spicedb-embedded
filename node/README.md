@@ -1,6 +1,6 @@
 # spicedb-embedded (Node.js)
 
-Embedded [SpiceDB](https://authzed.com/spicedb) for Node.js — in-memory authorization server for tests and development. Uses the shared/c C library via koffi FFI and connects over gRPC via Unix sockets. **Node.js only** (not for browser/frontend).
+Embedded [SpiceDB](https://authzed.com/spicedb) for Node.js — authorization server for tests and development. Uses the shared/c C library via koffi FFI and connects over gRPC via Unix sockets or TCP. Supports memory (default), postgres, cockroachdb, spanner, and mysql datastores. **Node.js only** (not for browser/frontend).
 
 ## Comparison with SpiceDB WASM
 
@@ -107,13 +107,30 @@ try {
 
 ## API
 
-- **`EmbeddedSpiceDB.create(schema, relationships)`** — Create an instance (async). Pass `[]` for no initial relationships.
+- **`EmbeddedSpiceDB.create(schema, relationships, options?)`** — Create an instance (async). Pass `[]` for no initial relationships. Pass `SpiceDBStartOptions` for datastore/transport config.
 - **`permissions()`** — Permissions service client (CheckPermission, WriteRelationships, ReadRelationships, etc.). Use `.promises` for async/await.
 - **`schema()`** — Schema service client (ReadSchema, WriteSchema, ReflectSchema, etc.).
 - **`watch()`** — Watch service client for relationship changes.
 - **`close()`** — Dispose the instance and close the channel.
 
 Use types from `v1` (re-exported from `@authzed/authzed-node`) for `ObjectReference`, `SubjectReference`, `Relationship`, etc.
+
+### SpiceDBStartOptions
+
+```typescript
+import { EmbeddedSpiceDB, SpiceDBStartOptions } from "spicedb-embedded";
+
+const options: SpiceDBStartOptions = {
+  datastore: "memory", // or "postgres", "cockroachdb", "spanner", "mysql"
+  grpc_transport: "unix", // or "tcp"; default by platform
+  datastore_uri: "postgres://user:pass@localhost:5432/spicedb", // required for remote
+  spanner_credentials_file: "/path/to/key.json", // Spanner only
+  spanner_emulator_host: "localhost:9010", // Spanner emulator
+  mysql_table_prefix: "spicedb_", // MySQL only (optional)
+};
+
+const spicedb = await EmbeddedSpiceDB.create(schema, [], options);
+```
 
 ## Building & Testing
 
