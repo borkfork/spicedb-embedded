@@ -25,12 +25,12 @@ depends = ["format-check", "clippy", "cargo-deny", "test"]
 [tasks.shared-c-build]
 description = "Build the SpiceDB C-shared library from Go source (CGO)"
 dir = "shared/c"
-run = "bash -c 'out=$(../../scripts/lib-path.sh) && CGO_ENABLED=1 go mod tidy && go build -buildmode=c-shared -o \"$out\" .'"
+run = "bash -c 'out=$(../../scripts/lib-path.sh) CGO_ENABLED=1 go mod tidy && go build -buildmode=c-shared -o \"$out\" .'"
 
 [tasks.shared-c-rebuild]
 description = "Force rebuild the SpiceDB C-shared library"
 dir = "shared/c"
-run = "bash -c 'rm -f libspicedb.so libspicedb.dylib libspicedb.h spicedb.dll spicedb.h && out=$(../../scripts/lib-path.sh) && CGO_ENABLED=1 go mod tidy && go build -buildmode=c-shared -o \"$out\" .'"
+run = "bash -c 'out=$(../../scripts/lib-path.sh) CGO_ENABLED=1 rm -f libspicedb.so libspicedb.dylib libspicedb.h spicedb.dll spicedb.h && go mod tidy && go build -buildmode=c-shared -o \"$out\" .'"
 
 [tasks.change]
 run = "knope document-change"
