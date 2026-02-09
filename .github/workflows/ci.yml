@@ -42,9 +42,7 @@ jobs:
     needs: shared-c-lib
     runs-on: ubuntu-latest
     env:
-      MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,github:mozilla/sccache,taplo,github:knope-dev/knope,go"
-      SCCACHE_GHA_ENABLED: "true"
-      RUSTC_WRAPPER: "sccache"
+      MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,taplo,github:knope-dev/knope,go"
     steps:
       - uses: actions/checkout@v4
 
@@ -55,10 +53,8 @@ jobs:
           path: shared/c/
 
       - uses: jdx/mise-action@v3
-        env:
-          RUSTC_WRAPPER: ""
         with:
-          install_args: "rust github:EmbarkStudios/cargo-deny github:mozilla/sccache taplo github:knope-dev/knope go"
+          install_args: "rust github:EmbarkStudios/cargo-deny taplo github:knope-dev/knope go"
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -71,8 +67,6 @@ jobs:
         run: rustup component add clippy
 
       - name: Clippy
-        env:
-          RUSTC_WRAPPER: ""
         run: mise run clippy
 
       - name: Cargo deny
@@ -214,9 +208,7 @@ jobs:
   windows:
     runs-on: windows-latest
     env:
-      MISE_ENABLE_TOOLS: "go,rust,java,maven,python,node,dotnet,github:mozilla/sccache"
-      SCCACHE_GHA_ENABLED: "true"
-      RUSTC_WRAPPER: "sccache"
+      MISE_ENABLE_TOOLS: "go,rust,java,maven,python,node,dotnet"
     steps:
       - uses: actions/checkout@v4
 
@@ -255,7 +247,7 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "go rust java maven python node dotnet github:mozilla/sccache"
+          install_args: "go rust java maven python node dotnet"
 
       - name: Set library path
         shell: bash
@@ -268,8 +260,6 @@ jobs:
 
       - name: Rust test
         shell: bash
-        env:
-          RUSTC_WRAPPER: ""
         run: mise run rust-test
 
       - name: Java test
