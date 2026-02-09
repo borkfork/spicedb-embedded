@@ -925,8 +925,8 @@ definition document {
     /// Run with: cargo test --ignored `datastore_shared`
     ///
     /// Requires: Docker, and `spicedb` CLI in PATH for migrations.
-    /// We set platform to `linux/amd64` so Docker on Windows pulls Linux images (avoids
-    /// "no matching manifest for linux/amd64 10.0.x" when the host OS version is appended).
+    /// Disabled on Windows (does not work in Github Actions).
+    #[cfg(not(target_os = "windows"))]
     mod datastore_shared {
         /// Platform for testcontainers: use Linux so images work on Windows Docker Desktop.
         const LINUX_AMD64: &str = "linux/amd64";
