@@ -42,7 +42,7 @@ jobs:
     needs: shared-c-lib
     runs-on: ubuntu-latest
     env:
-      MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,taplo,github:knope-dev/knope,go"
+      MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,taplo,github:knope-dev/knope,go,github:authzed/spicedb"
     steps:
       - uses: actions/checkout@v4
 
