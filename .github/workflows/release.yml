@@ -99,14 +99,15 @@ jobs:
           java-version: "21"
           cache: maven
           gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
-          server-id: central
-          server-username: SONATYPE_USERNAME
-          server-password: SONATYPE_TOKEN
 
       - name: Configure Maven Central credentials
         run: |
+          if [ -z "$SONATYPE_USERNAME" ] || [ -z "$SONATYPE_TOKEN" ]; then
+            echo "::error::SONATYPE_USERNAME and SONATYPE_TOKEN secrets must be set. Create a user token at https://central.sonatype.com/usertoken and add both values as repo secrets."
+            exit 1
+          fi
           mkdir -p ~/.m2
-          # setup-java writes ${env.VAR} literals which Maven doesn't expand; write actual credentials
+          # Write actual credentials (setup-java would write ${env.VAR} literals that Maven does not expand)
           cat > ~/.m2/settings.xml << EOF
           <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -162,6 +163,15 @@ jobs:
 
       - name: Build Node.js package
         run: mise run node-build
+
+      - name: Verify npm auth
+        working-directory: node
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::NPM_TOKEN secret is not set."
+            exit 1
+          fi
+          echo "Logged in as: $(npm whoami --registry https://registry.npmjs.org)"
 
       - name: Publish to npm
         working-directory: node
