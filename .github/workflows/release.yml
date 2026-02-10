@@ -104,11 +104,10 @@ jobs:
           TAG="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}"
           VERSION="${TAG#v}"
           cd java
-          mvn -B -ntp versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
-          mvn -B -ntp -P release clean deploy
+          mvn -B -ntp -Dstyle.color=always -P release release:prepare
+          mvn -B -ntp -Dstyle.color=always -P release release:perform
           echo "Published Java $VERSION to Maven Central" >> $GITHUB_STEP_SUMMARY
         env:
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_TOKEN: ${{ secrets.SONATYPE_TOKEN }}
-          # Empty passphrase so maven-gpg-plugin 3.x uses env instead of settings (avoids settings-security.xml)
-          MAVEN_GPG_PASSPHRASE: ""
+          GPG_PASSPHRASE: ""
