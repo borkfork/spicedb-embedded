@@ -31,8 +31,12 @@ node_modules/
 .vs/
 **/*.rs.bk
 
-# rust/shared = synced copy of shared/c at publish time (do not commit)
-rust/shared/
+# rust/shared/c build artifacts (vendored copy for crate publish; source files are committed)
+rust/shared/c/libspicedb.so
+rust/shared/c/libspicedb.dylib
+rust/shared/c/libspicedb.h
+rust/shared/c/spicedb.dll
+rust/shared/c/spicedb.h
 
 # shared/c build artifacts
 shared/c/libspicedb.so

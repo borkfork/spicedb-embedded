@@ -123,6 +123,10 @@ run = "mise run shared-c-build && cargo test --locked --workspace"
 description = "Run cargo-deny (license, advisory, ban checks)"
 run = "cargo deny check -c deny.toml"
 
+[tasks.publish-dry-run]
+description = "Run cargo publish --dry-run (verifies package builds; rust/shared/c is vendored in repo)"
+run = "cargo publish -p spicedb-embedded --dry-run"
+
 [tasks.check-toml-format]
 description = "Check TOML formatting"
 run = "taplo format --check"
