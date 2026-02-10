@@ -158,7 +158,9 @@ fn try_generate_import_lib_win(def_file: &Path, lib_file: &Path) -> Result<(), (
     let def_arg = format!("/def:{}", def_file.display());
     let out_arg = format!("/out:{}", lib_file.display());
     let status = Command::new(&lib_exe)
-        .args([def_arg, out_arg, "/machine:x64"])
+        .arg(def_arg)
+        .arg(out_arg)
+        .arg("/machine:x64")
         .status();
     match status {
         Ok(s) if s.success() => Ok(()),
