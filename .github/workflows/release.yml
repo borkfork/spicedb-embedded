@@ -78,7 +78,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml', '**/pom.xml.releaseBackup') }}
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-m2-
 
       - uses: jdx/mise-action@v3
@@ -101,14 +101,12 @@ jobs:
 
       - name: Publish to Maven Central
         run: |
+          TAG="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}"
+          VERSION="${TAG#v}"
           cd java
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          mvn -B -ntp -Dstyle.color=always -P release release:prepare
-          VERSION=`cat release.properties | grep scm.tag= | cut -d'=' -f2`
-          mvn -B -ntp -Dstyle.color=always -P releaserelease:perform
-          echo "Released ${VERSION} 🚀" >> $GITHUB_STEP_SUMMARY
+          mvn -B -ntp versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+          mvn -B -ntp -P release clean deploy -Dgpg.passphrase="${{ secrets.GPG_PASSPHRASE }}"
+          echo "Published Java $VERSION to Maven Central" >> $GITHUB_STEP_SUMMARY
         env:
-          GPG_PASSPHRASE: ""
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_TOKEN: ${{ secrets.SONATYPE_TOKEN }}
