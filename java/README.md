@@ -109,7 +109,7 @@ Add to your `pom.xml`:
 <dependency>
     <groupId>com.borkfork</groupId>
     <artifactId>spicedb-embedded</artifactId>
-    <version>0.1.2-SNAPSHOT</version>
+    <version>0.1.3-SNAPSHOT</version>
 </dependency>
 ```
 

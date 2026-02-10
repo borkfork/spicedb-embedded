@@ -22,6 +22,10 @@ on:
         description: "Tag to publish (e.g. v0.1.0). Must already exist."
         required: true
 
+permissions:
+  id-token: write # Required for OIDC
+  contents: read
+
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
