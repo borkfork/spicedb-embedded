@@ -81,6 +81,10 @@ jobs:
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml', '**/pom.xml.releaseBackup') }}
           restore-keys: ${{ runner.os }}-m2-
 
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "java maven go"
+
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
