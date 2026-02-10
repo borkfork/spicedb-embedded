@@ -99,7 +99,7 @@ run = "dotnet format csharp/SpicedbEmbedded.sln"
 [tasks.reformat-node]
 description = "Reformat Node.js package"
 dir = "node"
-run = "npm run format"
+run = "npm ci && npm run format"
 
 [tasks.clippy]
 description = "Run Clippy linter"
@@ -122,6 +122,10 @@ run = "mise run shared-c-build && cargo test --locked --workspace"
 [tasks.cargo-deny]
 description = "Run cargo-deny (license, advisory, ban checks)"
 run = "cargo deny check -c deny.toml"
+
+[tasks.publish-dry-run]
+description = "Sync shared/c into rust/shared and run cargo publish --dry-run (same as release workflow)"
+run = "mkdir -p rust/shared && cp -r shared/c rust/shared/ && git add -f rust/shared/ && cargo publish -p spicedb-embedded --dry-run --allow-dirty; git reset HEAD rust/shared/ 2>/dev/null || true"
 
 [tasks.check-toml-format]
 description = "Check TOML formatting"

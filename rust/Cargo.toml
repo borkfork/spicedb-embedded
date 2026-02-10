@@ -1,10 +1,26 @@
 [package]
 name = "spicedb-embedded"
 version = "0.1.0"
-edition = "2021"
-description = "Embedded SpiceDB for Rust - in-memory authorization via gRPC over Unix sockets"
+edition = "2024"
+description = "Embedded SpiceDB for Rust - in-memory authorization using the standard gRPC API"
 license = "Apache-2.0"
 repository = "https://github.com/borkfork/spicedb-embedded"
+# Never package native binaries; we ship Go source and build at compile time for portability
+exclude = ["**/*.so", "**/*.dylib", "**/*.dll", "**/*.lib"]
+categories = [
+  "authentication",
+  "api-bindings",
+  "development-tools",
+  "development-tools::ffi",
+  "security",
+]
+keywords = [
+  "spicedb",
+  "zanzibar",
+  "authorization",
+  "access-control",
+  "fine-grained-permissions",
+]
 
 [lib]
 path = "src/lib.rs"

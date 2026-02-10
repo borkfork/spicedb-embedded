@@ -11,9 +11,9 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use spicedb_grpc::authzed::api::v1::{
+    RelationshipUpdate, WriteRelationshipsRequest, WriteSchemaRequest,
     permissions_service_client::PermissionsServiceClient, relationship_update::Operation,
     schema_service_client::SchemaServiceClient, watch_service_client::WatchServiceClient,
-    RelationshipUpdate, WriteRelationshipsRequest, WriteSchemaRequest,
 };
 #[cfg(unix)]
 use tokio::net::UnixStream;
@@ -313,9 +313,9 @@ async fn connect_unix_socket(
 #[cfg(test)]
 mod tests {
     use spicedb_grpc::authzed::api::v1::{
-        relationship_update::Operation, CheckPermissionRequest, Consistency, ObjectReference,
-        ReadRelationshipsRequest, Relationship, RelationshipFilter, RelationshipUpdate,
-        SubjectReference, WriteRelationshipsRequest,
+        CheckPermissionRequest, Consistency, ObjectReference, ReadRelationshipsRequest,
+        Relationship, RelationshipFilter, RelationshipUpdate, SubjectReference,
+        WriteRelationshipsRequest, relationship_update::Operation,
     };
     use tokio_stream::StreamExt;
 
@@ -935,9 +935,9 @@ definition document {
         use testcontainers_modules::{
             cockroach_db, mysql, postgres,
             testcontainers::{
+                GenericImage, ImageExt,
                 core::{IntoContainerPort, WaitFor},
                 runners::AsyncRunner,
-                GenericImage, ImageExt,
             },
         };
 

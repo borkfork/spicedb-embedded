@@ -31,7 +31,10 @@ node_modules/
 .vs/
 **/*.rs.bk
 
-# shared/c build artifacts
+# rust/shared/ = only in release tag (workflow copies shared/c here, commits, pushes tag); not on main
+rust/shared/
+
+# shared/c build artifacts (top-level shared is canonical source)
 shared/c/libspicedb.so
 shared/c/libspicedb.dylib
 shared/c/libspicedb.h
