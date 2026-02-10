@@ -1,0 +1,64 @@
+# Build and publish the Rust crate to crates.io.
+# Trigger: push a version tag (e.g. v0.1.0) or run manually (workflow_dispatch).
+#
+# Required secrets:
+#   CARGO_REGISTRY_TOKEN - crates.io API token (from https://crates.io/settings/tokens)
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'   # e.g. v0.1.0, v1.0.0-beta.1
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Tag to publish (e.g. v0.1.0). Must already exist.'
+        required: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish-rust:
+    runs-on: ubuntu-latest
+    env:
+      MISE_ENABLE_TOOLS: "go,rust"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
+          fetch-depth: 0
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum', '**/go.mod') }}
+          restore-keys: ${{ runner.os }}-go-
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "go rust"
+
+      - name: Build shared C library
+        run: mise run shared-c-build
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
+      - name: Run tests
+        run: cargo test --locked --workspace
+
+      - name: Sync shared/c into crate for packaging
+        run: |
+          mkdir -p rust/shared
+          cp -r shared/c rust/shared/
+
+      - name: Publish to crates.io
+        run: cargo publish -p spicedb-embedded --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

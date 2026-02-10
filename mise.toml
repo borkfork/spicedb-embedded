@@ -99,7 +99,7 @@ run = "dotnet format csharp/SpicedbEmbedded.sln"
 [tasks.reformat-node]
 description = "Reformat Node.js package"
 dir = "node"
-run = "npm run format"
+run = "npm ci && npm run format"
 
 [tasks.clippy]
 description = "Run Clippy linter"

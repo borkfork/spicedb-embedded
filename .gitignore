@@ -31,6 +31,9 @@ node_modules/
 .vs/
 **/*.rs.bk
 
+# rust/shared = synced copy of shared/c at publish time (do not commit)
+rust/shared/
+
 # shared/c build artifacts
 shared/c/libspicedb.so
 shared/c/libspicedb.dylib
