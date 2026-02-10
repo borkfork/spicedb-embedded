@@ -137,31 +137,66 @@ fn build_go_lib_to(shared_c_dir: &Path, out_dir: &Path, lib_filename: &str) {
 #[cfg(target_os = "windows")]
 fn generate_import_lib_windows(shared_c_dir: &Path, out_dir: &Path) {
     let def_file = shared_c_dir.join("spicedb.def");
+    let lib_file = out_dir.join("spicedb.lib");
     if !def_file.exists() {
         return;
     }
-    let manifest_dir =
-        std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR set by Cargo");
-    let script = Path::new(&manifest_dir)
-        .join("..")
-        .join("scripts")
-        .join("generate-dll-import-lib.sh");
-    let status = Command::new("bash")
-        .arg(&script)
-        .arg(&def_file)
-        .arg(out_dir)
+    if try_generate_import_lib_win(&def_file, &lib_file).is_err() {
+        panic!(
+            "Failed to generate spicedb.lib. MSVC needs the import library to link the DLL. \
+            Install Visual Studio Build Tools. From Git Bash you can run: scripts/generate-dll-import-lib.sh {} {}",
+            def_file.display(),
+            out_dir.display()
+        );
+    }
+    println!("cargo:warning=Generated spicedb.lib for MSVC linking");
+}
+
+#[cfg(target_os = "windows")]
+fn try_generate_import_lib_win(def_file: &Path, lib_file: &Path) -> Result<(), ()> {
+    let lib_exe = find_msvc_lib_exe().ok_or(())?;
+    let def_arg = format!("/def:{}", def_file.display());
+    let out_arg = format!("/out:{}", lib_file.display());
+    let status = Command::new(&lib_exe)
+        .args([def_arg, out_arg, "/machine:x64"])
         .status();
     match status {
-        Ok(s) if s.success() => {
-            println!("cargo:warning=Generated spicedb.lib for MSVC linking");
-        }
-        _ => {
-            panic!(
-                "Failed to generate spicedb.lib. Run scripts/generate-dll-import-lib.sh manually. \
-                MSVC needs the import library to link the DLL; install Visual Studio Build Tools."
-            );
+        Ok(s) if s.success() => Ok(()),
+        _ => Err(()),
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn find_msvc_lib_exe() -> Option<PathBuf> {
+    let vswhere = r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe";
+    let vswhere = Path::new(vswhere);
+    if !vswhere.exists() {
+        return None;
+    }
+    let out = Command::new(vswhere)
+        .args(["-latest", "-property", "installationPath"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let vs_path = std::str::from_utf8(&out.stdout).ok()?.trim_end();
+    let vs_path = Path::new(vs_path);
+    let vc_tools = vs_path.join("VC").join("Tools").join("MSVC");
+    if let Ok(entries) = std::fs::read_dir(&vc_tools) {
+        for entry in entries.flatten() {
+            let path = entry
+                .path()
+                .join("bin")
+                .join("Hostx64")
+                .join("x64")
+                .join("lib.exe");
+            if path.exists() {
+                return Some(path);
+            }
         }
     }
+    None
 }
 
 fn copy_lib_to_target(lib_path: &Path, lib_filename: &str) {
