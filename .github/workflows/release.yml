@@ -27,7 +27,7 @@ jobs:
   publish-rust:
     runs-on: ubuntu-latest
     env:
-      MISE_ENABLE_TOOLS: "go,rust"
+      MISE_ENABLE_TOOLS: "go,rust,github:authzed/spicedb"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,7 +44,7 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "go rust"
+          install_args: "go rust github:authzed/spicedb"
 
       - name: Build shared C library
         run: mise run shared-c-build
