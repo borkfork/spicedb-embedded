@@ -5,7 +5,7 @@
 
     <groupId>com.borkfork</groupId>
     <artifactId>spicedb-embedded</artifactId>
-    <version>0.1.3-SNAPSHOT</version>
+    <version>0.1.4-SNAPSHOT</version>
     <packaging>jar</packaging>
     <name>spicedb-embedded</name>
     <description>Embedded SpiceDB for JVM — in-memory server with standard gRPC API</description>
