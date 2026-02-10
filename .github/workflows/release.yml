@@ -1,14 +1,12 @@
 # Build and publish the Rust crate to crates.io.
 # Trigger: push a version tag (e.g. v0.1.0) or run manually (workflow_dispatch).
 #
-# Flow: checkout tag -> copy shared/c into rust/shared -> git add -f (so package includes it) -> cargo publish --allow-dirty.
-# No commit or tag push; the tag stays as-is.
-#
+# Required env vars:
+#   SONATYPE_USERNAME - Maven Central Portal username
 # Required secrets:
 #   CARGO_REGISTRY_TOKEN - crates.io API token (from https://crates.io/settings/tokens)
-#   SONATYPE_USERNAME, SONATYPE_TOKEN - Central Portal token (from https://central.sonatype.com/usertoken)
+#   SONATYPE_TOKEN - Maven Central Portal token (from https://central.sonatype.com/usertoken)
 #   GPG_PRIVATE_KEY - GPG private key for signing (no passphrase)
-#   NPM_TOKEN - npm auth token (from https://www.npmjs.com/settings/~/tokens)
 
 name: Release
 
@@ -158,9 +156,9 @@ jobs:
         with:
           install_args: "go node"
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
       - name: Build Node.js package
