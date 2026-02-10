@@ -22,8 +22,13 @@ depends = ["format-check", "clippy", "cargo-deny", "test"]
 # SpiceDB shared/c build tasks
 # ============================================================================
 
+[tasks.ensure-shared]
+description = "Create top-level shared/ (symlink to rust/shared) so shared/c exists; idempotent"
+run = "bash scripts/ensure-shared.sh"
+
 [tasks.shared-c-build]
 description = "Build the SpiceDB C-shared library from Go source (CGO)"
+depends = ["ensure-shared"]
 run = "bash scripts/shared-c-build.sh"
 
 [tasks.shared-c-rebuild]
