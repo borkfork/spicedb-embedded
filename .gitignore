@@ -31,15 +31,15 @@ node_modules/
 .vs/
 **/*.rs.bk
 
-# Top-level shared/ only (mise ensure-shared); leading / = root only, so rust/shared is not ignored
-/shared
+# rust/shared/ = only in release tag (workflow copies shared/c here, commits, pushes tag); not on main
+rust/shared/
 
-# rust/shared/c build artifacts (vendored copy for crate publish; source files are committed)
-rust/shared/c/libspicedb.so
-rust/shared/c/libspicedb.dylib
-rust/shared/c/libspicedb.h
-rust/shared/c/spicedb.dll
-rust/shared/c/spicedb.h
+# shared/c build artifacts (top-level shared is canonical source)
+shared/c/libspicedb.so
+shared/c/libspicedb.dylib
+shared/c/libspicedb.h
+shared/c/spicedb.dll
+shared/c/spicedb.h
 
 # IDE
 .idea/
