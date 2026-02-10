@@ -31,8 +31,8 @@ node_modules/
 .vs/
 **/*.rs.bk
 
-# Top-level shared/ is mise-managed (ensure-shared); not committed (points at rust/shared)
-/shared/
+# Top-level shared/ only (mise ensure-shared); leading / = root only, so rust/shared is not ignored
+/shared
 
 # rust/shared/c build artifacts (vendored copy for crate publish; source files are committed)
 rust/shared/c/libspicedb.so
