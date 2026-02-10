@@ -1,8 +1,8 @@
 # Build and publish the Rust crate to crates.io.
 # Trigger: push a version tag (e.g. v0.1.0) or run manually (workflow_dispatch).
 #
-# Flow: checkout tag -> copy shared/c into rust/shared -> commit -> update tag to point to that commit ->
-# push tag -> publish to crates.io. So the release tag always points to a commit that includes the vendored crate.
+# Flow: checkout tag -> copy shared/c into rust/shared -> git add -f (so package includes it) -> cargo publish --allow-dirty.
+# No commit or tag push; the tag stays as-is.
 #
 # Required secrets:
 #   CARGO_REGISTRY_TOKEN - crates.io API token (from https://crates.io/settings/tokens)
@@ -28,8 +28,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MISE_ENABLE_TOOLS: "go,rust"
-    permissions:
-      contents: write # push updated tag
     steps:
       - uses: actions/checkout@v4
         with:
@@ -58,28 +56,13 @@ jobs:
       - name: Run tests
         run: cargo test --locked --workspace
 
-      - name: Vendor shared/c into crate and update release tag
-        id: vendor
-        env:
-          TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || format('{0}', github.ref_name) }}
+      - name: Vendor shared/c into crate for packaging
         run: |
-          if [ -d rust/shared/c ]; then
-            echo "rust/shared/c already present (re-run after tag push), skip vendor and publish" >> $GITHUB_STEP_SUMMARY
-            echo "needs_publish=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
           mkdir -p rust/shared
           cp -r shared/c rust/shared/
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -f rust/shared/
-          git commit -m "Vendor shared/c in crate for release"
-          git tag -f "$TAG"
-          git push origin "$TAG" --force
-          echo "needs_publish=true" >> $GITHUB_OUTPUT
 
       - name: Publish to crates.io
-        if: steps.vendor.outputs.needs_publish == 'true'
-        run: cargo publish -p spicedb-embedded --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish -p spicedb-embedded --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

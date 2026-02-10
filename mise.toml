@@ -125,7 +125,7 @@ run = "cargo deny check -c deny.toml"
 
 [tasks.publish-dry-run]
 description = "Sync shared/c into rust/shared and run cargo publish --dry-run (same as release workflow)"
-run = "mkdir -p rust/shared && cp -r shared/c rust/shared/ && cargo publish -p spicedb-embedded --dry-run"
+run = "mkdir -p rust/shared && cp -r shared/c rust/shared/ && git add -f rust/shared/ && cargo publish -p spicedb-embedded --dry-run --allow-dirty; git reset HEAD rust/shared/ 2>/dev/null || true"
 
 [tasks.check-toml-format]
 description = "Check TOML formatting"

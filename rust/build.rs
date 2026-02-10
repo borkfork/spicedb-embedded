@@ -10,18 +10,23 @@ use std::{
 };
 
 fn main() {
+    let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR set by Cargo");
+    let out_path = Path::new(&out_dir);
+
     let (shared_c_dir, use_crate_shared) = resolve_shared_c_dir();
     emit_rerun_if_changed(use_crate_shared);
-    let (lib_filename, lib_path) = lib_artifact_name_and_path(&shared_c_dir);
+    let (lib_filename, lib_path) = lib_artifact_name_and_path_out(out_path);
 
     if lib_needs_build(&lib_path, &shared_c_dir) {
-        build_go_lib(&shared_c_dir, &lib_filename);
+        build_go_lib_to(&shared_c_dir, out_path, &lib_filename);
     }
 
-    println!("cargo:rustc-link-search=native={}", shared_c_dir.display());
+    println!("cargo:rustc-link-search=native={}", out_path.display());
     println!("cargo:rustc-link-lib=dylib=spicedb");
     copy_lib_to_target(&lib_path, &lib_filename);
-    emit_rpath(&shared_c_dir);
+    if let Some(target_dir) = out_path.ancestors().nth(3) {
+        emit_rpath(target_dir);
+    }
 }
 
 fn resolve_shared_c_dir() -> (PathBuf, bool) {
@@ -53,7 +58,7 @@ fn emit_rerun_if_changed(use_crate_shared: bool) {
     }
 }
 
-fn lib_artifact_name_and_path(shared_c_dir: &Path) -> (String, PathBuf) {
+fn lib_artifact_name_and_path_out(out_dir: &Path) -> (String, PathBuf) {
     let (lib_name, lib_ext) = if cfg!(target_os = "macos") {
         ("libspicedb", "dylib")
     } else if cfg!(target_os = "windows") {
@@ -62,7 +67,7 @@ fn lib_artifact_name_and_path(shared_c_dir: &Path) -> (String, PathBuf) {
         ("libspicedb", "so")
     };
     let lib_filename = format!("{lib_name}.{lib_ext}");
-    let lib_path = shared_c_dir.join(&lib_filename);
+    let lib_path = out_dir.join(&lib_filename);
     (lib_filename, lib_path)
 }
 
@@ -82,10 +87,17 @@ fn lib_needs_build(lib_path: &Path, shared_c_dir: &Path) -> bool {
     )
 }
 
-fn build_go_lib(shared_c_dir: &Path, lib_filename: &str) {
+fn build_go_lib_to(shared_c_dir: &Path, out_dir: &Path, lib_filename: &str) {
     println!("cargo:warning=Building {lib_filename} from Go source...");
+    let out_lib = out_dir.join(lib_filename);
     let output = Command::new("go")
-        .args(["build", "-buildmode=c-shared", "-o", lib_filename, "."])
+        .args([
+            "build",
+            "-buildmode=c-shared",
+            "-o",
+            out_lib.to_str().expect("out path is utf-8"),
+            ".",
+        ])
         .current_dir(shared_c_dir)
         .output();
 
@@ -94,8 +106,11 @@ fn build_go_lib(shared_c_dir: &Path, lib_filename: &str) {
         && result.status.success()
     {
         let _ = Command::new("install_name_tool")
-            .args(["-id", "@rpath/libspicedb.dylib", lib_filename])
-            .current_dir(shared_c_dir)
+            .args([
+                "-id",
+                "@rpath/libspicedb.dylib",
+                out_lib.to_str().expect("path is utf-8"),
+            ])
             .output();
     }
 
@@ -144,13 +159,19 @@ fn copy_lib_to_target(lib_path: &Path, lib_filename: &str) {
     }
 }
 
-fn emit_rpath(shared_c_dir: &Path) {
+fn emit_rpath(runtime_lib_dir: &Path) {
     if cfg!(target_os = "macos") {
         println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path");
-        println!("cargo:rustc-link-arg=-Wl,-rpath,{}", shared_c_dir.display());
+        println!(
+            "cargo:rustc-link-arg=-Wl,-rpath,{}",
+            runtime_lib_dir.display()
+        );
     }
     if cfg!(target_os = "linux") {
         println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN");
-        println!("cargo:rustc-link-arg=-Wl,-rpath,{}", shared_c_dir.display());
+        println!(
+            "cargo:rustc-link-arg=-Wl,-rpath,{}",
+            runtime_lib_dir.display()
+        );
     }
 }
