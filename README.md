@@ -1,10 +1,6 @@
 # spicedb-embedded
 
-Sometimes you need a simple way to run access checks without spinning up a new service. This library provides an embedded version of [SpiceDB](https://authzed.com/spicedb) in various languages. Each implementation is based on a C-shared library (compiled from the SpiceDB source code) with a very thin FFI binding on top of it.
-
-Communication across the FFI boundary is purposely limited to avoid having to manually manage memory and avoid memory leaks. Instead, when you use the library, it spins up a sidecar server that runs a gRPC service that listens over Unix Sockets (default on Linux/macOS) or TCP (default on Windows).
-
-The default datastore is "memory" (memdb). If you use this datastore, keep in mind that it will reset on each app startup. This is a great option if you can easily provide your schema and relationships at runtime. This way, there are no external network calls to check relationships at runtime.
+Sometimes you need a simple way to run access checks without spinning up a new service. This library provides an embedded version of [SpiceDB](https://authzed.com/spicedb) in various languages. Each implementation is based on a C-shared library (compiled from the SpiceDB source code) with a very thin FFI binding on top of it. This means that it runs the native SpiceDB code within your already-running process.
 
 ```typescript
 import { v1, EmbeddedSpiceDB } from "spicedb-embedded";
@@ -43,6 +39,24 @@ const resp = await spicedb.permissions().promises.checkPermission(
 spicedb.close();
 ```
 
+## Who should consider using this?
+
+If you want to spin up SpiceDB, but don't want the overhead of managing another service, this might be for you.
+
+If you want an embedded server for your unit tests and don't have access to Docker / Testcontainers, this might be for you.
+
+If you have a schema and set of permissions that are static / readonly, this might be for you.
+
+## Who should avoid using this?
+
+If you live in a world of microservices that each need to perform permission checks, you should almost certainly spin up a centralized SpiceDB deployment.
+
+If you want visibility into metrics for SpiceDB, you should avoid this.
+
+## How does storage work?
+
+The default datastore is "memory" (memdb). If you use this datastore, keep in mind that it will reset on each app startup. This is a great option if you can easily provide your schema and relationships at runtime. This way, there are no external network calls to check relationships at runtime.
+
 If you need a longer term storage, you can use any SpiceDB-compatible datastores.
 
 ```typescript
@@ -58,21 +72,29 @@ const spicedb = await EmbeddedSpiceDB.create(schema, [], {
 spicedb.close();
 ```
 
+## Running code written in Go compiled to a C-shared library within my service sounds scary
+
+It is scary! Using a C-shared library via FFI bindings introduces memory management in languages that don't typically have to worry about it.
+
+However, this library purposely limits the FFI layer. The only thing it is used for is to spawn the SpiceDB server (and to dispose of it when you shut down the embedded server). Once the SpiceDB server is running, it exposes a gRPC interface that listens over Unix Sockets (default on Linux/macOS) or TCP (default on Windows).
+
+So you get the benefits of (1) using the same generated gRPC code to communicate with SpiceDB that would in a non-embedded world, and (2) communication happens out-of-band so that no memory allocations happen in the FFI layer once the embedded server is running.
+
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  Your Application (Rust, Java, Python, C#, TypeScript, etc.)     │
-├─────────────────────────────────────────────────────────────────┤
-│  Language bindings (rust/, java/, python/, csharp/, node/)        │
-│  - FFI/cbindgen to shared/c                                     │
-│  - Native gRPC (protobuf) over Unix socket / tcp                │
-├─────────────────────────────────────────────────────────────────┤
-│  shared/c: C-shared library (Go/CGO)                             │
-│  - Embeds SpiceDB server                                        │
+┌───────────────────────────────────────────────────────────────────────┐
+│  Your Application (Rust, Java, Python, C#, TypeScript, etc.)          │
+├───────────────────────────────────────────────────────────────────────┤
+│  Language bindings (rust/, java/, python/, csharp/, node/)            │
+│  - FFI/cbindgen to shared/c                                           │
+│  - Native gRPC (protobuf) over Unix socket / tcp                      │
+├───────────────────────────────────────────────────────────────────────┤
+│  shared/c: C-shared library (Go/CGO)                                  │
+│  - Embeds SpiceDB server                                              │
 │  - Datastore: memory (default), postgres, cockroachdb, spanner, mysql │
-│  - Listens on unique Unix socket or TCP per instance            │
-└─────────────────────────────────────────────────────────────────┘
+│  - Listens on unique Unix socket or TCP per instance                  │
+└───────────────────────────────────────────────────────────────────────┘
 ```
 
 The **shared/c** library is the foundation—all language bindings build on top of it via C FFI. Each instance is independent, enabling parallel testing. Supports multiple datastores: **memory** (default), **postgres**, **cockroachdb**, **spanner**, and **mysql**.

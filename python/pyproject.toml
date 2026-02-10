@@ -1,6 +1,6 @@
 [project]
 name = "spicedb-embedded"
-version = "0.1.0"
+version = "0.1.1"
 description = "Embedded SpiceDB for Python — in-memory server via shared/c FFI + gRPC over Unix socket"
 readme = "README.md"
 license = { text = "Apache-2.0" }

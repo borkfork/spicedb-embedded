@@ -1,6 +1,87 @@
 # spicedb-embedded (C# / .NET)
 
-Embedded [SpiceDB](https://authzed.com/spicedb) for .NET — authorization server for tests and development. Uses the shared/c C library via P/Invoke and connects over gRPC via Unix sockets or TCP. Supports memory (default), postgres, cockroachdb, spanner, and mysql datastores.
+Sometimes you need a simple way to run access checks without spinning up a new service. This library provides an embedded version of [SpiceDB](https://authzed.com/spicedb) in various languages. Each implementation is based on a C-shared library (compiled from the SpiceDB source code) with a very thin FFI binding on top of it. This means that it runs the native SpiceDB code within your already-running process.
+
+```csharp
+using Rendil.Spicedb.Embedded;
+using Authzed.Api.V1;
+
+var schema = """
+definition user {}
+
+definition document {
+    relation reader: user
+    permission read = reader
+}
+""";
+
+var rel = new Relationship
+{
+    Resource = new ObjectReference { ObjectType = "document", ObjectId = "readme" },
+    Relation = "reader",
+    Subject = new SubjectReference { Object = new ObjectReference { ObjectType = "user", ObjectId = "alice" } },
+};
+
+using var spicedb = EmbeddedSpiceDB.Create(schema, new[] { rel });
+
+var resp = spicedb.Permissions().CheckPermission(new CheckPermissionRequest
+{
+    Consistency = new Consistency { FullyConsistent = true },
+    Resource = new ObjectReference { ObjectType = "document", ObjectId = "readme" },
+    Permission = "read",
+    Subject = new SubjectReference { Object = new ObjectReference { ObjectType = "user", ObjectId = "alice" } },
+});
+var allowed = resp.Permissionship == CheckPermissionResponse.Types.Permissionship.HasPermission;
+```
+
+## Who should consider using this?
+
+If you want to spin up SpiceDB, but don't want the overhead of managing another service, this might be for you.
+
+If you want an embedded server for your unit tests and don't have access to Docker / Testcontainers, this might be for you.
+
+If you have a schema and set of permissions that are static / readonly, this might be for you.
+
+## Who should avoid using this?
+
+If you live in a world of microservices that each need to perform permission checks, you should almost certainly spin up a centralized SpiceDB deployment.
+
+If you want visibility into metrics for SpiceDB, you should avoid this.
+
+## How does storage work?
+
+The default datastore is "memory" (memdb). If you use this datastore, keep in mind that it will reset on each app startup. This is a great option if you can easily provide your schema and relationships at runtime. This way, there are no external network calls to check relationships at runtime.
+
+If you need a longer term storage, you can use any SpiceDB-compatible datastores.
+
+```csharp
+using Rendil.Spicedb.Embedded;
+
+// Run migrations first: spicedb datastore migrate head --datastore-engine postgres --datastore-conn-uri "postgres://..."
+var schema = """
+definition user {}
+
+definition document {
+    relation reader: user
+    permission read = reader
+}
+""";
+
+using var spicedb = EmbeddedSpiceDB.Create(schema, Array.Empty<Relationship>(), new StartOptions
+{
+    Datastore = "postgres",
+    DatastoreUri = "postgres://user:pass@localhost:5432/spicedb",
+});
+// Use full Permissions API (WriteRelationships, CheckPermission, etc.)
+```
+
+## Running code written in Go compiled to a C-shared library within my service sounds scary
+
+It is scary! Using a C-shared library via FFI bindings introduces memory management in languages that don't typically have to worry about it.
+
+However, this library purposely limits the FFI layer. The only thing it is used for is to spawn the SpiceDB server (and to dispose of it when you shut down the embedded server). Once the SpiceDB server is running, it exposes a gRPC interface that listens over Unix Sockets (default on Linux/macOS) or TCP (default on Windows).
+
+So you get the benefits of (1) using the same generated gRPC code to communicate with SpiceDB that would in a non-embedded world, and (2) communication happens out-of-band so that no memory allocations happen in the FFI layer once the embedded server is running.
 
 ## Installation
 

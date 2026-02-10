@@ -168,10 +168,14 @@ jobs:
         working-directory: node
         run: |
           if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::NPM_TOKEN secret is not set."
+            echo "::error::NPM_TOKEN secret is not set. Add it in Settings → Secrets and variables → Actions."
             exit 1
           fi
-          echo "Logged in as: $(npm whoami --registry https://registry.npmjs.org)"
+          user=$(npm whoami --registry https://registry.npmjs.org 2>&1) || {
+            echo "::error::NPM_TOKEN is invalid or expired (401). Create a NEW token at https://www.npmjs.com/settings/~/tokens (type Automation or Publish), then update the NPM_TOKEN repo secret. Do not reuse an old token."
+            exit 1
+          }
+          echo "Logged in as: $user"
 
       - name: Publish to npm
         working-directory: node
