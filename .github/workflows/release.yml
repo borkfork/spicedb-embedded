@@ -59,7 +59,12 @@ jobs:
       - name: Vendor shared/c into crate for packaging
         run: |
           mkdir -p rust/shared
-          cp -r shared/c rust/shared/
+          # Copy only source files, not build artifacts
+          cp shared/c/main.go rust/shared/c/
+          cp shared/c/go.mod rust/shared/c/
+          cp shared/c/go.sum rust/shared/c/
+          cp shared/c/spicedb.def rust/shared/c/
+          cp shared/c/README.md rust/shared/c/
           git add -f rust/shared/
 
       - name: Publish to crates.io

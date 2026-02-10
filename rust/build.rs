@@ -52,9 +52,17 @@ fn emit_rerun_if_changed(use_crate_shared: bool) {
     if use_crate_shared {
         println!("cargo:rerun-if-changed=shared/c/main.go");
         println!("cargo:rerun-if-changed=shared/c/go.mod");
+        println!("cargo:rerun-if-changed=shared/c/go.sum");
+        if cfg!(target_os = "windows") {
+            println!("cargo:rerun-if-changed=shared/c/spicedb.def");
+        }
     } else {
         println!("cargo:rerun-if-changed=../shared/c/main.go");
         println!("cargo:rerun-if-changed=../shared/c/go.mod");
+        println!("cargo:rerun-if-changed=../shared/c/go.sum");
+        if cfg!(target_os = "windows") {
+            println!("cargo:rerun-if-changed=../shared/c/spicedb.def");
+        }
     }
 }
 
@@ -117,6 +125,8 @@ fn build_go_lib_to(shared_c_dir: &Path, out_dir: &Path, lib_filename: &str) {
     match output {
         Ok(result) if result.status.success() => {
             println!("cargo:warning=Successfully built {lib_filename}");
+            #[cfg(target_os = "windows")]
+            generate_windows_import_lib(shared_c_dir, out_dir);
         }
         Ok(result) => {
             let stderr = String::from_utf8_lossy(&result.stderr);
@@ -129,6 +139,118 @@ fn build_go_lib_to(shared_c_dir: &Path, out_dir: &Path, lib_filename: &str) {
             panic!("Go not found ({e}). Install Go with 'mise install' and ensure CGO is enabled.");
         }
     }
+}
+
+#[cfg(target_os = "windows")]
+fn generate_windows_import_lib(shared_c_dir: &Path, out_dir: &Path) {
+    println!("cargo:warning=Generating spicedb.lib import library for MSVC...");
+    let def_file = shared_c_dir.join("spicedb.def");
+    let dll_file = out_dir.join("spicedb.dll");
+    let lib_file = out_dir.join("spicedb.lib");
+
+    if !def_file.exists() {
+        println!("cargo:warning=spicedb.def not found, skipping import library generation");
+        return;
+    }
+    if !dll_file.exists() {
+        println!("cargo:warning=spicedb.dll not found, skipping import library generation");
+        return;
+    }
+
+    // Try to find lib.exe from Visual Studio
+    let lib_exe = find_msvc_lib_exe();
+    let Some(lib_exe) = lib_exe else {
+        println!("cargo:warning=lib.exe not found. Install Visual Studio Build Tools for MSVC linking support.");
+        return;
+    };
+
+    let result = Command::new(&lib_exe)
+        .args([
+            "/def:".to_string() + def_file.to_str().expect("path is utf-8"),
+            "/out:".to_string() + lib_file.to_str().expect("path is utf-8"),
+            "/machine:x64".to_string(),
+        ])
+        .output();
+
+    match result {
+        Ok(result) if result.status.success() => {
+            println!("cargo:warning=Successfully generated spicedb.lib");
+        }
+        Ok(result) => {
+            let stderr = String::from_utf8_lossy(&result.stderr);
+            println!("cargo:warning=Failed to generate import library: {stderr}");
+        }
+        Err(e) => {
+            println!("cargo:warning=Failed to run lib.exe: {e}");
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn find_msvc_lib_exe() -> Option<PathBuf> {
+    use std::env;
+
+    // Try vswhere first
+    let vswhere = Path::new("C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe");
+    if vswhere.exists() {
+        if let Ok(output) = Command::new(vswhere)
+            .args(["-latest", "-property", "installationPath"])
+            .output()
+        {
+            if output.status.success() {
+                let vs_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if let Some(lib_exe) = find_lib_exe_in_vs_path(&vs_path) {
+                    return Some(lib_exe);
+                }
+            }
+        }
+    }
+
+    // Fallback to common locations
+    let common_paths = [
+        "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise",
+        "C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional",
+        "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community",
+        "C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools",
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise",
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Professional",
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community",
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools",
+    ];
+
+    for vs_path in &common_paths {
+        if let Some(lib_exe) = find_lib_exe_in_vs_path(vs_path) {
+            return Some(lib_exe);
+        }
+    }
+
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn find_lib_exe_in_vs_path(vs_path: &str) -> Option<PathBuf> {
+    let vc_tools = Path::new(vs_path).join("VC\\Tools\\MSVC");
+    if !vc_tools.exists() {
+        return None;
+    }
+
+    // Find the latest MSVC version
+    let mut versions: Vec<_> = std::fs::read_dir(&vc_tools)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_dir())
+        .collect();
+    
+    versions.sort_by(|a, b| b.path().cmp(&a.path()));
+
+    for version_dir in versions {
+        let lib_exe = version_dir.path().join("bin\\Hostx64\\x64\\lib.exe");
+        if lib_exe.exists() {
+            return Some(lib_exe);
+        }
+    }
+
+    None
 }
 
 fn copy_lib_to_target(lib_path: &Path, lib_filename: &str) {
@@ -156,6 +278,22 @@ fn copy_lib_to_target(lib_path: &Path, lib_filename: &str) {
             dest.display(),
             e
         );
+    }
+
+    // On Windows, also copy the .lib import library if it exists
+    #[cfg(target_os = "windows")]
+    {
+        let lib_import = out_path.join("spicedb.lib");
+        if lib_import.exists() {
+            let dest_lib = target_dir.join("spicedb.lib");
+            if let Err(e) = std::fs::copy(&lib_import, &dest_lib) {
+                println!(
+                    "cargo:warning=Failed to copy import library to {}: {}",
+                    dest_lib.display(),
+                    e
+                );
+            }
+        }
     }
 }
 
