@@ -66,3 +66,44 @@ jobs:
         run: cargo publish -p spicedb-embedded --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  publish-java:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
+          fetch-depth: 0
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml', '**/pom.xml.releaseBackup') }}
+          restore-keys: ${{ runner.os }}-m2-
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+          cache: maven
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          server-id: central
+          server-username: SONATYPE_USERNAME
+          server-password: SONATYPE_TOKEN
+
+      - name: Build Java library
+        run: mise run java-build
+
+      - name: Publish to Maven Central
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          mvn -B -ntp -Dstyle.color=always -P release release:prepare
+          VERSION=`cat release.properties | grep scm.tag= | cut -d'=' -f2`
+          mvn -B -ntp -Dstyle.color=always -P releaserelease:perform
+          echo "Released ${VERSION} 🚀" >> $GITHUB_STEP_SUMMARY
+        env:
+          GPG_PASSPHRASE: ""
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+          SONATYPE_TOKEN: ${{ secrets.SONATYPE_TOKEN }}
