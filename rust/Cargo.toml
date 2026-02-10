@@ -19,7 +19,7 @@ keywords = [
   "zanzibar",
   "authorization",
   "access-control",
-  "fine-grained-permissions",
+  "fine-grained",
 ]
 
 [lib]
