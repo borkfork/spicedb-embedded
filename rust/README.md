@@ -13,7 +13,7 @@ spicedb-embedded = { path = "../spicedb-embedded/rust" }
 # spicedb-embedded = "0.1"
 ```
 
-**Prerequisites:** Go 1.23+ with CGO enabled (to build the shared library). The Rust build script compiles shared/c automatically.
+**Prerequisites:** Go 1.23+ with CGO enabled (to build the shared library). The Rust build script compiles the C library from Go source at build time; the crate does not ship prebuilt `.so`/`.dll`/`.dylib` binaries, so it stays portable across platforms.
 
 ## Usage
 

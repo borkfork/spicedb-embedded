@@ -129,6 +129,39 @@ fn build_go_lib_to(shared_c_dir: &Path, out_dir: &Path, lib_filename: &str) {
             panic!("Go not found ({e}). Install Go with 'mise install' and ensure CGO is enabled.");
         }
     }
+
+    #[cfg(target_os = "windows")]
+    generate_import_lib_windows(shared_c_dir, out_dir);
+}
+
+#[cfg(target_os = "windows")]
+fn generate_import_lib_windows(shared_c_dir: &Path, out_dir: &Path) {
+    let def_file = shared_c_dir.join("spicedb.def");
+    if !def_file.exists() {
+        return;
+    }
+    let manifest_dir =
+        std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR set by Cargo");
+    let script = Path::new(&manifest_dir)
+        .join("..")
+        .join("scripts")
+        .join("generate-dll-import-lib.sh");
+    let status = Command::new("bash")
+        .arg(&script)
+        .arg(&def_file)
+        .arg(out_dir)
+        .status();
+    match status {
+        Ok(s) if s.success() => {
+            println!("cargo:warning=Generated spicedb.lib for MSVC linking");
+        }
+        _ => {
+            panic!(
+                "Failed to generate spicedb.lib. Run scripts/generate-dll-import-lib.sh manually. \
+                MSVC needs the import library to link the DLL; install Visual Studio Build Tools."
+            );
+        }
+    }
 }
 
 fn copy_lib_to_target(lib_path: &Path, lib_filename: &str) {
