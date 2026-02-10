@@ -58,7 +58,7 @@ jobs:
 
       - name: Vendor shared/c into crate for packaging
         run: |
-          mkdir -p rust/shared
+          mkdir -p rust/shared/c
           # Copy only source files, not build artifacts
           cp shared/c/main.go rust/shared/c/
           cp shared/c/go.mod rust/shared/c/
