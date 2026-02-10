@@ -73,7 +73,7 @@ jobs:
   publish-java:
     runs-on: ubuntu-latest
     env:
-      SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+      SONATYPE_USERNAME: ${{ vars.SONATYPE_USERNAME }}
       SONATYPE_TOKEN: ${{ secrets.SONATYPE_TOKEN }}
       GPG_PASSPHRASE: ""
     steps:
