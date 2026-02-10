@@ -101,6 +101,7 @@ jobs:
 
       - name: Publish to Maven Central
         run: |
+          cd java
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           mvn -B -ntp -Dstyle.color=always -P release release:prepare
