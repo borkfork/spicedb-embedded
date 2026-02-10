@@ -166,8 +166,8 @@ fn generate_windows_import_lib(shared_c_dir: &Path, out_dir: &Path) {
 
     let result = Command::new(&lib_exe)
         .args([
-            "/def:".to_string() + def_file.to_str().expect("path is utf-8"),
-            "/out:".to_string() + lib_file.to_str().expect("path is utf-8"),
+            format!("/def:{}", def_file.to_str().expect("path is utf-8")),
+            format!("/out:{}", lib_file.to_str().expect("path is utf-8")),
             "/machine:x64".to_string(),
         ])
         .output();
@@ -234,7 +234,8 @@ fn find_lib_exe_in_vs_path(vs_path: &str) -> Option<PathBuf> {
         return None;
     }
 
-    // Find the latest MSVC version
+    // Find the latest MSVC version (sort descending by path name)
+    // Note: This relies on MSVC version numbers being lexicographically sortable (e.g., "14.40.33807")
     let mut versions: Vec<_> = std::fs::read_dir(&vc_tools)
         .ok()?
         .filter_map(|e| e.ok())
