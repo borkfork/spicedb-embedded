@@ -10,7 +10,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Borkfork.SpiceDb.Embedded</RootNamespace>
     <PackageId>SpiceDbEmbedded</PackageId>
-    <Version>0.1.6</Version>
+    <Version>0.1.7</Version>
     <Description>Embedded SpiceDB for .NET — in-memory server via shared/c P/Invoke + gRPC over Unix socket</Description>
     <Authors>Borkfork</Authors>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
