@@ -226,6 +226,11 @@ jobs:
       - name: Build Python package
         run: mise run python-build
 
-      - name: Publish package distributions to PyPI
+      - name: Build package distributions
         working-directory: python
+        run: pip install build && python -m build
+
+      - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: python/dist
