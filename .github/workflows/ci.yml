@@ -46,11 +46,23 @@ jobs:
             rust/prebuilds
           retention-days: 1
 
+  format-toml-shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "taplo shellcheck shfmt"
+
+      - name: TOML and shell format check
+        run: mise run format-check-toml && mise run format-check-bash
+
   rust:
     needs: shared-c-lib
     runs-on: ubuntu-latest
     env:
-      MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,taplo,github:knope-dev/knope,go,github:authzed/spicedb"
+      MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,github:knope-dev/knope,go,github:authzed/spicedb"
     steps:
       - uses: actions/checkout@v4
 
@@ -67,14 +79,14 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "rust github:EmbarkStudios/cargo-deny taplo github:knope-dev/knope go github:authzed/spicedb"
+          install_args: "rust github:EmbarkStudios/cargo-deny github:knope-dev/knope go github:authzed/spicedb"
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: . -> target
 
       - name: Format check
-        run: mise run format-check-rust && mise run check-toml-format
+        run: mise run format-check-rust
 
       - name: Install clippy
         run: rustup component add clippy

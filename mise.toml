@@ -7,6 +7,8 @@ rust = { version = "1.91.1", components = "rustfmt,clippy" }
 "github:EmbarkStudios/cargo-deny" = { version = "0.19.0", version_prefix = "" }
 taplo = "0.10.0"
 jq = "1.7"
+shellcheck = "0.10.0"
+shfmt = "3.8.0"
 "github:knope-dev/knope" = "knope/v0.21.7"
 go = "1.23"
 node = "22"
@@ -38,7 +40,8 @@ run = "knope document-change"
 description = "Verify format for all languages"
 depends = [
   "format-check-rust",
-  "check-toml-format",
+  "format-check-bash",
+  "format-check-toml",
   "format-check-python",
   "format-check-java",
   "format-check-csharp",
@@ -48,6 +51,10 @@ depends = [
 [tasks.resharper-check]
 description = "Run ReSharper InspectCode (C#) and fail if issues found"
 run = "dotnet tool restore && dotnet tool run jb -- inspectcode csharp/SpiceDbEmbedded.sln -o=resharper-inspect.sarif && (jq -e '.runs[0].results | length == 0' resharper-inspect.sarif >/dev/null) || (echo 'ReSharper found issues; see resharper-inspect.sarif' && exit 1)"
+
+[tasks.format-check-bash]
+description = "Lint and verify Bash script format (check only, no writes)"
+run = "shellcheck scripts/*.sh && shfmt -d -s scripts/"
 
 [tasks.format-check-rust]
 description = "Verify Rust format"
@@ -76,6 +83,7 @@ run = "npm ci && npm run format:check"
 description = "Reformat all languages"
 depends = [
   "reformat-rust",
+  "reformat-bash",
   "reformat-toml",
   "reformat-python",
   "reformat-java",
@@ -83,6 +91,10 @@ depends = [
   "reformat-resharper",
   "reformat-node",
 ]
+
+[tasks.reformat-bash]
+description = "Reformat Bash scripts (writes changes)"
+run = "shfmt -w -s scripts/"
 
 [tasks.reformat-rust]
 description = "Reformat Rust"
@@ -137,7 +149,7 @@ run = "cargo deny check -c deny.toml"
 description = "Sync shared/c into rust/shared and run cargo publish --dry-run (same as release workflow)"
 run = "mkdir -p rust/shared && cp -r shared/c rust/shared/ && git add -f rust/shared/ && cargo publish -p spicedb-embedded --dry-run --allow-dirty; git reset HEAD rust/shared/ 2>/dev/null || true"
 
-[tasks.check-toml-format]
+[tasks.format-check-toml]
 description = "Check TOML formatting"
 run = "taplo format --check"
 
