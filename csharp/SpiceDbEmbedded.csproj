@@ -10,7 +10,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Borkfork.SpiceDb.Embedded</RootNamespace>
     <PackageId>SpiceDbEmbedded</PackageId>
-    <Version>0.1.8</Version>
+    <Version>0.1.9</Version>
     <Description>Embedded SpiceDB for .NET — embedded authorization using the standard gRPC API</Description>
     <Authors>Borkfork</Authors>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
