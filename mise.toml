@@ -179,11 +179,11 @@ run = "mise run shared-c-build && bash ../scripts/stage-all-prebuilds.sh && pip 
 
 [tasks.csharp-build]
 description = "Build the C# library"
-run = "mise run shared-c-build && ./scripts/stage-all-prebuilds.sh && dotnet build csharp/SpiceDbEmbedded.sln"
+run = "mise run shared-c-build && bash ./scripts/stage-all-prebuilds.sh && dotnet build csharp/SpiceDbEmbedded.sln"
 
 [tasks.csharp-test]
 description = "Build and test the C# library"
-run = "mise run shared-c-build && ./scripts/stage-all-prebuilds.sh && dotnet build csharp/SpiceDbEmbedded.sln && dotnet test csharp/SpiceDbEmbedded.Tests/SpiceDbEmbedded.Tests.csproj --no-build"
+run = "mise run shared-c-build && bash ./scripts/stage-all-prebuilds.sh && dotnet build csharp/SpiceDbEmbedded.sln && dotnet test csharp/SpiceDbEmbedded.Tests/SpiceDbEmbedded.Tests.csproj --no-build"
 
 # ============================================================================
 # Node.js
