@@ -1,11 +1,27 @@
 [project]
 name = "spicedb-embedded"
-version = "0.1.8"
+version = "0.1.9"
 description = "Embedded SpiceDB for Python — embedded authorization using the standard gRPC API"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
 dependencies = ["authzed>=1.4.0", "grpcio>=1.60.0"]
+authors = [{ name = "Borkfork", url = "https://github.com/borkfork" }]
+keywords = ["spicedb", "authzed", "authorization", "zanzibar", "embedded", "grpc"]
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+]
+
+[project.urls]
+Homepage = "https://github.com/borkfork/spicedb-embedded"
+Repository = "https://github.com/borkfork/spicedb-embedded"
+Documentation = "https://github.com/borkfork/spicedb-embedded/tree/main/python"
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0.0", "ruff>=0.8.0"]

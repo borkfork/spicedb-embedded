@@ -204,3 +204,28 @@ jobs:
       - name: NuGet push
         working-directory: csharp
         run: dotnet nuget push bin/Release/SpiceDbEmbedded.nupkg --api-key ${{steps.login.outputs.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json
+
+  publish-pypi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
+          fetch-depth: 0
+
+      - uses: actions/cache@v4
+        with:
+          path: python
+          key: ${{ runner.os }}-pypi-${{ hashFiles('**/dist/*.whl', '**/dist/*.tar.gz') }}
+          restore-keys: ${{ runner.os }}-pypi-
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "go python"
+
+      - name: Build Python package
+        run: mise run python-build
+
+      - name: Publish package distributions to PyPI
+        working-directory: python
+        uses: pypa/gh-action-pypi-publish@release/v1
