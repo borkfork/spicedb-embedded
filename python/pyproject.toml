@@ -7,15 +7,22 @@ license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
 dependencies = ["authzed>=1.4.0", "grpcio>=1.60.0"]
 authors = [{ name = "Borkfork" }]
-keywords = ["spicedb", "authzed", "authorization", "zanzibar", "embedded", "grpc"]
+keywords = [
+  "spicedb",
+  "authzed",
+  "authorization",
+  "zanzibar",
+  "embedded",
+  "grpc",
+]
 classifiers = [
-    "License :: OSI Approved :: Apache Software License",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Topic :: Software Development :: Libraries",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries",
 ]
 
 [project.urls]
