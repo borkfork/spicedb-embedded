@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -202,12 +203,16 @@ func parseStartOptions(options_json *C.char) StartOptions {
 }
 
 // isAddrInUse reports whether err indicates the address (port or socket) is already in use.
+// Prefer type checks (OpError + EADDRINUSE); fall back to message in case the error was
+// wrapped without %w and the chain was lost (e.g. by SpiceDB/gRPC layers).
 func isAddrInUse(err error) bool {
 	var opErr *net.OpError
 	if errors.As(err, &opErr) {
 		return errors.Is(opErr.Err, syscall.EADDRINUSE)
 	}
-	return false
+	msg := err.Error()
+	return strings.Contains(msg, "address already in use") ||
+		strings.Contains(msg, "Only one usage of each socket address")
 }
 
 // listenAddr returns the address for a new instance (Unix socket path or TCP host:port).
