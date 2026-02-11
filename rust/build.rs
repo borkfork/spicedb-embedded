@@ -1,8 +1,7 @@
 //! Build script for spicedb-embedded.
 //!
-//! Builds a C-shared library from Go source and links it.
-//! Uses `CARGO_MANIFEST_DIR` so the crate works when published to crates.io (`shared/c`
-//! is copied into the package at publish time). In-repo development falls back to `../shared/c`.
+//! Prefers a prebuilt C-shared library in `prebuilds/<rid>/` (same layout as stage-all-prebuilds.sh).
+//! Otherwise builds from Go source in `shared/c` (crates.io publish) or `../shared/c` (in-repo).
 
 use std::{
     path::{Path, PathBuf},
@@ -12,10 +11,38 @@ use std::{
 fn main() {
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR set by Cargo");
     let out_path = Path::new(&out_dir);
+    let manifest_dir = PathBuf::from(
+        std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR set by Cargo"),
+    );
+    let (lib_filename, lib_path) = lib_artifact_name_and_path_out(out_path);
+
+    // Prefer staged prebuild (same convention as C#/Node/Java/Python)
+    if let Some(rid) = target_rid() {
+        let prebuild = manifest_dir.join("prebuilds").join(rid).join(&lib_filename);
+        if prebuild.exists() {
+            println!("cargo:rerun-if-changed={}", prebuild.display());
+            assert!(
+                std::fs::copy(&prebuild, &lib_path).is_ok(),
+                "Failed to copy prebuild from {}",
+                prebuild.display()
+            );
+            #[cfg(target_os = "windows")]
+            {
+                let prebuild_dir = manifest_dir.join("prebuilds").join(rid);
+                generate_import_lib_windows(&prebuild_dir, out_path);
+            }
+            println!("cargo:rustc-link-search=native={}", out_path.display());
+            println!("cargo:rustc-link-lib=dylib=spicedb");
+            copy_lib_to_target(&lib_path, &lib_filename);
+            if let Some(target_dir) = out_path.ancestors().nth(3) {
+                emit_rpath(target_dir);
+            }
+            return;
+        }
+    }
 
     let (shared_c_dir, use_crate_shared) = resolve_shared_c_dir();
     emit_rerun_if_changed(use_crate_shared);
-    let (lib_filename, lib_path) = lib_artifact_name_and_path_out(out_path);
 
     if lib_needs_build(&lib_path, &shared_c_dir) {
         build_go_lib_to(&shared_c_dir, out_path, &lib_filename);
@@ -27,6 +54,22 @@ fn main() {
     if let Some(target_dir) = out_path.ancestors().nth(3) {
         emit_rpath(target_dir);
     }
+}
+
+/// Maps `target_os` + `target_arch` to our RID (same as C# / stage-all-prebuilds).
+const fn target_rid() -> Option<&'static str> {
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    return Some("linux-x64");
+    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+    return Some("linux-arm64");
+    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+    return Some("osx-x64");
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    return Some("osx-arm64");
+    #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+    return Some("win-x64");
+    #[allow(unreachable_code)]
+    None
 }
 
 fn resolve_shared_c_dir() -> (PathBuf, bool) {
@@ -135,8 +178,8 @@ fn build_go_lib_to(shared_c_dir: &Path, out_dir: &Path, lib_filename: &str) {
 }
 
 #[cfg(target_os = "windows")]
-fn generate_import_lib_windows(shared_c_dir: &Path, out_dir: &Path) {
-    let def_file = shared_c_dir.join("spicedb.def");
+fn generate_import_lib_windows(def_dir: &Path, out_dir: &Path) {
+    let def_file = def_dir.join("spicedb.def");
     let lib_file = out_dir.join("spicedb.lib");
     if !def_file.exists() {
         return;

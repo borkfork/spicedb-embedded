@@ -74,23 +74,6 @@ function findLibrary(): string {
     }
   }
 
-  const searchPaths = [
-    "shared/c",
-    resolve(process.cwd(), "shared/c"),
-    resolve(process.cwd(), "../shared/c"),
-    resolve(process.cwd(), "node/../shared/c"),
-  ];
-
-  for (const base of searchPaths) {
-    const candidate = resolve(base, libName);
-    try {
-      accessSync(candidate);
-      return candidate;
-    } catch {
-      // continue
-    }
-  }
-
   return libName;
 }
 

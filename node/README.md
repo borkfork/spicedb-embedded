@@ -96,20 +96,15 @@ The WASM only provides a small subset of the functionality of SpiceDB, but it ha
 npm install spicedb-embedded
 ```
 
-Or from source:
+Or from source (requires Go with CGO; build and test use the same prebuilds layout as the published package):
 
 ```bash
-cd node && npm install
+mise run shared-c-build
+./scripts/stage-all-prebuilds.sh
+cd node && npm install && npm run build && npm test
 ```
 
-**Prerequisites:** Go 1.23+ with CGO enabled. Build the shared library first:
-
-```bash
-cd shared/c && CGO_ENABLED=1 go build -buildmode=c-shared -o libspicedb.dylib .  # macOS
-cd shared/c && CGO_ENABLED=1 go build -buildmode=c-shared -o libspicedb.so .      # Linux
-```
-
-The library looks for `libspicedb.dylib` (macOS) or `libspicedb.so` (Linux) in `SPICEDB_LIBRARY_PATH` or relative to the working directory. Override with `SPICEDB_LIBRARY_PATH=/path/to/shared/c`.
+Override the library location with `SPICEDB_LIBRARY_PATH` if needed. To test the exact tarball you would publish: `cd node && npm pack`, then install the resulting `.tgz` in another directory.
 
 ## Usage
 

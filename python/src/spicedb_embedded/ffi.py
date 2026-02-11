@@ -49,11 +49,6 @@ def _find_library() -> str | None:
     if explicit:
         return explicit
 
-    base = Path.cwd()
-    for rel in ("shared/c", "../shared/c", "python/../shared/c"):
-        path = (base / rel / lib_name).resolve()
-        if path.exists():
-            return str(path)
     return None
 
 

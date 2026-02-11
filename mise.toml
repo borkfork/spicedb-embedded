@@ -127,7 +127,7 @@ run = "DOCKER_BUILDKIT=1 docker build -t spicedb-embedded-test -f Dockerfile ."
 
 [tasks.rust-test]
 description = "Run Rust tests"
-run = "mise run shared-c-build && cargo test --locked --workspace"
+run = "mise run shared-c-build && bash ./scripts/stage-all-prebuilds.sh && cargo test --locked --workspace"
 
 [tasks.cargo-deny]
 description = "Run cargo-deny (license, advisory, ban checks)"
@@ -152,12 +152,12 @@ run = "taplo format"
 [tasks.java-build]
 description = "Build the Java library"
 dir = "java"
-run = "mise run shared-c-build && mvn compile"
+run = "mise run shared-c-build && bash ../scripts/stage-all-prebuilds.sh && mvn compile"
 
 [tasks.java-test]
 description = "Build and test the Java library"
 dir = "java"
-run = "mise run shared-c-build && mvn test"
+run = "mise run shared-c-build && bash ../scripts/stage-all-prebuilds.sh && mvn test"
 
 # ============================================================================
 # Python tasks
@@ -166,12 +166,12 @@ run = "mise run shared-c-build && mvn test"
 [tasks.python-build]
 description = "Build the Python package"
 dir = "python"
-run = "mise run shared-c-build && pip install -e ."
+run = "mise run shared-c-build && bash ../scripts/stage-all-prebuilds.sh && pip install -e ."
 
 [tasks.python-test]
 description = "Build and test the Python package"
 dir = "python"
-run = "mise run shared-c-build && pip install -e '.[dev]' && pytest"
+run = "mise run shared-c-build && bash ../scripts/stage-all-prebuilds.sh && pip install -e '.[dev]' && pytest"
 
 # ============================================================================
 # C# / .NET tasks
@@ -179,11 +179,11 @@ run = "mise run shared-c-build && pip install -e '.[dev]' && pytest"
 
 [tasks.csharp-build]
 description = "Build the C# library"
-run = "mise run shared-c-build && dotnet build csharp/SpiceDbEmbedded.sln"
+run = "mise run shared-c-build && ./scripts/stage-all-prebuilds.sh && dotnet build csharp/SpiceDbEmbedded.sln"
 
 [tasks.csharp-test]
 description = "Build and test the C# library"
-run = "bash -c 'mise run shared-c-build && dotnet build csharp/SpiceDbEmbedded.sln && SPICEDB_LIBRARY_PATH=\"$(./scripts/lib-path.sh)\" dotnet test csharp/SpiceDbEmbedded.Tests/SpiceDbEmbedded.Tests.csproj --no-build'"
+run = "mise run shared-c-build && ./scripts/stage-all-prebuilds.sh && dotnet build csharp/SpiceDbEmbedded.sln && dotnet test csharp/SpiceDbEmbedded.Tests/SpiceDbEmbedded.Tests.csproj --no-build"
 
 # ============================================================================
 # Node.js
@@ -192,9 +192,9 @@ run = "bash -c 'mise run shared-c-build && dotnet build csharp/SpiceDbEmbedded.s
 [tasks.node-build]
 description = "Build the Node.js package"
 dir = "node"
-run = "mise run shared-c-build && npm ci && npm run build"
+run = "mise run shared-c-build && bash ../scripts/stage-all-prebuilds.sh && npm ci && npm run build"
 
 [tasks.node-test]
 description = "Build and test the Node.js package"
 dir = "node"
-run = "bash -c 'mise run shared-c-build && npm ci && npm run build && SPICEDB_LIBRARY_PATH=\"$PWD/../shared/c\" npm test'"
+run = "mise run shared-c-build && bash ../scripts/stage-all-prebuilds.sh && npm ci && npm run build && npm test"

@@ -136,23 +136,6 @@ internal static class SpiceDbFfi
             }
         }
 
-        // Fallback: search from CWD and assembly-relative paths (dev or SPICEDB_LIBRARY_PATH unset)
-        var searchDirs = new List<string> { Directory.GetCurrentDirectory() };
-        if (!string.IsNullOrEmpty(asmDir))
-        {
-            searchDirs.Add(asmDir);
-            searchDirs.Add(Path.GetFullPath(Path.Combine(asmDir, "../..")));
-            searchDirs.Add(Path.GetFullPath(Path.Combine(asmDir, "../../..")));
-            searchDirs.Add(Path.GetFullPath(Path.Combine(asmDir, "../../../..")));
-        }
-
-        foreach (var baseDir in searchDirs.Distinct())
-            foreach (var rel in new[] { "shared/c", "../shared/c", "csharp/../shared/c" })
-            {
-                var path = Path.GetFullPath(Path.Combine(baseDir, rel, libName));
-                if (File.Exists(path)) return path;
-            }
-
         return null;
     }
 
@@ -168,7 +151,7 @@ internal static class SpiceDbFfi
         var normalized = rid;
         normalized = Regex.Replace(normalized, @"^win\d+-", "win-");
         normalized = Regex.Replace(normalized, @"^osx\.\d+-", "osx-");
-        normalized = Regex.Replace(normalized, @"^linux-musl-", "linux-");
+        normalized = Regex.Replace(normalized, "^linux-musl-", "linux-");
         if (normalized != rid) yield return normalized;
     }
 

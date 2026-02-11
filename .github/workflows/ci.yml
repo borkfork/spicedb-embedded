@@ -31,11 +31,19 @@ jobs:
       - name: Build shared C library
         run: mise run shared-c-build
 
-      - name: Upload shared library
+      - name: Stage prebuilds for all languages
+        run: ./scripts/stage-all-prebuilds.sh
+
+      - name: Upload prebuilds
         uses: actions/upload-artifact@v4
         with:
-          name: libspicedb-shared
-          path: shared/c/libspicedb.*
+          name: prebuilds
+          path: |
+            node/prebuilds
+            csharp/runtimes
+            java/src/main/resources/natives
+            python/src/spicedb_embedded/natives
+            rust/prebuilds
           retention-days: 1
 
   rust:
@@ -52,11 +60,10 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Download shared library
+      - name: Download prebuilds
         uses: actions/download-artifact@v4
         with:
-          name: libspicedb-shared
-          path: shared/c/
+          name: prebuilds
 
       - uses: jdx/mise-action@v3
         with:
@@ -89,11 +96,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download shared library
+      - name: Download prebuilds
         uses: actions/download-artifact@v4
         with:
-          name: libspicedb-shared
-          path: shared/c/
+          name: prebuilds
 
       - uses: actions/cache@v4
         with:
@@ -120,11 +126,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download shared library
+      - name: Download prebuilds
         uses: actions/download-artifact@v4
         with:
-          name: libspicedb-shared
-          path: shared/c/
+          name: prebuilds
 
       - uses: actions/cache@v4
         with:
@@ -153,11 +158,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download shared library
+      - name: Download prebuilds
         uses: actions/download-artifact@v4
         with:
-          name: libspicedb-shared
-          path: shared/c/
+          name: prebuilds
 
       - uses: actions/cache@v4
         with:
@@ -175,7 +179,7 @@ jobs:
       - name: Test
         run: |
           dotnet build csharp/SpiceDbEmbedded.sln
-          SPICEDB_LIBRARY_PATH="$(./scripts/lib-path.sh)" dotnet test csharp/SpiceDbEmbedded.Tests/SpiceDbEmbedded.Tests.csproj --no-build
+          dotnet test csharp/SpiceDbEmbedded.Tests/SpiceDbEmbedded.Tests.csproj --no-build
 
   node:
     needs: shared-c-lib
@@ -185,11 +189,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download shared library
+      - name: Download prebuilds
         uses: actions/download-artifact@v4
         with:
-          name: libspicedb-shared
-          path: shared/c/
+          name: prebuilds
 
       - uses: actions/cache@v4
         with:
@@ -209,7 +212,7 @@ jobs:
         run: |
           npm ci
           npm run build
-          SPICEDB_LIBRARY_PATH="$(../scripts/lib-path.sh)" npm test
+          npm test
 
   windows:
     runs-on: windows-latest
@@ -272,6 +275,10 @@ jobs:
         shell: bash
         run: mise run shared-c-build
 
+      - name: Stage prebuilds for current platform
+        shell: bash
+        run: ./scripts/stage-all-prebuilds.sh
+
       - name: Rust test
         shell: bash
         run: cargo test --locked --workspace
@@ -292,7 +299,7 @@ jobs:
         shell: bash
         run: |
           dotnet build csharp/SpiceDbEmbedded.sln
-          SPICEDB_LIBRARY_PATH="$(./scripts/lib-path.sh)" dotnet test csharp/SpiceDbEmbedded.Tests/SpiceDbEmbedded.Tests.csproj --no-build
+          dotnet test csharp/SpiceDbEmbedded.Tests/SpiceDbEmbedded.Tests.csproj --no-build
 
       - name: Node test
         shell: bash
@@ -300,4 +307,4 @@ jobs:
         run: |
           npm ci
           npm run build
-          SPICEDB_LIBRARY_PATH="$(../scripts/lib-path.sh)" npm test
+          npm test

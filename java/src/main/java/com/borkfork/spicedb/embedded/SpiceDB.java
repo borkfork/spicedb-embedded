@@ -57,14 +57,6 @@ interface SpiceDB extends Library {
       }
     }
 
-    String base = System.getProperty("user.dir");
-    for (String rel : new String[] {"shared/c", "../shared/c", "java/../shared/c"}) {
-      java.nio.file.Path path =
-          java.nio.file.Path.of(base).resolve(rel).resolve(libName).normalize();
-      if (Files.exists(path)) {
-        return path.toAbsolutePath().toString();
-      }
-    }
     return null;
   }
 
