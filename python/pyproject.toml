@@ -1,6 +1,6 @@
 [project]
 name = "spicedb-embedded"
-version = "0.1.12"
+version = "0.1.13"
 description = "Embedded SpiceDB for Python — embedded authorization using the standard gRPC API"
 readme = "README.md"
 license = { text = "Apache-2.0" }
