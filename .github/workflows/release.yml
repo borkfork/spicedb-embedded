@@ -165,7 +165,7 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "java maven go"
+          install_args: "java maven"
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -198,7 +198,8 @@ jobs:
           EOF
 
       - name: Build Java library
-        run: mise run java-build
+        working-directory: java
+        run: mvn -B -ntp compile
 
       - name: Publish to Maven Central
         run: |
@@ -243,7 +244,7 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "go node"
+          install_args: "node"
 
       - uses: actions/setup-node@v6
         with:
@@ -251,7 +252,8 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Build Node.js package
-        run: mise run node-build
+        working-directory: node
+        run: npm ci && npm run build
 
       - name: Publish to npm
         working-directory: node
@@ -290,10 +292,10 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "go dotnet"
+          install_args: "dotnet"
 
       - name: Build C# package
-        run: mise run csharp-build
+        run: dotnet build csharp/SpiceDbEmbedded.sln -c Release
 
       - name: Build NuGet package
         working-directory: csharp
@@ -350,10 +352,11 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "go python"
+          install_args: "python"
 
       - name: Build Python package
-        run: mise run python-build
+        working-directory: python
+        run: pip install -e .
 
       - name: Build wheel
         working-directory: python
