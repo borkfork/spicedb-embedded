@@ -174,8 +174,8 @@ jobs:
 
       - name: Test
         run: |
-          dotnet build csharp/SpicedbEmbedded.sln
-          SPICEDB_LIBRARY_PATH="$(./scripts/lib-path.sh)" dotnet test csharp/SpicedbEmbedded.Tests/SpicedbEmbedded.Tests.csproj --no-build
+          dotnet build csharp/SpiceDbEmbedded.sln
+          SPICEDB_LIBRARY_PATH="$(./scripts/lib-path.sh)" dotnet test csharp/SpiceDbEmbedded.Tests/SpiceDbEmbedded.Tests.csproj --no-build
 
   node:
     needs: shared-c-lib
@@ -291,8 +291,8 @@ jobs:
       - name: C# test
         shell: bash
         run: |
-          dotnet build csharp/SpicedbEmbedded.sln
-          SPICEDB_LIBRARY_PATH="$(./scripts/lib-path.sh)" dotnet test csharp/SpicedbEmbedded.Tests/SpicedbEmbedded.Tests.csproj --no-build
+          dotnet build csharp/SpiceDbEmbedded.sln
+          SPICEDB_LIBRARY_PATH="$(./scripts/lib-path.sh)" dotnet test csharp/SpiceDbEmbedded.Tests/SpiceDbEmbedded.Tests.csproj --no-build
 
       - name: Node test
         shell: bash

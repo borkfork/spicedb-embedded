@@ -1,7 +1,7 @@
 [project]
 name = "spicedb-embedded"
-version = "0.1.5"
-description = "Embedded SpiceDB for Python — in-memory server via shared/c FFI + gRPC over Unix socket"
+version = "0.1.7"
+description = "Embedded SpiceDB for Python — embedded authorization using the standard gRPC API"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"

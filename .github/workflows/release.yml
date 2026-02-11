@@ -167,3 +167,40 @@ jobs:
       - name: Publish to npm
         working-directory: node
         run: npm publish
+
+  publish-nuget:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
+          fetch-depth: 0
+
+      - uses: actions/cache@v4
+        with:
+          path: csharp/artifacts
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/bin/Release/SpiceDbEmbedded.nupkg') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "go dotnet"
+
+      - name: Build C# package
+        run: mise run csharp-build
+
+      - name: Build NuGet package
+        working-directory: csharp
+        run: dotnet pack -c Release
+
+      # Get a short-lived NuGet API key
+      - name: NuGet login (OIDC → temp API key)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      # Push the package
+      - name: NuGet push
+        working-directory: csharp
+        run: dotnet nuget push bin/Release/SpiceDbEmbedded.nupkg --api-key ${{steps.login.outputs.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json

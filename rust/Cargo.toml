@@ -1,8 +1,8 @@
 [package]
 name = "spicedb-embedded"
-version = "0.1.5"
+version = "0.1.7"
 edition = "2024"
-description = "Embedded SpiceDB for Rust - in-memory authorization using the standard gRPC API"
+description = "Embedded SpiceDB for Rust - embedded authorization using the standard gRPC API"
 license = "Apache-2.0"
 repository = "https://github.com/borkfork/spicedb-embedded"
 # Never package native binaries; we ship Go source and build at compile time for portability
