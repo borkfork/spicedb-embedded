@@ -13,13 +13,15 @@ import "C"
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"unsafe"
 
 	"github.com/authzed/spicedb/pkg/cmd/datastore"
@@ -148,8 +150,8 @@ func spicedb_start(options_json *C.char) *C.char {
 		if lastErr == nil {
 			break
 		}
-		// Only retry on port-in-use; other errors are unlikely to succeed
-		if !strings.Contains(lastErr.Error(), "address already in use") {
+		// Only retry on address-in-use (port/socket); other errors are unlikely to succeed
+		if !isAddrInUse(lastErr) {
 			break
 		}
 	}
@@ -197,6 +199,15 @@ func parseStartOptions(options_json *C.char) StartOptions {
 	}
 	_ = json.Unmarshal([]byte(s), &opts)
 	return opts
+}
+
+// isAddrInUse reports whether err indicates the address (port or socket) is already in use.
+func isAddrInUse(err error) bool {
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		return errors.Is(opErr.Err, syscall.EADDRINUSE)
+	}
+	return false
 }
 
 // listenAddr returns the address for a new instance (Unix socket path or TCP host:port).
