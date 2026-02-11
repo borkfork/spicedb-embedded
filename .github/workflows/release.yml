@@ -31,6 +31,9 @@ concurrency:
 jobs:
   # Build shared C library per platform for packaging with C#, Node, Java, Python
   build-shared-libs:
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
