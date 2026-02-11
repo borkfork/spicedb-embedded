@@ -13,9 +13,13 @@
     }
   },
   "files": [
-    "dist",
-    "prebuilds"
+    "dist"
   ],
+  "optionalDependencies": {
+    "spicedb-embedded-linux-x64": "^0.1.12",
+    "spicedb-embedded-darwin-arm64": "^0.1.12",
+    "spicedb-embedded-win32-x64": "^0.1.12"
+  },
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build",

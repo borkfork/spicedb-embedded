@@ -124,6 +124,14 @@
     </dependencies>
 
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <excludes>
+                    <exclude>natives/**</exclude>
+                </excludes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -218,6 +226,61 @@
             <id>release</id>
             <build>
                 <plugins>
+                    <!-- Create classifier JARs (natives only) from target/natives-layout; CI lays out shared libs there. -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>create-natives-jars</id>
+                                <phase>prepare-package</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <target>
+                                        <jar destfile="${project.build.directory}/${project.artifactId}-${project.version}-linux-x64.jar" basedir="${project.build.directory}/natives-layout/linux-x64"/>
+                                        <jar destfile="${project.build.directory}/${project.artifactId}-${project.version}-darwin-arm64.jar" basedir="${project.build.directory}/natives-layout/darwin-arm64"/>
+                                        <jar destfile="${project.build.directory}/${project.artifactId}-${project.version}-win32-x64.jar" basedir="${project.build.directory}/natives-layout/win32-x64"/>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>build-helper-maven-plugin</artifactId>
+                        <version>3.5.0</version>
+                        <executions>
+                            <execution>
+                                <id>attach-natives-linux-x64</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>attach-artifact</goal>
+                                </goals>
+                                <configuration>
+                                    <artifacts>
+                                        <artifact>
+                                            <file>${project.build.directory}/${project.artifactId}-${project.version}-linux-x64.jar</file>
+                                            <classifier>linux-x64</classifier>
+                                            <type>jar</type>
+                                        </artifact>
+                                        <artifact>
+                                            <file>${project.build.directory}/${project.artifactId}-${project.version}-darwin-arm64.jar</file>
+                                            <classifier>darwin-arm64</classifier>
+                                            <type>jar</type>
+                                        </artifact>
+                                        <artifact>
+                                            <file>${project.build.directory}/${project.artifactId}-${project.version}-win32-x64.jar</file>
+                                            <classifier>win32-x64</classifier>
+                                            <type>jar</type>
+                                        </artifact>
+                                    </artifacts>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-gpg-plugin</artifactId>

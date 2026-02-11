@@ -96,6 +96,8 @@ The WASM only provides a small subset of the functionality of SpiceDB, but it ha
 npm install spicedb-embedded
 ```
 
+Only the native binary for your platform is installed (via optional dependencies: `spicedb-embedded-linux-x64`, `spicedb-embedded-darwin-arm64`, `spicedb-embedded-win32-x64`).
+
 Or from source (requires Go with CGO; build and test use the same prebuilds layout as the published package):
 
 ```bash
