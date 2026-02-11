@@ -5,7 +5,8 @@
 import koffi from "koffi";
 import { accessSync } from "fs";
 import { platform } from "os";
-import { resolve } from "path";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 
 export interface SpiceDBStartResult {
   handle: number;
@@ -40,6 +41,21 @@ function findLibrary(): string {
         ? "libspicedb.dylib"
         : "libspicedb.so";
 
+  // Bundled prebuilds (from npm package; path relative to dist/ffi.js)
+  const prebuildsDir = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "prebuilds",
+    `${platform()}-${process.arch}`
+  );
+  const bundledPath = resolve(prebuildsDir, libName);
+  try {
+    accessSync(bundledPath);
+    return bundledPath;
+  } catch {
+    // no bundled lib for this platform
+  }
+
   const explicit = process.env.SPICEDB_LIBRARY_PATH;
   if (explicit) {
     const libExtensions = [".so", ".dylib", ".dll"];
@@ -55,23 +71,6 @@ function findLibrary(): string {
       throw new Error(
         `Unable to access SpiceDB library at '${candidate}' specified by SPICEDB_LIBRARY_PATH: ${message}`
       );
-    }
-  }
-
-  const searchPaths = [
-    "shared/c",
-    resolve(process.cwd(), "shared/c"),
-    resolve(process.cwd(), "../shared/c"),
-    resolve(process.cwd(), "node/../shared/c"),
-  ];
-
-  for (const base of searchPaths) {
-    const candidate = resolve(base, libName);
-    try {
-      accessSync(candidate);
-      return candidate;
-    } catch {
-      // continue
     }
   }
 

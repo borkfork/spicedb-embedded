@@ -18,6 +18,13 @@ build/
 
 # Node.js
 node_modules/
+node/prebuilds/
+
+# Staged prebuilds (stage-all-prebuilds.sh / CI); not committed
+csharp/runtimes/
+java/src/main/resources/natives/
+python/src/spicedb_embedded/natives/
+rust/prebuilds/
 
 # C# / .NET
 [Bb]in/

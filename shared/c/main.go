@@ -17,7 +17,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -88,13 +87,13 @@ func spicedb_free(ptr *C.char) {
 //   - mysql_table_prefix: prefix for all SpiceDB tables (optional, for multi-tenant)
 //   - metrics_enabled: enable datastore Prometheus metrics (default: false; disabled allows multiple instances in same process)
 type StartOptions struct {
-	Datastore               string `json:"datastore"`
-	DatastoreURI            string `json:"datastore_uri"`
-	GrpcTransport           string `json:"grpc_transport"`
-	SpannerCredentialsFile  string `json:"spanner_credentials_file"`
-	SpannerEmulatorHost     string `json:"spanner_emulator_host"`
-	MySQLTablePrefix        string `json:"mysql_table_prefix"`
-	MetricsEnabled          bool   `json:"metrics_enabled"`
+	Datastore              string `json:"datastore"`
+	DatastoreURI           string `json:"datastore_uri"`
+	GrpcTransport          string `json:"grpc_transport"`
+	SpannerCredentialsFile string `json:"spanner_credentials_file"`
+	SpannerEmulatorHost    string `json:"spanner_emulator_host"`
+	MySQLTablePrefix       string `json:"mysql_table_prefix"`
+	MetricsEnabled         bool   `json:"metrics_enabled"`
 }
 
 // spicedb_start creates a new SpiceDB instance (empty server).
@@ -148,10 +147,7 @@ func spicedb_start(options_json *C.char) *C.char {
 		if lastErr == nil {
 			break
 		}
-		// Only retry on port-in-use; other errors are unlikely to succeed
-		if !strings.Contains(lastErr.Error(), "address already in use") {
-			break
-		}
+		// Retry with a new address (e.g. different port) on any error
 	}
 
 	if lastErr != nil {

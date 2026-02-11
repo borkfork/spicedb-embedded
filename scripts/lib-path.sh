@@ -6,9 +6,9 @@
 root=$(git rev-parse --show-toplevel)
 os=$(uname -s)
 if [ "$os" = "Darwin" ]; then
-  echo "${root}/shared/c/libspicedb.dylib"
+	echo "${root}/shared/c/libspicedb.dylib"
 elif [ "${os#MINGW}" != "$os" ] || [ "${os#MSYS}" != "$os" ]; then
-  echo "${root}/shared/c/spicedb.dll"
+	echo "${root}/shared/c/spicedb.dll"
 else
-  echo "${root}/shared/c/libspicedb.so"
+	echo "${root}/shared/c/libspicedb.so"
 fi

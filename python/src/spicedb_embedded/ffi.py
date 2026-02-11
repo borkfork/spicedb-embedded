@@ -3,6 +3,7 @@
 import ctypes
 import json
 import os
+import platform
 import sys
 from ctypes import CDLL, POINTER, c_char, c_char_p, c_ulonglong
 from pathlib import Path
@@ -10,23 +11,44 @@ from pathlib import Path
 from spicedb_embedded.errors import SpiceDBError
 
 
-def _find_library() -> str | None:
-    """Find libspicedb path. Searches: SPICEDB_LIBRARY_PATH, shared/c relative to cwd."""
-    explicit = os.environ.get("SPICEDB_LIBRARY_PATH")
-    if explicit:
-        return explicit
+def _platform_key() -> str | None:
+    """Return natives dir name for this platform (linux-x64, darwin-arm64, win32-x64)."""
+    machine = platform.machine().lower()
+    if machine in ("x86_64", "amd64"):
+        arch = "x64"
+    elif machine in ("arm64", "aarch64"):
+        arch = "arm64"
+    else:
+        return None
+    if sys.platform == "linux":
+        return f"linux-{arch}"
+    if sys.platform == "darwin":
+        return f"darwin-{arch}"
+    if sys.platform == "win32":
+        return f"win32-{arch}"
+    return None
 
+
+def _find_library() -> str | None:
+    """Find libspicedb path. Prefers bundled wheel natives, then SPICEDB_LIBRARY_PATH, then shared/c."""
     if sys.platform == "darwin":
         lib_name = "libspicedb.dylib"
     elif sys.platform == "win32":
         lib_name = "spicedb.dll"
     else:
         lib_name = "libspicedb.so"
-    base = Path.cwd()
-    for rel in ("shared/c", "../shared/c", "python/../shared/c"):
-        path = (base / rel / lib_name).resolve()
-        if path.exists():
-            return str(path)
+
+    # Bundled in wheel: package dir / natives / <platform> / <lib>
+    key = _platform_key()
+    if key:
+        bundled = Path(__file__).resolve().parent / "natives" / key / lib_name
+        if bundled.exists():
+            return str(bundled)
+
+    explicit = os.environ.get("SPICEDB_LIBRARY_PATH")
+    if explicit:
+        return explicit
+
     return None
 
 
