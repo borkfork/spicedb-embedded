@@ -73,7 +73,7 @@ interface SpiceDB extends Library {
     String archNorm =
         arch.equals("amd64") || arch.equals("x86_64")
             ? "x64"
-            : arch.equals("aarch64") ? "arm64" : null;
+            : (arch.equals("aarch64") || arch.equals("arm64")) ? "arm64" : null;
     if (archNorm == null) return null;
     if (os.contains("linux")) return "linux-" + archNorm;
     if (os.contains("mac")) return "darwin-" + archNorm;

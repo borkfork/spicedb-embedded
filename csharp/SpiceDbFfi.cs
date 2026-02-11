@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 namespace Borkfork.SpiceDb.Embedded;
 
@@ -119,16 +120,16 @@ internal static class SpiceDbFfi
                 ? "spicedb.dll"
                 : "libspicedb.so";
 
-        // Prefer native lib packaged with the NuGet package (runtimes/<rid>/native/)
+        // Prefer native lib packaged with the NuGet package (runtimes/<rid>/native/).
+        // RuntimeIdentifier can include qualifiers (e.g. win10-x64, osx.14-arm64, linux-musl-x64);
+        // we package under fixed RIDs (win-x64, osx-arm64, linux-x64), so try raw and normalized.
         var asmDir = Path.GetDirectoryName(typeof(SpiceDbFfi).Assembly.Location);
         if (!string.IsNullOrEmpty(asmDir))
         {
-            var rid = RuntimeInformation.RuntimeIdentifier;
-            if (!string.IsNullOrEmpty(rid))
+            foreach (var rid in GetPackagedRidCandidates())
             {
                 var packaged = Path.Combine(asmDir, "runtimes", rid, "native", libName);
                 if (File.Exists(packaged)) return packaged;
-                // Assembly may be in a subdir; check parent for runtimes
                 var parentRuntimes = Path.Combine(asmDir, "..", "runtimes", rid, "native", libName);
                 var parentResolved = Path.GetFullPath(parentRuntimes);
                 if (File.Exists(parentResolved)) return parentResolved;
@@ -153,6 +154,22 @@ internal static class SpiceDbFfi
             }
 
         return null;
+    }
+
+    /// <summary>Returns RID candidates to try for runtimes/ (raw first, then normalized to match our packaged names).</summary>
+    private static IEnumerable<string> GetPackagedRidCandidates()
+    {
+        var rid = RuntimeInformation.RuntimeIdentifier;
+        if (string.IsNullOrEmpty(rid)) yield break;
+
+        yield return rid;
+
+        // Normalize to match our workflow packaging: win-x64, osx-arm64, linux-x64
+        var normalized = rid;
+        normalized = Regex.Replace(normalized, @"^win\d+-", "win-");
+        normalized = Regex.Replace(normalized, @"^osx\.\d+-", "osx-");
+        normalized = Regex.Replace(normalized, @"^linux-musl-", "linux-");
+        if (normalized != rid) yield return normalized;
     }
 
     public readonly record struct StartResponse(ulong Handle, string Transport, string Address);

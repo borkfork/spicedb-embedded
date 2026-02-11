@@ -48,6 +48,19 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
           fetch-depth: 0
 
+      - name: Set RID from runner (detect macOS arch)
+        id: set_rid
+        run: |
+          if [[ "${{ matrix.runner }}" == macos* ]]; then
+            case "$(uname -m)" in
+              x86_64) rid="osx-x64" ;;
+              *)      rid="osx-arm64" ;;
+            esac
+          else
+            rid="${{ matrix.rid }}"
+          fi
+          echo "rid=$rid" >> $GITHUB_OUTPUT
+
       - uses: jdx/mise-action@v3
         with:
           install_args: "go"
@@ -57,17 +70,17 @@ jobs:
 
       - name: Stage and upload shared lib
         run: |
-          mkdir -p "out/${{ matrix.rid }}/native"
+          mkdir -p "out/${{ steps.set_rid.outputs.rid }}/native"
           case "${{ matrix.runner }}" in
-            ubuntu*) cp shared/c/libspicedb.so "out/${{ matrix.rid }}/native/" ;;
-            macos*)  cp shared/c/libspicedb.dylib "out/${{ matrix.rid }}/native/" ;;
-            windows*) cp shared/c/spicedb.dll "out/${{ matrix.rid }}/native/" ;;
+            ubuntu*) cp shared/c/libspicedb.so "out/${{ steps.set_rid.outputs.rid }}/native/" ;;
+            macos*)  cp shared/c/libspicedb.dylib "out/${{ steps.set_rid.outputs.rid }}/native/" ;;
+            windows*) cp shared/c/spicedb.dll "out/${{ steps.set_rid.outputs.rid }}/native/" ;;
           esac
 
       - name: Upload shared lib
         uses: actions/upload-artifact@v4
         with:
-          name: shared-lib-${{ matrix.rid }}
+          name: shared-lib-${{ steps.set_rid.outputs.rid }}
           path: out
 
   publish-rust:
