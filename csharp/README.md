@@ -3,7 +3,7 @@
 Sometimes you need a simple way to run access checks without spinning up a new service. This library provides an embedded version of [SpiceDB](https://authzed.com/spicedb) in various languages. Each implementation is based on a C-shared library (compiled from the SpiceDB source code) with a very thin FFI binding on top of it. This means that it runs the native SpiceDB code within your already-running process.
 
 ```csharp
-using Rendil.Spicedb.Embedded;
+using Borkfork.SpiceDb.Embedded;
 using Authzed.Api.V1;
 
 var schema = """
@@ -22,7 +22,7 @@ var rel = new Relationship
     Subject = new SubjectReference { Object = new ObjectReference { ObjectType = "user", ObjectId = "alice" } },
 };
 
-using var spicedb = EmbeddedSpiceDB.Create(schema, new[] { rel });
+using var spicedb = EmbeddedSpiceDb.Create(schema, new[] { rel });
 
 var resp = spicedb.Permissions().CheckPermission(new CheckPermissionRequest
 {
@@ -55,7 +55,7 @@ The default datastore is "memory" (memdb). If you use this datastore, keep in mi
 If you need a longer term storage, you can use any SpiceDB-compatible datastores.
 
 ```csharp
-using Rendil.Spicedb.Embedded;
+using Borkfork.SpiceDb.Embedded;
 
 // Run migrations first: spicedb datastore migrate head --datastore-engine postgres --datastore-conn-uri "postgres://..."
 var schema = """
@@ -67,7 +67,7 @@ definition document {
 }
 """;
 
-using var spicedb = EmbeddedSpiceDB.Create(schema, Array.Empty<Relationship>(), new StartOptions
+using var spicedb = EmbeddedSpiceDb.Create(schema, Array.Empty<Relationship>(), new StartOptions
 {
     Datastore = "postgres",
     DatastoreUri = "postgres://user:pass@localhost:5432/spicedb",
@@ -86,13 +86,13 @@ So you get the benefits of (1) using the same generated gRPC code to communicate
 ## Installation
 
 ```bash
-dotnet add package SpicedbEmbedded
+dotnet add package SpiceDbEmbedded
 ```
 
 Or from source:
 
 ```bash
-cd csharp && dotnet add reference ../path/to/SpicedbEmbedded.csproj
+cd csharp && dotnet add reference ../path/to/SpiceDbEmbedded.csproj
 ```
 
 **Prerequisites:** Go 1.23+ with CGO enabled. Build the shared library first:
@@ -109,7 +109,7 @@ The library looks for `libspicedb.dylib` (macOS) or `libspicedb.so` (Linux) in `
 ## Usage
 
 ```csharp
-using Rendil.Spicedb.Embedded;
+using Borkfork.SpiceDb.Embedded;
 using Authzed.Api.V1;
 
 var schema = """
@@ -128,7 +128,7 @@ var rel = new Relationship
     Subject = new SubjectReference { Object = new ObjectReference { ObjectType = "user", ObjectId = "alice" } },
 };
 
-using var spicedb = EmbeddedSpiceDB.Create(schema, new[] { rel });
+using var spicedb = EmbeddedSpiceDb.Create(schema, new[] { rel });
 
 var req = new CheckPermissionRequest
 {
@@ -144,7 +144,7 @@ var allowed = resp.Permissionship == CheckPermissionResponse.Types.Permissionshi
 
 ## API
 
-- **`EmbeddedSpiceDB.Create(schema, relationships, options?)`** — Create an instance. Pass `null` or `Array.Empty<Relationship>()` for no initial relationships. Pass `StartOptions` for datastore/transport config. Implements `IDisposable`.
+- **`EmbeddedSpiceDb.Create(schema, relationships, options?)`** — Create an instance. Pass `null` or `Array.Empty<Relationship>()` for no initial relationships. Pass `StartOptions` for datastore/transport config. Implements `IDisposable`.
 - **`Permissions()`** — Permissions service client (CheckPermission, WriteRelationships, ReadRelationships, etc.).
 - **`Schema()`** — Schema service client (ReadSchema, WriteSchema, ReflectSchema, etc.).
 - **`Watch()`** — Watch service client for relationship changes.
@@ -163,11 +163,11 @@ var options = new StartOptions
     DatastoreUri = "postgres://...", // required for postgres, cockroachdb, spanner, mysql
     SpannerCredentialsFile = "/path/to/key.json",  // Spanner only
     SpannerEmulatorHost = "localhost:9010",       // Spanner emulator
-    MySQLTablePrefix = "spicedb_",                 // MySQL only (optional)
+    MySqlTablePrefix = "spicedb_",                 // MySQL only (optional)
     MetricsEnabled = false,                        // default; set true to enable Prometheus metrics
 };
 
-using var spicedb = EmbeddedSpiceDB.Create(schema, relationships, options);
+using var spicedb = EmbeddedSpiceDb.Create(schema, relationships, options);
 ```
 
 ## Building & Testing

@@ -1,11 +1,15 @@
-namespace Rendil.Spicedb.Embedded;
+namespace Borkfork.SpiceDb.Embedded;
 
 /// <summary>
-/// Thrown when SpiceDB operations fail.
+///     Thrown when SpiceDB operations fail.
 /// </summary>
-public sealed class SpiceDBException : Exception
+public sealed class SpiceDbException : Exception
 {
-    public SpiceDBException(string message) : base(message) { }
+    public SpiceDbException(string message) : base(message)
+    {
+    }
 
-    public SpiceDBException(string message, Exception inner) : base(message, inner) { }
+    public SpiceDbException(string message, Exception inner) : base(message, inner)
+    {
+    }
 }

@@ -51,6 +51,9 @@ shared/c/spicedb.h
 .DS_Store
 Thumbs.db
 
+# ReSharper
+resharper-inspect.sarif
+
 # Misc
 *.log
 .env

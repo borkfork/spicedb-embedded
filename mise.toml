@@ -6,6 +6,7 @@ rust = { version = "1.91.1", components = "rustfmt,clippy" }
 "github:authzed/spicedb" = { version = "1.49.0", version_prefix = "v" }
 "github:EmbarkStudios/cargo-deny" = { version = "0.19.0", version_prefix = "" }
 taplo = "0.10.0"
+jq = "1.7"
 "github:knope-dev/knope" = "knope/v0.21.7"
 go = "1.23"
 node = "22"
@@ -15,8 +16,8 @@ maven = "3.9.9"
 dotnet = "9.0"
 
 [tasks.check]
-description = "Run format checks, lint, and tests for all languages"
-depends = ["format-check", "clippy", "cargo-deny", "test"]
+description = "Run format checks, lint, ReSharper, and tests for all languages"
+depends = ["format-check", "clippy", "cargo-deny", "resharper-check", "test"]
 
 # ============================================================================
 # SpiceDB shared/c build tasks
@@ -44,6 +45,10 @@ depends = [
   "format-check-node",
 ]
 
+[tasks.resharper-check]
+description = "Run ReSharper InspectCode (C#) and fail if issues found"
+run = "dotnet tool restore && dotnet tool run jb -- inspectcode csharp/SpiceDbEmbedded.sln -o=resharper-inspect.sarif && (jq -e '.runs[0].results | length == 0' resharper-inspect.sarif >/dev/null) || (echo 'ReSharper found issues; see resharper-inspect.sarif' && exit 1)"
+
 [tasks.format-check-rust]
 description = "Verify Rust format"
 run = "rustup toolchain install nightly && rustup component add --toolchain nightly rustfmt && cargo +nightly fmt --all --check"
@@ -60,7 +65,7 @@ run = "mvn spotless:check"
 
 [tasks.format-check-csharp]
 description = "Verify C# format"
-run = "dotnet format csharp/SpicedbEmbedded.sln --verify-no-changes"
+run = "dotnet format csharp/SpiceDbEmbedded.sln --verify-no-changes"
 
 [tasks.format-check-node]
 description = "Verify Node.js package format"
@@ -75,6 +80,7 @@ depends = [
   "reformat-python",
   "reformat-java",
   "reformat-csharp",
+  "reformat-resharper",
   "reformat-node",
 ]
 
@@ -94,7 +100,11 @@ run = "mvn spotless:apply"
 
 [tasks.reformat-csharp]
 description = "Reformat C#"
-run = "dotnet format csharp/SpicedbEmbedded.sln"
+run = "dotnet format csharp/SpiceDbEmbedded.sln"
+
+[tasks.reformat-resharper]
+description = "Apply ReSharper CleanupCode (C#); excludes files that trigger ReSharper CLI HTML-injection bug"
+run = "dotnet tool restore && dotnet tool run jb -- cleanupcode csharp/SpiceDbEmbedded.sln --profile=\"Built-in: Reformat Code\" --exclude=\"**/EmbeddedSpiceDb.cs;**/SpiceDbException.cs;**/SpiceDbFfi.cs;**/TcpChannel.cs;**/UnixSocketChannel.cs;**/EmbeddedSpiceDbTests.cs\""
 
 [tasks.reformat-node]
 description = "Reformat Node.js package"
@@ -169,11 +179,11 @@ run = "mise run shared-c-build && pip install -e '.[dev]' && pytest"
 
 [tasks.csharp-build]
 description = "Build the C# library"
-run = "mise run shared-c-build && dotnet build csharp/SpicedbEmbedded.sln"
+run = "mise run shared-c-build && dotnet build csharp/SpiceDbEmbedded.sln"
 
 [tasks.csharp-test]
 description = "Build and test the C# library"
-run = "bash -c 'mise run shared-c-build && dotnet build csharp/SpicedbEmbedded.sln && SPICEDB_LIBRARY_PATH=\"$(./scripts/lib-path.sh)\" dotnet test csharp/SpicedbEmbedded.Tests/SpicedbEmbedded.Tests.csproj --no-build'"
+run = "bash -c 'mise run shared-c-build && dotnet build csharp/SpiceDbEmbedded.sln && SPICEDB_LIBRARY_PATH=\"$(./scripts/lib-path.sh)\" dotnet test csharp/SpiceDbEmbedded.Tests/SpiceDbEmbedded.Tests.csproj --no-build'"
 
 # ============================================================================
 # Node.js

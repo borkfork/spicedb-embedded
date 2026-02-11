@@ -1,50 +1,54 @@
-using System.Net.Http;
 using Authzed.Api.V1;
 using Grpc.Core;
 using Grpc.Net.Client;
 
-namespace Rendil.Spicedb.Embedded;
+namespace Borkfork.SpiceDb.Embedded;
 
 /// <summary>
-/// Embedded SpiceDB instance.
-/// A thin wrapper that starts SpiceDB via the C-shared library, connects over a Unix
-/// socket, and bootstraps schema and relationships via gRPC.
-/// Use Permissions(), Schema(), and Watch() to access the full SpiceDB API.
+///     Embedded SpiceDB instance.
+///     A thin wrapper that starts SpiceDB via the C-shared library, connects over a Unix
+///     socket, and bootstraps schema and relationships via gRPC.
+///     Use Permissions(), Schema(), and Watch() to access the full SpiceDB API.
 /// </summary>
-public sealed class EmbeddedSpiceDB : IDisposable
+public sealed class EmbeddedSpiceDb : IDisposable
 {
     private readonly ulong _handle;
-    private readonly GrpcChannel _channel;
     private bool _disposed;
 
-    private EmbeddedSpiceDB(ulong handle, GrpcChannel channel)
+    private EmbeddedSpiceDb(ulong handle, GrpcChannel channel)
     {
         _handle = handle;
-        _channel = channel;
+        Channel = channel;
     }
 
     /// <summary>
-    /// Create a new embedded SpiceDB instance with a schema and relationships.
+    ///     Underlying gRPC channel for custom usage.
     /// </summary>
-    /// <param name="schema">The SpiceDB schema definition (ZED language)</param>
-    /// <param name="relationships">Initial relationships (empty list or null allowed)</param>
-    /// <returns>New EmbeddedSpiceDB instance</returns>
-    public static EmbeddedSpiceDB Create(string schema, IReadOnlyList<Relationship>? relationships = null) =>
-        Create(schema, relationships, null);
+    // ReSharper disable once MemberCanBePrivate.Global -- Public API for custom gRPC usage
+    public GrpcChannel Channel { get; }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        if (_disposed) return;
+        SpiceDbFfi.Dispose(_handle);
+        Channel.Dispose();
+        _disposed = true;
+    }
 
     /// <summary>
-    /// Create a new embedded SpiceDB instance with a schema, relationships, and options.
+    ///     Create a new embedded SpiceDB instance with a schema, relationships, and options.
     /// </summary>
     /// <param name="schema">The SpiceDB schema definition (ZED language)</param>
     /// <param name="relationships">Initial relationships (empty list or null allowed)</param>
     /// <param name="options">Optional configuration (datastore, grpc_transport). Pass null for defaults.</param>
-    /// <returns>New EmbeddedSpiceDB instance</returns>
-    public static EmbeddedSpiceDB Create(
+    /// <returns>New EmbeddedSpiceDb instance</returns>
+    public static EmbeddedSpiceDb Create(
         string schema,
         IReadOnlyList<Relationship>? relationships = null,
         StartOptions? options = null)
     {
-        var (handle, grpcTransport, address) = SpiceDBFFI.Start(options);
+        var (handle, grpcTransport, address) = SpiceDbFfi.Start(options);
 
         var httpHandler = grpcTransport == "tcp"
             ? TcpChannel.CreateHandler(address)
@@ -55,7 +59,7 @@ public sealed class EmbeddedSpiceDB : IDisposable
         var channelOptions = new GrpcChannelOptions
         {
             HttpClient = httpClient,
-            Credentials = ChannelCredentials.Insecure,
+            Credentials = ChannelCredentials.Insecure
         };
 
         GrpcChannel channel;
@@ -65,11 +69,19 @@ public sealed class EmbeddedSpiceDB : IDisposable
         }
         catch (Exception ex)
         {
-            try { SpiceDBFFI.Dispose(handle); } catch { /* best effort */ }
-            throw new SpiceDBException("Failed to connect to SpiceDB: " + ex.Message, ex);
+            try
+            {
+                SpiceDbFfi.Dispose(handle);
+            }
+            catch
+            {
+                /* best effort */
+            }
+
+            throw new SpiceDbException("Failed to connect to SpiceDB: " + ex.Message, ex);
         }
 
-        var db = new EmbeddedSpiceDB(handle, channel);
+        var db = new EmbeddedSpiceDb(handle, channel);
 
         try
         {
@@ -78,7 +90,7 @@ public sealed class EmbeddedSpiceDB : IDisposable
         catch (Exception ex)
         {
             db.Dispose();
-            throw new SpiceDBException("Failed to bootstrap: " + ex.Message, ex);
+            throw new SpiceDbException("Failed to bootstrap: " + ex.Message, ex);
         }
 
         return db;
@@ -86,51 +98,44 @@ public sealed class EmbeddedSpiceDB : IDisposable
 
     private void Bootstrap(string schema, IReadOnlyList<Relationship> relationships)
     {
-        var schemaClient = new SchemaService.SchemaServiceClient(_channel);
+        var schemaClient = new SchemaService.SchemaServiceClient(Channel);
         schemaClient.WriteSchema(new WriteSchemaRequest { Schema = schema });
 
         if (relationships.Count > 0)
         {
-            var permClient = new PermissionsService.PermissionsServiceClient(_channel);
+            var permClient = new PermissionsService.PermissionsServiceClient(Channel);
             var updates = relationships.Select(r => new RelationshipUpdate
             {
                 Operation = RelationshipUpdate.Types.Operation.Touch,
-                Relationship = r,
+                Relationship = r
             }).ToList();
             permClient.WriteRelationships(new WriteRelationshipsRequest { Updates = { updates } });
         }
     }
 
     /// <summary>
-    /// Permissions service client (CheckPermission, WriteRelationships, ReadRelationships, etc.).
+    ///     Permissions service client (CheckPermission, WriteRelationships, ReadRelationships, etc.).
     /// </summary>
-    public PermissionsService.PermissionsServiceClient Permissions() =>
-        new PermissionsService.PermissionsServiceClient(_channel);
-
-    /// <summary>
-    /// Schema service client (ReadSchema, WriteSchema, ReflectSchema, etc.).
-    /// </summary>
-    public SchemaService.SchemaServiceClient Schema() =>
-        new SchemaService.SchemaServiceClient(_channel);
-
-    /// <summary>
-    /// Watch service client for relationship changes.
-    /// </summary>
-    public WatchService.WatchServiceClient Watch() =>
-        new WatchService.WatchServiceClient(_channel);
-
-    /// <summary>
-    /// Underlying gRPC channel for custom usage.
-    /// </summary>
-    public GrpcChannel Channel => _channel;
-
-    /// <inheritdoc />
-    public void Dispose()
+    public PermissionsService.PermissionsServiceClient Permissions()
     {
-        if (_disposed) return;
-        SpiceDBFFI.Dispose(_handle);
-        _channel.Dispose();
-        _disposed = true;
-        GC.SuppressFinalize(this);
+        return new PermissionsService.PermissionsServiceClient(Channel);
+    }
+
+    /// <summary>
+    ///     Schema service client (ReadSchema, WriteSchema, ReflectSchema, etc.).
+    /// </summary>
+    // ReSharper disable once UnusedMember.Global -- Public API
+    public SchemaService.SchemaServiceClient Schema()
+    {
+        return new SchemaService.SchemaServiceClient(Channel);
+    }
+
+    /// <summary>
+    ///     Watch service client for relationship changes.
+    /// </summary>
+    // ReSharper disable once UnusedMember.Global -- Public API
+    public WatchService.WatchServiceClient Watch()
+    {
+        return new WatchService.WatchServiceClient(Channel);
     }
 }
