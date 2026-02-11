@@ -1,14 +1,12 @@
 # Build and publish the Rust crate to crates.io.
 # Trigger: push a version tag (e.g. v0.1.0) or run manually (workflow_dispatch).
 #
-# Flow: checkout tag -> copy shared/c into rust/shared -> git add -f (so package includes it) -> cargo publish --allow-dirty.
-# No commit or tag push; the tag stays as-is.
-#
+# Required env vars:
+#   SONATYPE_USERNAME - Maven Central Portal username
 # Required secrets:
 #   CARGO_REGISTRY_TOKEN - crates.io API token (from https://crates.io/settings/tokens)
-#   SONATYPE_USERNAME, SONATYPE_TOKEN - Central Portal token (from https://central.sonatype.com/usertoken)
+#   SONATYPE_TOKEN - Maven Central Portal token (from https://central.sonatype.com/usertoken)
 #   GPG_PRIVATE_KEY - GPG private key for signing (no passphrase)
-#   NPM_TOKEN - npm auth token (from https://www.npmjs.com/settings/~/tokens)
 
 name: Release
 
@@ -21,6 +19,10 @@ on:
       version:
         description: "Tag to publish (e.g. v0.1.0). Must already exist."
         required: true
+
+permissions:
+  id-token: write # Required for OIDC
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -73,7 +75,7 @@ jobs:
   publish-java:
     runs-on: ubuntu-latest
     env:
-      SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+      SONATYPE_USERNAME: ${{ vars.SONATYPE_USERNAME }}
       SONATYPE_TOKEN: ${{ secrets.SONATYPE_TOKEN }}
       GPG_PASSPHRASE: ""
     steps:
@@ -138,8 +140,6 @@ jobs:
 
   publish-npm:
     runs-on: ubuntu-latest
-    env:
-      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -158,24 +158,11 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
       - name: Build Node.js package
         run: mise run node-build
-
-      - name: Verify npm auth
-        working-directory: node
-        run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::NPM_TOKEN secret is not set. Add it in Settings → Secrets and variables → Actions."
-            exit 1
-          fi
-          user=$(npm whoami --registry https://registry.npmjs.org 2>&1) || {
-            echo "::error::NPM_TOKEN is invalid or expired (401). Create a NEW token at https://www.npmjs.com/settings/~/tokens (type Automation or Publish), then update the NPM_TOKEN repo secret. Do not reuse an old token."
-            exit 1
-          }
-          echo "Logged in as: $user"
 
       - name: Publish to npm
         working-directory: node

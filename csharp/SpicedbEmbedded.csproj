@@ -10,7 +10,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Rendil.Spicedb.Embedded</RootNamespace>
     <PackageId>SpicedbEmbedded</PackageId>
-    <Version>0.1.1</Version>
+    <Version>0.1.5</Version>
     <Description>Embedded SpiceDB for .NET — in-memory server via shared/c P/Invoke + gRPC over Unix socket</Description>
     <Authors>Rendil</Authors>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
