@@ -119,13 +119,27 @@ internal static class SpiceDbFfi
                 ? "spicedb.dll"
                 : "libspicedb.so";
 
-        // Search from CWD and from assembly location (for tests running from bin/Debug/net9.0)
-        var searchDirs = new List<string> { Directory.GetCurrentDirectory() };
+        // Prefer native lib packaged with the NuGet package (runtimes/<rid>/native/)
         var asmDir = Path.GetDirectoryName(typeof(SpiceDbFfi).Assembly.Location);
         if (!string.IsNullOrEmpty(asmDir))
         {
+            var rid = RuntimeInformation.RuntimeIdentifier;
+            if (!string.IsNullOrEmpty(rid))
+            {
+                var packaged = Path.Combine(asmDir, "runtimes", rid, "native", libName);
+                if (File.Exists(packaged)) return packaged;
+                // Assembly may be in a subdir; check parent for runtimes
+                var parentRuntimes = Path.Combine(asmDir, "..", "runtimes", rid, "native", libName);
+                var parentResolved = Path.GetFullPath(parentRuntimes);
+                if (File.Exists(parentResolved)) return parentResolved;
+            }
+        }
+
+        // Fallback: search from CWD and assembly-relative paths (dev or SPICEDB_LIBRARY_PATH unset)
+        var searchDirs = new List<string> { Directory.GetCurrentDirectory() };
+        if (!string.IsNullOrEmpty(asmDir))
+        {
             searchDirs.Add(asmDir);
-            // From bin/Debug/net9.0, project root is ../../.. for Tests or ../.. for main
             searchDirs.Add(Path.GetFullPath(Path.Combine(asmDir, "../..")));
             searchDirs.Add(Path.GetFullPath(Path.Combine(asmDir, "../../..")));
             searchDirs.Add(Path.GetFullPath(Path.Combine(asmDir, "../../../..")));

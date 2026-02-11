@@ -3,16 +3,21 @@ package com.borkfork.spicedb.embedded;
 import com.sun.jna.Library;
 import com.sun.jna.Native;
 import com.sun.jna.Pointer;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 /**
  * JNA interface to the SpiceDB C-shared library (shared/c).
  *
- * <p>Build shared/c first: {@code mise run shared-c-build} or {@code cd shared/c && CGO_ENABLED=1
- * go build -buildmode=c-shared -o libspicedb.dylib .}
+ * <p>Prefer bundled natives from the JAR (natives/&lt;platform&gt;/). Otherwise uses
+ * spicedb.library.path or shared/c relative to user.dir.
  */
 interface SpiceDB extends Library {
 
-  /** Load the native library. Searches: java.library.path, spicedb.library.path, ../shared/c. */
+  /**
+   * Load the native library. Prefers bundled JAR natives, then spicedb.library.path, then shared/c.
+   */
   static SpiceDB load() {
     String libPath = findLibraryPath();
     return Native.load(libPath != null ? libPath : "spicedb", SpiceDB.class);
@@ -24,6 +29,7 @@ interface SpiceDB extends Library {
       return explicit;
     }
     String os = System.getProperty("os.name").toLowerCase();
+    String arch = System.getProperty("os.arch").toLowerCase();
     String libName;
     if (os.contains("mac")) {
       libName = "libspicedb.dylib";
@@ -34,15 +40,44 @@ interface SpiceDB extends Library {
     } else {
       return null;
     }
+
+    // Bundled natives in JAR: natives/<platform>/<lib>
+    String platformKey = platformKey(os, arch);
+    if (platformKey != null) {
+      String resource = "natives/" + platformKey + "/" + libName;
+      try (InputStream in = SpiceDB.class.getClassLoader().getResourceAsStream(resource)) {
+        if (in != null) {
+          Path tmp = Files.createTempFile("spicedb", libName);
+          tmp.toFile().deleteOnExit();
+          Files.copy(in, tmp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+          return tmp.toAbsolutePath().toString();
+        }
+      } catch (Exception ignored) {
+        // fall through to filesystem search
+      }
+    }
+
     String base = System.getProperty("user.dir");
-    // Try shared/c relative to user.dir (when running from project root or java/)
     for (String rel : new String[] {"shared/c", "../shared/c", "java/../shared/c"}) {
       java.nio.file.Path path =
           java.nio.file.Path.of(base).resolve(rel).resolve(libName).normalize();
-      if (java.nio.file.Files.exists(path)) {
+      if (Files.exists(path)) {
         return path.toAbsolutePath().toString();
       }
     }
+    return null;
+  }
+
+  /** Maps os.name + os.arch to our resource dir names (linux-x64, darwin-arm64, win32-x64). */
+  private static String platformKey(String os, String arch) {
+    String archNorm =
+        arch.equals("amd64") || arch.equals("x86_64")
+            ? "x64"
+            : arch.equals("aarch64") ? "arm64" : null;
+    if (archNorm == null) return null;
+    if (os.contains("linux")) return "linux-" + archNorm;
+    if (os.contains("mac")) return "darwin-" + archNorm;
+    if (os.contains("win")) return "win32-" + archNorm;
     return null;
   }
 

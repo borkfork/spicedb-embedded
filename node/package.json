@@ -13,7 +13,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "prebuilds"
   ],
   "scripts": {
     "build": "tsc",

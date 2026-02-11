@@ -29,6 +29,47 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Build shared C library per platform for packaging with C#, Node, Java, Python
+  build-shared-libs:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            rid: linux-x64
+          - runner: macos-latest
+            rid: osx-arm64
+          - runner: windows-latest
+            rid: win-x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
+          fetch-depth: 0
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "go"
+
+      - name: Build shared C library
+        run: mise run shared-c-build
+
+      - name: Stage and upload shared lib
+        run: |
+          mkdir -p "out/${{ matrix.rid }}/native"
+          case "${{ matrix.runner }}" in
+            ubuntu*) cp shared/c/libspicedb.so "out/${{ matrix.rid }}/native/" ;;
+            macos*)  cp shared/c/libspicedb.dylib "out/${{ matrix.rid }}/native/" ;;
+            windows*) cp shared/c/spicedb.dll "out/${{ matrix.rid }}/native/" ;;
+          esac
+
+      - name: Upload shared lib
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-lib-${{ matrix.rid }}
+          path: out
+
   publish-rust:
     runs-on: ubuntu-latest
     env:
@@ -73,6 +114,7 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   publish-java:
+    needs: [build-shared-libs]
     runs-on: ubuntu-latest
     env:
       SONATYPE_USERNAME: ${{ vars.SONATYPE_USERNAME }}
@@ -83,6 +125,21 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
           fetch-depth: 0
+
+      - name: Download shared libs for all platforms
+        uses: actions/download-artifact@v4
+        with:
+          pattern: shared-lib-*
+          path: shared-libs
+          merge-multiple: true
+
+      - name: Lay out natives for JAR
+        run: |
+          mkdir -p java/src/main/resources/natives/linux-x64 java/src/main/resources/natives/darwin-arm64 java/src/main/resources/natives/win32-x64
+          cp shared-libs/linux-x64/native/* java/src/main/resources/natives/linux-x64/ 2>/dev/null || true
+          cp shared-libs/osx-arm64/native/* java/src/main/resources/natives/darwin-arm64/ 2>/dev/null || true
+          cp shared-libs/win-x64/native/* java/src/main/resources/natives/win32-x64/ 2>/dev/null || true
+          ls -R java/src/main/resources/natives
 
       - uses: actions/cache@v4
         with:
@@ -139,12 +196,28 @@ jobs:
           echo "Published Java $VERSION to Maven Central" >> $GITHUB_STEP_SUMMARY
 
   publish-npm:
+    needs: [build-shared-libs]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
           fetch-depth: 0
+
+      - name: Download shared libs for all platforms
+        uses: actions/download-artifact@v4
+        with:
+          pattern: shared-lib-*
+          path: shared-libs
+          merge-multiple: true
+
+      - name: Lay out prebuilds for npm package
+        run: |
+          mkdir -p node/prebuilds/linux-x64 node/prebuilds/darwin-arm64 node/prebuilds/win32-x64
+          cp shared-libs/linux-x64/native/* node/prebuilds/linux-x64/ 2>/dev/null || true
+          cp shared-libs/osx-arm64/native/* node/prebuilds/darwin-arm64/ 2>/dev/null || true
+          cp shared-libs/win-x64/native/* node/prebuilds/win32-x64/ 2>/dev/null || true
+          ls -R node/prebuilds
 
       - uses: actions/cache@v4
         with:
@@ -169,12 +242,29 @@ jobs:
         run: npm publish
 
   publish-nuget:
+    needs: [build-shared-libs]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
           fetch-depth: 0
+
+      - name: Download shared libs for all platforms
+        uses: actions/download-artifact@v4
+        with:
+          pattern: shared-lib-*
+          path: shared-libs
+          merge-multiple: true
+
+      - name: Lay out runtimes for NuGet package
+        run: |
+          mkdir -p csharp/runtimes
+          for dir in shared-libs/*/; do
+            rid=$(basename "$dir")
+            mv "$dir" "csharp/runtimes/$rid"
+          done
+          ls -R csharp/runtimes
 
       - uses: actions/cache@v4
         with:
@@ -205,13 +295,42 @@ jobs:
         working-directory: csharp
         run: dotnet nuget push bin/Release/SpiceDbEmbedded.nupkg --api-key ${{steps.login.outputs.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json
 
-  publish-pypi:
-    runs-on: ubuntu-latest
+  # Build platform-specific wheels with bundled native lib (one job per OS).
+  build-python-wheels:
+    needs: [build-shared-libs]
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            artifact_rid: linux-x64
+            natives_key: linux-x64
+          - runner: macos-latest
+            artifact_rid: osx-arm64
+            natives_key: darwin-arm64
+          - runner: windows-latest
+            artifact_rid: win-x64
+            natives_key: win32-x64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
           fetch-depth: 0
+
+      - name: Download shared lib for this platform
+        uses: actions/download-artifact@v4
+        with:
+          name: shared-lib-${{ matrix.artifact_rid }}
+
+      - name: Stage native lib into package
+        run: |
+          mkdir -p python/src/spicedb_embedded/natives/${{ matrix.natives_key }}
+          cp ${{ matrix.artifact_rid }}/native/* python/src/spicedb_embedded/natives/${{ matrix.natives_key }}/
+          ls -R python/src/spicedb_embedded/natives
 
       - uses: jdx/mise-action@v3
         with:
@@ -220,9 +339,43 @@ jobs:
       - name: Build Python package
         run: mise run python-build
 
-      - name: Build package distributions
+      - name: Build wheel
         working-directory: python
-        run: pip install build && python -m build
+        run: pip install build && python -m build --wheel
+
+      - name: Build sdist (Linux only)
+        if: matrix.runner == 'ubuntu-latest'
+        working-directory: python
+        run: python -m build --sdist
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-wheel-${{ matrix.natives_key }}
+          path: python/dist/*.whl
+
+      - name: Upload sdist
+        if: matrix.runner == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-sdist
+          path: python/dist/*.tar.gz
+
+  publish-pypi:
+    needs: [build-python-wheels]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
+          fetch-depth: 0
+
+      - name: Download all Python artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: python-*
+          path: python/dist
+          merge-multiple: true
 
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

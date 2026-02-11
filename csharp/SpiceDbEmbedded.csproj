@@ -21,6 +21,8 @@
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
+    <!-- Native libs per RID (filled by CI from build-shared-libs); allows "just works" without SPICEDB_LIBRARY_PATH -->
+    <Content Include="runtimes\**\native\*" Pack="true" PackagePath="runtimes\%(RecursiveDir)%(Filename)%(Extension)" LinkBase="runtimes" Condition="Exists('runtimes')" />
   </ItemGroup>
 
   <ItemGroup>
