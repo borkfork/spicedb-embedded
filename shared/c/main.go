@@ -13,16 +13,12 @@ import "C"
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"unsafe"
 
 	"github.com/authzed/spicedb/pkg/cmd/datastore"
@@ -91,13 +87,13 @@ func spicedb_free(ptr *C.char) {
 //   - mysql_table_prefix: prefix for all SpiceDB tables (optional, for multi-tenant)
 //   - metrics_enabled: enable datastore Prometheus metrics (default: false; disabled allows multiple instances in same process)
 type StartOptions struct {
-	Datastore               string `json:"datastore"`
-	DatastoreURI            string `json:"datastore_uri"`
-	GrpcTransport           string `json:"grpc_transport"`
-	SpannerCredentialsFile  string `json:"spanner_credentials_file"`
-	SpannerEmulatorHost     string `json:"spanner_emulator_host"`
-	MySQLTablePrefix        string `json:"mysql_table_prefix"`
-	MetricsEnabled          bool   `json:"metrics_enabled"`
+	Datastore              string `json:"datastore"`
+	DatastoreURI           string `json:"datastore_uri"`
+	GrpcTransport          string `json:"grpc_transport"`
+	SpannerCredentialsFile string `json:"spanner_credentials_file"`
+	SpannerEmulatorHost    string `json:"spanner_emulator_host"`
+	MySQLTablePrefix       string `json:"mysql_table_prefix"`
+	MetricsEnabled         bool   `json:"metrics_enabled"`
 }
 
 // spicedb_start creates a new SpiceDB instance (empty server).
@@ -151,10 +147,7 @@ func spicedb_start(options_json *C.char) *C.char {
 		if lastErr == nil {
 			break
 		}
-		// Only retry on address-in-use (port/socket); other errors are unlikely to succeed
-		if !isAddrInUse(lastErr) {
-			break
-		}
+		// Retry with a new address (e.g. different port) on any error
 	}
 
 	if lastErr != nil {
@@ -200,19 +193,6 @@ func parseStartOptions(options_json *C.char) StartOptions {
 	}
 	_ = json.Unmarshal([]byte(s), &opts)
 	return opts
-}
-
-// isAddrInUse reports whether err indicates the address (port or socket) is already in use.
-// Prefer type checks (OpError + EADDRINUSE); fall back to message in case the error was
-// wrapped without %w and the chain was lost (e.g. by SpiceDB/gRPC layers).
-func isAddrInUse(err error) bool {
-	var opErr *net.OpError
-	if errors.As(err, &opErr) {
-		return errors.Is(opErr.Err, syscall.EADDRINUSE)
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "address already in use") ||
-		strings.Contains(msg, "Only one usage of each socket address")
 }
 
 // listenAddr returns the address for a new instance (Unix socket path or TCP host:port).
