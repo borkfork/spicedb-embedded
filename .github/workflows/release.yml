@@ -213,12 +213,6 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
           fetch-depth: 0
 
-      - uses: actions/cache@v4
-        with:
-          path: python
-          key: ${{ runner.os }}-pypi-${{ hashFiles('**/dist/*.whl', '**/dist/*.tar.gz') }}
-          restore-keys: ${{ runner.os }}-pypi-
-
       - uses: jdx/mise-action@v3
         with:
           install_args: "go python"

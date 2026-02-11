@@ -6,7 +6,7 @@ readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
 dependencies = ["authzed>=1.4.0", "grpcio>=1.60.0"]
-authors = [{ name = "Borkfork", url = "https://github.com/borkfork" }]
+authors = [{ name = "Borkfork" }]
 keywords = ["spicedb", "authzed", "authorization", "zanzibar", "embedded", "grpc"]
 classifiers = [
     "License :: OSI Approved :: Apache Software License",
