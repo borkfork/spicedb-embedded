@@ -132,11 +132,11 @@ internal static class SpiceDbFfi
         }
 
         foreach (var baseDir in searchDirs.Distinct())
-        foreach (var rel in new[] { "shared/c", "../shared/c", "csharp/../shared/c" })
-        {
-            var path = Path.GetFullPath(Path.Combine(baseDir, rel, libName));
-            if (File.Exists(path)) return path;
-        }
+            foreach (var rel in new[] { "shared/c", "../shared/c", "csharp/../shared/c" })
+            {
+                var path = Path.GetFullPath(Path.Combine(baseDir, rel, libName));
+                if (File.Exists(path)) return path;
+            }
 
         return null;
     }
