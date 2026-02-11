@@ -11,12 +11,17 @@
     <RootNamespace>Borkfork.SpiceDb.Embedded</RootNamespace>
     <PackageId>SpiceDbEmbedded</PackageId>
     <Version>0.1.7</Version>
-    <Description>Embedded SpiceDB for .NET — in-memory server via shared/c P/Invoke + gRPC over Unix socket</Description>
+    <Description>Embedded SpiceDB for .NET — embedded authorization using the standard gRPC API</Description>
     <Authors>Borkfork</Authors>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/borkfork/spicedb-embedded</RepositoryUrl>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Authzed.Net" Version="1.5.0" />

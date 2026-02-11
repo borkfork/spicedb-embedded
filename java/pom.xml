@@ -8,7 +8,7 @@
     <version>0.1.7-SNAPSHOT</version>
     <packaging>jar</packaging>
     <name>spicedb-embedded</name>
-    <description>Embedded SpiceDB for JVM — in-memory server with standard gRPC API</description>
+    <description>Embedded SpiceDB for JVM — embedded server with standard gRPC API</description>
     <url>https://github.com/borkfork/spicedb-embedded</url>
 
     <licenses>
