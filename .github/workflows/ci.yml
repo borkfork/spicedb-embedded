@@ -32,7 +32,7 @@ jobs:
         run: mise run shared-c-build
 
       - name: Stage prebuilds for all languages
-        run: ./scripts/stage-all-prebuilds.sh
+        run: bash ./scripts/stage-all-prebuilds.sh
 
       - name: Upload prebuilds
         uses: actions/upload-artifact@v4
@@ -277,7 +277,7 @@ jobs:
 
       - name: Stage prebuilds for current platform
         shell: bash
-        run: ./scripts/stage-all-prebuilds.sh
+        run: bash ./scripts/stage-all-prebuilds.sh
 
       - name: Rust test
         shell: bash
