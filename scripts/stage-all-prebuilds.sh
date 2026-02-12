@@ -13,17 +13,20 @@ Darwin)
 	arch=$(uname -m)
 	key=$([ "$arch" = "x86_64" ] && echo "darwin-x64" || echo "darwin-arm64")
 	rid=$([ "$arch" = "x86_64" ] && echo "osx-x64" || echo "osx-arm64")
+	java_key=$([ "$arch" = "x86_64" ] && echo "osx-x86_64" || echo "osx-aarch_64")
 	libname="libspicedb.dylib"
 	;;
 Linux)
 	arch=$(uname -m)
 	key=$([ "$arch" = "aarch64" ] || [ "$arch" = "arm64" ] && echo "linux-arm64" || echo "linux-x64")
 	rid=$key
+	java_key=$([ "$arch" = "aarch64" ] || [ "$arch" = "arm64" ] && echo "linux-aarch_64" || echo "linux-x86_64")
 	libname="libspicedb.so"
 	;;
 MINGW* | MSYS*)
 	key="win32-x64"
 	rid="win-x64"
+	java_key="windows-x86_64"
 	libname="spicedb.dll"
 	;;
 *)
@@ -48,10 +51,10 @@ mkdir -p "$root/csharp/runtimes/$rid/native"
 cp "$lib_src" "$root/csharp/runtimes/$rid/native/"
 echo "Staged -> csharp/runtimes/$rid/native/"
 
-# Java: src/main/resources/natives/<key>/ (CI artifact + on test classpath via Surefire additionalClasspathElements)
-mkdir -p "$root/java/src/main/resources/natives/$key"
-cp "$lib_src" "$root/java/src/main/resources/natives/$key/"
-echo "Staged -> java/src/main/resources/natives/$key/"
+# Java: src/main/resources/natives/<java_key>/ (matches SpiceDB.platformKey / os-maven-plugin; CI + test classpath)
+mkdir -p "$root/java/src/main/resources/natives/$java_key"
+cp "$lib_src" "$root/java/src/main/resources/natives/$java_key/"
+echo "Staged -> java/src/main/resources/natives/$java_key/"
 
 # Python: src/spicedb_embedded/natives/<key>/
 mkdir -p "$root/python/src/spicedb_embedded/natives/$key"
