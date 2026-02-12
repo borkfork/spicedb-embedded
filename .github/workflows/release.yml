@@ -521,6 +521,7 @@ jobs:
 
       - name: Generate changelog
         id: changelog
+        shell: bash
         run: |
           npx conventional-changelog-cli@5 -p angular -i CHANGELOG.md -s -r 1 > changelog.md || true
           # clean_changelog: strip first "## version" line so release body doesn't duplicate the release title
