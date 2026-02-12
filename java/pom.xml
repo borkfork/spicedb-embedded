@@ -5,7 +5,7 @@
 
     <groupId>com.borkfork</groupId>
     <artifactId>spicedb-embedded</artifactId>
-    <version>0.1.16-SNAPSHOT</version>
+    <version>0.1.17-SNAPSHOT</version>
     <packaging>jar</packaging>
     <name>spicedb-embedded</name>
     <description>Embedded SpiceDB for JVM — embedded server with standard gRPC API</description>
@@ -147,7 +147,11 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
                 <configuration>
-                    <argLine>-Djava.library.path=${project.basedir}/../shared/c${path.separator}${project.basedir}/target/test-natives --enable-native-access=ALL-UNNAMED --add-opens=jdk.unsupported/sun.misc=ALL-UNNAMED -XX:+IgnoreUnrecognizedVMOptions --sun-misc-unsafe-memory-access=allow</argLine>
+                    <!-- Natives on classpath: src/main/resources/natives/ (stage script and CI populate it; release job copies from natives-layout) -->
+                    <additionalClasspathElements>
+                        <additionalClasspathElement>${project.basedir}/src/main/resources</additionalClasspathElement>
+                    </additionalClasspathElements>
+                    <argLine>--enable-native-access=ALL-UNNAMED --add-opens=jdk.unsupported/sun.misc=ALL-UNNAMED -XX:+IgnoreUnrecognizedVMOptions --sun-misc-unsafe-memory-access=allow</argLine>
                 </configuration>
             </plugin>
             <plugin>

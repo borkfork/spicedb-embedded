@@ -48,7 +48,7 @@ mkdir -p "$root/csharp/runtimes/$rid/native"
 cp "$lib_src" "$root/csharp/runtimes/$rid/native/"
 echo "Staged -> csharp/runtimes/$rid/native/"
 
-# Java: src/main/resources/natives/<key>/
+# Java: src/main/resources/natives/<key>/ (CI artifact + on test classpath via Surefire additionalClasspathElements)
 mkdir -p "$root/java/src/main/resources/natives/$key"
 cp "$lib_src" "$root/java/src/main/resources/natives/$key/"
 echo "Staged -> java/src/main/resources/natives/$key/"

@@ -223,11 +223,13 @@ jobs:
         working-directory: java
         run: mvn -B -ntp compile
 
-      - name: Prepare test natives (java.library.path; not in target/classes so main JAR stays clean)
+      - name: Prepare test classpath natives (src/main/resources/natives so Surefire uses same path as CI/local)
         run: |
-          mkdir -p java/target/test-natives
-          cp shared-libs/linux-x64/native/* java/target/test-natives/
-          ls java/target/test-natives
+          mkdir -p java/src/main/resources/natives
+          cp -r java/target/natives-layout/linux-x64/natives/* java/src/main/resources/natives/
+          cp -r java/target/natives-layout/darwin-arm64/natives/* java/src/main/resources/natives/
+          cp -r java/target/natives-layout/win32-x64/natives/* java/src/main/resources/natives/
+          ls -R java/src/main/resources/natives
 
       - name: Publish to Maven Central
         run: |
