@@ -5,7 +5,7 @@
 
     <groupId>com.borkfork</groupId>
     <artifactId>spicedb-embedded</artifactId>
-    <version>0.1.20-SNAPSHOT</version>
+    <version>0.1.21-SNAPSHOT</version>
     <packaging>jar</packaging>
     <name>spicedb-embedded</name>
     <description>Embedded SpiceDB for JVM — embedded server with standard gRPC API</description>
@@ -216,7 +216,7 @@
                 <artifactId>central-publishing-maven-plugin</artifactId>
                 <version>0.5.0</version>
                 <configuration>
-                    <autoPublish>false</autoPublish>
+                    <autoPublish>true</autoPublish>
                     <deploymentName>${project.artifactId}:${project.version}</deploymentName>
                     <waitUntil>validated</waitUntil>
                 </configuration>
@@ -293,6 +293,16 @@
                                 </configuration>
                             </execution>
                         </executions>
+                    </plugin>
+                    <!-- Skip default deploy: we publish via central-publishing-maven-plugin to Central Portal,
+                         not to OSSRH (oss.sonatype.org), which would 401 with token auth. -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-deploy-plugin</artifactId>
+                        <version>3.1.2</version>
+                        <configuration>
+                            <skip>true</skip>
+                        </configuration>
                     </plugin>
                     <!-- Override to 3.2.1: something (e.g. central-publishing) re-runs the package phase,
                          and source 3.3+ fails when attach-sources runs twice. -->
