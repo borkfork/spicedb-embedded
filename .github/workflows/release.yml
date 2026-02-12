@@ -154,10 +154,22 @@ jobs:
           mkdir -p java/target/natives-layout/linux-x64/natives/linux-x64 \
                    java/target/natives-layout/darwin-arm64/natives/darwin-arm64 \
                    java/target/natives-layout/win32-x64/natives/win32-x64
-          cp shared-libs/linux-x64/native/* java/target/natives-layout/linux-x64/natives/linux-x64/ 2>/dev/null || true
-          cp shared-libs/osx-arm64/native/* java/target/natives-layout/darwin-arm64/natives/darwin-arm64/ 2>/dev/null || true
-          cp shared-libs/win-x64/native/* java/target/natives-layout/win32-x64/natives/win32-x64/ 2>/dev/null || true
+          cp shared-libs/linux-x64/native/* java/target/natives-layout/linux-x64/natives/linux-x64/
+          cp shared-libs/osx-arm64/native/* java/target/natives-layout/darwin-arm64/natives/darwin-arm64/
+          cp shared-libs/win-x64/native/* java/target/natives-layout/win32-x64/natives/win32-x64/
           ls -R java/target/natives-layout
+
+      - name: Verify natives layout for classifier JARs
+        run: |
+          for plat in linux-x64 darwin-arm64 win32-x64; do
+            dir="java/target/natives-layout/$plat/natives/$plat"
+            count=$(find "$dir" -type f 2>/dev/null | wc -l)
+            if [ "$count" -eq 0 ]; then
+              echo "::error::No native files in $dir (shared-libs layout may be wrong)"
+              exit 1
+            fi
+            echo "$plat: $count file(s)"
+          done
 
       - uses: actions/cache@v4
         with:
@@ -248,6 +260,11 @@ jobs:
         run: npm publish
 
   # Publish platform-specific optional packages (only that platform's binary).
+  # Bootstrap: npm trusted publisher (OIDC) can only be enabled for packages that already exist.
+  # Publish each of spicedb-embedded-{linux-x64,darwin-arm64,win32-x64} once manually (e.g.
+  # after a release has built shared-libs, download the artifacts, run the Prepare step locally,
+  # then npm publish from each node/packages/<platform>), then add trusted publisher for each in
+  # the npm dashboard so future releases can publish via OIDC.
   publish-npm-platforms:
     needs: [build-shared-libs]
     strategy:
@@ -285,7 +302,12 @@ jobs:
         run: |
           PKG_DIR="node/packages/${{ matrix.npm_platform }}"
           mkdir -p "$PKG_DIR/prebuilds/${{ matrix.npm_platform }}"
-          cp ${{ matrix.artifact_rid }}/native/* "$PKG_DIR/prebuilds/${{ matrix.npm_platform }}/"
+          # Artifact from upload path "out" may extract as out/<rid>/native or <rid>/native
+          NATIVE_SRC="${{ matrix.artifact_rid }}/native"
+          if [ ! -d "$NATIVE_SRC" ]; then
+            NATIVE_SRC="out/${{ matrix.artifact_rid }}/native"
+          fi
+          cp "$NATIVE_SRC"/* "$PKG_DIR/prebuilds/${{ matrix.npm_platform }}/"
           # Overwrite version in package.json
           sed -i "s/\"version\": \"0.0.0-placeholder\"/\"version\": \"${{ steps.version.outputs.version }}\"/" "$PKG_DIR/package.json"
           ls -R "$PKG_DIR"
@@ -297,7 +319,7 @@ jobs:
 
       - name: Publish platform package to npm
         working-directory: node/packages/${{ matrix.npm_platform }}
-        run: npm publish
+        run: npm publish --access public
 
   publish-nuget:
     needs: [build-shared-libs]

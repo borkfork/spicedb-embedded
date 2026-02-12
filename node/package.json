@@ -1,6 +1,6 @@
 {
   "name": "spicedb-embedded",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "description": "Embedded SpiceDB for TypeScript/Node.js — embedded authorization using the standard gRPC API",
   "type": "module",
   "main": "dist/index.js",
@@ -16,9 +16,9 @@
     "dist"
   ],
   "optionalDependencies": {
-    "spicedb-embedded-linux-x64": "^0.1.13",
-    "spicedb-embedded-darwin-arm64": "^0.1.13",
-    "spicedb-embedded-win32-x64": "^0.1.13"
+    "spicedb-embedded-linux-x64": "^0.1.14",
+    "spicedb-embedded-darwin-arm64": "^0.1.14",
+    "spicedb-embedded-win32-x64": "^0.1.14"
   },
   "scripts": {
     "build": "tsc",
