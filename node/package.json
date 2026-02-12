@@ -16,9 +16,9 @@
     "dist"
   ],
   "optionalDependencies": {
-    "spicedb-embedded-linux-x64": "^0.1.14",
-    "spicedb-embedded-darwin-arm64": "^0.1.14",
-    "spicedb-embedded-win32-x64": "^0.1.14"
+    "spicedb-embedded-linux-x64": "^0.0.0-placeholder",
+    "spicedb-embedded-darwin-arm64": "^0.0.0-placeholder",
+    "spicedb-embedded-win32-x64": "^0.0.0-placeholder"
   },
   "scripts": {
     "build": "tsc",

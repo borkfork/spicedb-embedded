@@ -126,6 +126,16 @@ jobs:
       - name: Format check
         run: mise run format-check-java
 
+      - name: Compile
+        working-directory: java
+        run: mvn compile -q
+
+      - name: Prepare test natives
+        run: |
+          mkdir -p java/target/classes/natives
+          cp -r java/src/main/resources/natives/* java/target/classes/natives/
+          ls -R java/target/classes/natives
+
       - name: Test
         working-directory: java
         run: mvn test
@@ -301,6 +311,16 @@ jobs:
 
       - name: Rust test
         run: cargo test --locked --workspace
+
+      - name: Compile (Java)
+        working-directory: java
+        run: mvn compile -q
+
+      - name: Prepare test natives (Java)
+        run: |
+          mkdir -p java/target/classes/natives
+          cp -r java/src/main/resources/natives/* java/target/classes/natives/
+          ls -R java/target/classes/natives
 
       - name: Java test
         working-directory: java

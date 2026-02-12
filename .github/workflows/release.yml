@@ -253,7 +253,11 @@ jobs:
 
       - name: Build Node.js package
         working-directory: node
-        run: npm ci && npm run build
+        run: |
+          npm ci
+          VERSION="${GITHUB_REF_NAME#v}"
+          npm install spicedb-embedded-linux-x64@$VERSION spicedb-embedded-darwin-arm64@$VERSION spicedb-embedded-win32-x64@$VERSION --no-save
+          npm run build
 
       - name: Publish to npm
         working-directory: node
