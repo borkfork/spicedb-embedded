@@ -21,7 +21,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum', '**/go.mod') }}
+          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
           restore-keys: ${{ runner.os }}-go-
 
       - uses: jdx/mise-action@v3
@@ -130,11 +130,11 @@ jobs:
         working-directory: java
         run: mvn compile -q
 
-      - name: Prepare test natives
+      - name: Prepare test natives (java.library.path; not in target/classes so main JAR stays clean)
         run: |
-          mkdir -p java/target/classes/natives
-          cp -r java/src/main/resources/natives/* java/target/classes/natives/
-          ls -R java/target/classes/natives
+          mkdir -p java/target/test-natives
+          cp java/src/main/resources/natives/linux-x64/* java/target/test-natives/
+          ls java/target/test-natives
 
       - name: Test
         working-directory: java
@@ -259,7 +259,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum', '**/go.mod') }}
+          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
           restore-keys: ${{ runner.os }}-go-
 
       - uses: actions/cache@v4
@@ -318,9 +318,13 @@ jobs:
 
       - name: Prepare test natives (Java)
         run: |
-          mkdir -p java/target/classes/natives
-          cp -r java/src/main/resources/natives/* java/target/classes/natives/
-          ls -R java/target/classes/natives
+          mkdir -p java/target/test-natives
+          case "$(uname -s)" in
+            Linux)   cp java/src/main/resources/natives/linux-x64/* java/target/test-natives/ ;;
+            Darwin)  cp java/src/main/resources/natives/darwin-arm64/* java/target/test-natives/ 2>/dev/null || cp java/src/main/resources/natives/osx-x64/* java/target/test-natives/ ;;
+            MINGW*)  cp java/src/main/resources/natives/win32-x64/* java/target/test-natives/ ;;
+          esac
+          ls java/target/test-natives
 
       - name: Java test
         working-directory: java

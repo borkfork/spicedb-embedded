@@ -51,6 +51,14 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
           fetch-depth: 0
 
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
+          restore-keys: ${{ runner.os }}-go-
+
       - name: Set RID from runner (detect macOS arch)
         id: set_rid
         run: |
@@ -101,7 +109,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum', '**/go.mod') }}
+          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
           restore-keys: ${{ runner.os }}-go-
 
       - uses: jdx/mise-action@v3
@@ -214,6 +222,12 @@ jobs:
       - name: Build Java library
         working-directory: java
         run: mvn -B -ntp compile
+
+      - name: Prepare test natives (java.library.path; not in target/classes so main JAR stays clean)
+        run: |
+          mkdir -p java/target/test-natives
+          cp shared-libs/linux-x64/native/* java/target/test-natives/
+          ls java/target/test-natives
 
       - name: Publish to Maven Central
         run: |
