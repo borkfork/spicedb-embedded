@@ -5,7 +5,7 @@
 
     <groupId>com.borkfork</groupId>
     <artifactId>spicedb-embedded</artifactId>
-    <version>0.1.21-SNAPSHOT</version>
+    <version>0.2.0-SNAPSHOT</version>
     <packaging>jar</packaging>
     <name>spicedb-embedded</name>
     <description>Embedded SpiceDB for JVM — embedded server with standard gRPC API</description>
@@ -252,9 +252,9 @@
                                 </goals>
                                 <configuration>
                                     <target>
-                                        <jar destfile="${project.build.directory}/${project.artifactId}-${project.version}-linux-x64.jar" basedir="${project.build.directory}/natives-layout/linux-x64"/>
-                                        <jar destfile="${project.build.directory}/${project.artifactId}-${project.version}-darwin-arm64.jar" basedir="${project.build.directory}/natives-layout/darwin-arm64"/>
-                                        <jar destfile="${project.build.directory}/${project.artifactId}-${project.version}-win32-x64.jar" basedir="${project.build.directory}/natives-layout/win32-x64"/>
+                                        <jar destfile="${project.build.directory}/${project.artifactId}-${project.version}-linux-x86_64.jar" basedir="${project.build.directory}/natives-layout/linux-x86_64"/>
+                                        <jar destfile="${project.build.directory}/${project.artifactId}-${project.version}-osx-aarch_64.jar" basedir="${project.build.directory}/natives-layout/osx-aarch_64"/>
+                                        <jar destfile="${project.build.directory}/${project.artifactId}-${project.version}-windows-x86_64.jar" basedir="${project.build.directory}/natives-layout/windows-x86_64"/>
                                     </target>
                                 </configuration>
                             </execution>
@@ -275,18 +275,18 @@
                                 <configuration>
                                     <artifacts>
                                         <artifact>
-                                            <file>${project.build.directory}/${project.artifactId}-${project.version}-linux-x64.jar</file>
-                                            <classifier>linux-x64</classifier>
+                                            <file>${project.build.directory}/${project.artifactId}-${project.version}-linux-x86_64.jar</file>
+                                            <classifier>linux-x86_64</classifier>
                                             <type>jar</type>
                                         </artifact>
                                         <artifact>
-                                            <file>${project.build.directory}/${project.artifactId}-${project.version}-darwin-arm64.jar</file>
-                                            <classifier>darwin-arm64</classifier>
+                                            <file>${project.build.directory}/${project.artifactId}-${project.version}-osx-aarch_64.jar</file>
+                                            <classifier>osx-aarch_64</classifier>
                                             <type>jar</type>
                                         </artifact>
                                         <artifact>
-                                            <file>${project.build.directory}/${project.artifactId}-${project.version}-win32-x64.jar</file>
-                                            <classifier>win32-x64</classifier>
+                                            <file>${project.build.directory}/${project.artifactId}-${project.version}-windows-x86_64.jar</file>
+                                            <classifier>windows-x86_64</classifier>
                                             <type>jar</type>
                                         </artifact>
                                     </artifacts>

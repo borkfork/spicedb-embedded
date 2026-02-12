@@ -22,7 +22,7 @@ on:
 
 permissions:
   id-token: write # Required for OIDC
-  contents: read
+  contents: write # Create GitHub Release (includes read)
 
 concurrency:
   group: release-${{ github.ref }}
@@ -159,17 +159,17 @@ jobs:
 
       - name: Lay out natives for classifier JARs (target/natives-layout for release profile)
         run: |
-          mkdir -p java/target/natives-layout/linux-x64/natives/linux-x64 \
-                   java/target/natives-layout/darwin-arm64/natives/darwin-arm64 \
-                   java/target/natives-layout/win32-x64/natives/win32-x64
-          cp shared-libs/linux-x64/native/* java/target/natives-layout/linux-x64/natives/linux-x64/
-          cp shared-libs/osx-arm64/native/* java/target/natives-layout/darwin-arm64/natives/darwin-arm64/
-          cp shared-libs/win-x64/native/* java/target/natives-layout/win32-x64/natives/win32-x64/
+          mkdir -p java/target/natives-layout/linux-x86_64/natives/linux-x86_64 \
+                   java/target/natives-layout/osx-aarch_64/natives/osx-aarch_64 \
+                   java/target/natives-layout/windows-x86_64/natives/windows-x86_64
+          cp shared-libs/linux-x64/native/* java/target/natives-layout/linux-x86_64/natives/linux-x86_64/
+          cp shared-libs/osx-arm64/native/* java/target/natives-layout/osx-aarch_64/natives/osx-aarch_64/
+          cp shared-libs/win-x64/native/* java/target/natives-layout/windows-x86_64/natives/windows-x86_64/
           ls -R java/target/natives-layout
 
       - name: Verify natives layout for classifier JARs
         run: |
-          for plat in linux-x64 darwin-arm64 win32-x64; do
+          for plat in linux-x86_64 osx-aarch_64 windows-x86_64; do
             dir="java/target/natives-layout/$plat/natives/$plat"
             count=$(find "$dir" -type f 2>/dev/null | wc -l)
             if [ "$count" -eq 0 ]; then
@@ -226,9 +226,9 @@ jobs:
       - name: Prepare test classpath natives (src/main/resources/natives so Surefire uses same path as CI/local)
         run: |
           mkdir -p java/src/main/resources/natives
-          cp -r java/target/natives-layout/linux-x64/natives/* java/src/main/resources/natives/
-          cp -r java/target/natives-layout/darwin-arm64/natives/* java/src/main/resources/natives/
-          cp -r java/target/natives-layout/win32-x64/natives/* java/src/main/resources/natives/
+          cp -r java/target/natives-layout/linux-x86_64/natives/* java/src/main/resources/natives/
+          cp -r java/target/natives-layout/osx-aarch_64/natives/* java/src/main/resources/natives/
+          cp -r java/target/natives-layout/windows-x86_64/natives/* java/src/main/resources/natives/
           ls -R java/src/main/resources/natives
 
       - name: Publish to Maven Central
@@ -241,7 +241,7 @@ jobs:
           mvn -B -ntp versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
           # No clean: natives are in target/natives-layout for classifier JARs
           mvn -B -ntp -P release package deploy
-          echo "Published Java $VERSION to Maven Central (main + linux-x64, darwin-arm64, win32-x64 classifier JARs)" >> $GITHUB_STEP_SUMMARY
+          echo "Published Java $VERSION to Maven Central (main + linux-x86_64, osx-aarch_64, windows-x86_64 classifier JARs)" >> $GITHUB_STEP_SUMMARY
 
   publish-npm:
     needs: [publish-npm-platforms]
@@ -492,3 +492,116 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: python/dist
+
+  create-release:
+    needs:
+      [publish-rust, publish-java, publish-npm, publish-nuget, publish-pypi]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set version and tag
+        id: tag
+        run: |
+          TAG="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "version=${TAG#v}" >> $GITHUB_OUTPUT
+
+      - name: Install conventional-changelog-cli
+        run: |
+          npm install -g conventional-changelog-cli
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          conventional-changelog-cli -p angular -i CHANGELOG.md -s > changelog.md
+          echo "changelog<<CHANGELOG_EOF" >> $GITHUB_OUTPUT
+          cat changelog.md >> $GITHUB_OUTPUT
+          echo "CHANGELOG_EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          body: |
+            ${{ steps.changelog.outputs.changelog }}
+
+            Packages have been published to the following registries:
+
+            | Package | Registry | Link |
+            |---------|----------|------|
+            | **Rust** | crates.io | [spicedb-embedded](https://crates.io/crates/spicedb-embedded) |
+            | **Java** | Maven Central | [com.borkfork:spicedb-embedded](https://central.sonatype.com/artifact/com.borkfork/spicedb-embedded) |
+            | **Node.js** | npm | [spicedb-embedded](https://www.npmjs.com/package/spicedb-embedded) |
+            | **.NET** | NuGet | [SpiceDbEmbedded](https://www.nuget.org/packages/SpiceDbEmbedded) |
+            | **Python** | PyPI | [spicedb-embedded](https://pypi.org/project/spicedb-embedded/) |
+
+            ### Installation
+
+            **Rust**:
+            ```bash
+            cargo add spicedb-embedded
+            ```
+
+            **Node.js**:
+            ```bash
+            npm install spicedb-embedded
+            ```
+
+            **.NET**:
+            ```bash
+            dotnet add package SpiceDbEmbedded
+            ```
+
+            **Python**:
+            ```bash
+            pip install spicedb-embedded
+            ```
+
+            **Java** (Maven). Add the main artifact and the matching classifier JAR for your platform (`linux-x86_64`, `osx-aarch_64`, `windows-x86_64`):
+            ```xml
+            <dependency>
+              <groupId>com.borkfork</groupId>
+              <artifactId>spicedb-embedded</artifactId>
+              <version>${{ steps.tag.outputs.version }}</version>
+            </dependency>
+            <!-- Platform native library (use one: linux-x86_64, osx-aarch_64, windows-x86_64) -->
+            <dependency>
+              <groupId>com.borkfork</groupId>
+              <artifactId>spicedb-embedded</artifactId>
+              <version>${{ steps.tag.outputs.version }}</version>
+              <classifier>linux-x86_64</classifier>
+            </dependency>
+            ```
+
+            With **os-maven-plugin** you can use `${os.detected.classifier}` directly:
+            ```xml
+            <extensions>
+              <extension>
+                <groupId>kr.motd.maven</groupId>
+                <artifactId>os-maven-plugin</artifactId>
+                <version>1.7.1</version>
+              </extension>
+            </extensions>
+            ```
+            Then add the native dependency with `<classifier>${os.detected.classifier}</classifier>`.
+
+            **Java** (Gradle). Add the main artifact and the classifier for your platform (`linux-x86_64`, `osx-aarch_64`, or `windows-x86_64`):
+            ```groovy
+            implementation 'com.borkfork:spicedb-embedded:${{ steps.tag.outputs.version }}'
+            implementation 'com.borkfork:spicedb-embedded:${{ steps.tag.outputs.version }}:linux-x86_64'  // or osx-aarch_64, windows-x86_64
+            ```
+            Kotlin DSL:
+            ```kotlin
+            implementation("com.borkfork:spicedb-embedded:${{ steps.tag.outputs.version }}")
+            implementation("com.borkfork:spicedb-embedded:${{ steps.tag.outputs.version }}:linux-x86_64")  // or osx-aarch_64, windows-x86_64
+            ```
+            With [osdetector-gradle-plugin](https://github.com/google/osdetector-gradle-plugin) you can use the classifier dynamically:
+            ```groovy
+            plugins { id "com.google.osdetector" version "1.7.3" }
+            dependencies {
+              implementation "com.borkfork:spicedb-embedded:${{ steps.tag.outputs.version }}"
+              implementation "com.borkfork:spicedb-embedded:${{ steps.tag.outputs.version }}:${osdetector.classifier}"
+            }
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

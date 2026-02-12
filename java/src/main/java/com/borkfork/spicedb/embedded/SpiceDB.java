@@ -60,16 +60,14 @@ interface SpiceDB extends Library {
     return null;
   }
 
-  /** Maps os.name + os.arch to our resource dir names (linux-x64, darwin-arm64, win32-x64). */
+  /** Maps os.name + os.arch to resource dir names (matches os-maven-plugin: linux-x86_64, osx-aarch_64, windows-x86_64). */
   private static String platformKey(String os, String arch) {
-    String archNorm =
-        arch.equals("amd64") || arch.equals("x86_64")
-            ? "x64"
-            : (arch.equals("aarch64") || arch.equals("arm64")) ? "arm64" : null;
-    if (archNorm == null) return null;
-    if (os.contains("linux")) return "linux-" + archNorm;
-    if (os.contains("mac")) return "darwin-" + archNorm;
-    if (os.contains("win")) return "win32-" + archNorm;
+    boolean x86_64 = arch.equals("amd64") || arch.equals("x86_64");
+    boolean aarch_64 = arch.equals("aarch64") || arch.equals("arm64");
+    if (os.contains("linux") && x86_64) return "linux-x86_64";
+    if (os.contains("mac") && aarch_64) return "osx-aarch_64";
+    if (os.contains("mac") && x86_64) return "osx-x86_64";
+    if (os.contains("win") && x86_64) return "windows-x86_64";
     return null;
   }
 
