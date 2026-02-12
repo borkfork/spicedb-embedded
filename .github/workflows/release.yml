@@ -255,8 +255,18 @@ jobs:
         working-directory: node
         run: |
           npm ci
-          VERSION="${GITHUB_REF_NAME#v}"
-          npm install spicedb-embedded-linux-x64@$VERSION spicedb-embedded-darwin-arm64@$VERSION spicedb-embedded-win32-x64@$VERSION --no-save
+          export VERSION="${GITHUB_REF_NAME#v}"
+          node -e "
+          const fs = require('fs');
+          const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          p.optionalDependencies = {
+            'spicedb-embedded-linux-x64': process.env.VERSION,
+            'spicedb-embedded-darwin-arm64': process.env.VERSION,
+            'spicedb-embedded-win32-x64': process.env.VERSION
+          };
+          fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
+          "
+          npm install
           npm run build
 
       - name: Publish to npm
