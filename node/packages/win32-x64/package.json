@@ -1,0 +1,22 @@
+{
+  "name": "spicedb-embedded-win32-x64",
+  "version": "0.0.0-placeholder",
+  "description": "Native SpiceDB binaries for Windows x64 (optional dependency of spicedb-embedded)",
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "prebuilds"
+  ],
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/borkfork/spicedb-embedded.git"
+  }
+}

@@ -103,17 +103,25 @@ So you get the benefits of (1) using the same generated gRPC code to communicate
 
 ## Installation
 
-Add to your `pom.xml`:
+Add the main library and **one** classifier dependency for your platform (`linux-x86_64`, `osx-aarch_64`, or `windows-x86_64`; matches [os-maven-plugin](https://github.com/trustin/os-maven-plugin)) to your `pom.xml`:
 
 ```xml
 <dependency>
     <groupId>com.borkfork</groupId>
     <artifactId>spicedb-embedded</artifactId>
-    <version>0.1.12-SNAPSHOT</version>
+    <version>0.2.0</version>
+</dependency>
+<dependency>
+    <groupId>com.borkfork</groupId>
+    <artifactId>spicedb-embedded</artifactId>
+    <version>0.2.0</version>
+    <classifier>linux-x86_64</classifier>  <!-- or osx-aarch_64, windows-x86_64 -->
 </dependency>
 ```
 
-**Prerequisites:** Go 1.23+ with CGO enabled. Build the shared library first:
+**Without a classifier**, the library falls back to `spicedb.library.path` or `shared/c` (see Prerequisites).
+
+**Prerequisites (only if not using a classifier JAR):** Go 1.23+ with CGO enabled. Build the shared library first:
 
 ```bash
 cd shared/c && CGO_ENABLED=1 go build -buildmode=c-shared -o libspicedb.dylib .  # macOS

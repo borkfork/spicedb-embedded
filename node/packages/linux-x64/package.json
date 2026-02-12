@@ -1,0 +1,22 @@
+{
+  "name": "spicedb-embedded-linux-x64",
+  "version": "0.0.0-placeholder",
+  "description": "Native SpiceDB binaries for Linux x64 (optional dependency of spicedb-embedded)",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "prebuilds"
+  ],
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/borkfork/spicedb-embedded.git"
+  }
+}

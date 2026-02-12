@@ -5,7 +5,7 @@
 
     <groupId>com.borkfork</groupId>
     <artifactId>spicedb-embedded</artifactId>
-    <version>0.1.12-SNAPSHOT</version>
+    <version>0.2.0-SNAPSHOT</version>
     <packaging>jar</packaging>
     <name>spicedb-embedded</name>
     <description>Embedded SpiceDB for JVM — embedded server with standard gRPC API</description>
@@ -124,6 +124,14 @@
     </dependencies>
 
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <excludes>
+                    <exclude>natives/**</exclude>
+                </excludes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -139,7 +147,11 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
                 <configuration>
-                    <argLine>-Djava.library.path=${project.basedir}/../shared/c --enable-native-access=ALL-UNNAMED --add-opens=jdk.unsupported/sun.misc=ALL-UNNAMED -XX:+IgnoreUnrecognizedVMOptions --sun-misc-unsafe-memory-access=allow</argLine>
+                    <!-- Natives on classpath: src/main/resources/natives/ (stage script and CI populate it; release job copies from natives-layout) -->
+                    <additionalClasspathElements>
+                        <additionalClasspathElement>${project.basedir}/src/main/resources</additionalClasspathElement>
+                    </additionalClasspathElements>
+                    <argLine>--enable-native-access=ALL-UNNAMED --add-opens=jdk.unsupported/sun.misc=ALL-UNNAMED -XX:+IgnoreUnrecognizedVMOptions --sun-misc-unsafe-memory-access=allow</argLine>
                 </configuration>
             </plugin>
             <plugin>
@@ -203,12 +215,20 @@
                 <groupId>org.sonatype.central</groupId>
                 <artifactId>central-publishing-maven-plugin</artifactId>
                 <version>0.5.0</version>
-                <extensions>true</extensions>
                 <configuration>
-                    <autoPublish>false</autoPublish>
+                    <autoPublish>true</autoPublish>
                     <deploymentName>${project.artifactId}:${project.version}</deploymentName>
                     <waitUntil>validated</waitUntil>
                 </configuration>
+                <executions>
+                    <execution>
+                        <id>publish-to-central</id>
+                        <phase>deploy</phase>
+                        <goals>
+                            <goal>publish</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
@@ -218,6 +238,79 @@
             <id>release</id>
             <build>
                 <plugins>
+                    <!-- Create classifier JARs (natives only) from target/natives-layout; CI lays out shared libs there. -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>create-natives-jars</id>
+                                <phase>prepare-package</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <target>
+                                        <jar destfile="${project.build.directory}/${project.artifactId}-${project.version}-linux-x86_64.jar" basedir="${project.build.directory}/natives-layout/linux-x86_64"/>
+                                        <jar destfile="${project.build.directory}/${project.artifactId}-${project.version}-osx-aarch_64.jar" basedir="${project.build.directory}/natives-layout/osx-aarch_64"/>
+                                        <jar destfile="${project.build.directory}/${project.artifactId}-${project.version}-windows-x86_64.jar" basedir="${project.build.directory}/natives-layout/windows-x86_64"/>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!-- Attach in verify (not package) so package phase is not re-triggered by adding artifacts. -->
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>build-helper-maven-plugin</artifactId>
+                        <version>3.5.0</version>
+                        <executions>
+                            <execution>
+                                <id>attach-natives-jars</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>attach-artifact</goal>
+                                </goals>
+                                <configuration>
+                                    <artifacts>
+                                        <artifact>
+                                            <file>${project.build.directory}/${project.artifactId}-${project.version}-linux-x86_64.jar</file>
+                                            <classifier>linux-x86_64</classifier>
+                                            <type>jar</type>
+                                        </artifact>
+                                        <artifact>
+                                            <file>${project.build.directory}/${project.artifactId}-${project.version}-osx-aarch_64.jar</file>
+                                            <classifier>osx-aarch_64</classifier>
+                                            <type>jar</type>
+                                        </artifact>
+                                        <artifact>
+                                            <file>${project.build.directory}/${project.artifactId}-${project.version}-windows-x86_64.jar</file>
+                                            <classifier>windows-x86_64</classifier>
+                                            <type>jar</type>
+                                        </artifact>
+                                    </artifacts>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!-- Skip default deploy: we publish via central-publishing-maven-plugin to Central Portal,
+                         not to OSSRH (oss.sonatype.org), which would 401 with token auth. -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-deploy-plugin</artifactId>
+                        <version>3.1.2</version>
+                        <configuration>
+                            <skip>true</skip>
+                        </configuration>
+                    </plugin>
+                    <!-- Override to 3.2.1: something (e.g. central-publishing) re-runs the package phase,
+                         and source 3.3+ fails when attach-sources runs twice. -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <version>3.2.1</version>
+                    </plugin>
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-gpg-plugin</artifactId>

@@ -3,6 +3,7 @@
  */
 
 import koffi from "koffi";
+import { createRequire } from "module";
 import { accessSync } from "fs";
 import { platform } from "os";
 import { resolve, dirname } from "path";
@@ -41,17 +42,30 @@ function findLibrary(): string {
         ? "libspicedb.dylib"
         : "libspicedb.so";
 
-  // Bundled prebuilds (from npm package; path relative to dist/ffi.js)
+  // Platform-specific optional dependency (only the matching platform is installed)
+  const platformKey = `${currentPlatform}-${process.arch}`;
+  const optionalPkgName = `spicedb-embedded-${platformKey}`;
+  try {
+    const req = createRequire(import.meta.url);
+    const pkgRoot = dirname(req.resolve(`${optionalPkgName}/package.json`));
+    const bundledPath = resolve(pkgRoot, "prebuilds", platformKey, libName);
+    accessSync(bundledPath);
+    return bundledPath;
+  } catch {
+    // optional dep not installed or no bundled lib for this platform
+  }
+
+  // Legacy: prebuilds next to dist/ (e.g. local dev after stage-all-prebuilds)
   const prebuildsDir = resolve(
     dirname(fileURLToPath(import.meta.url)),
     "..",
     "prebuilds",
-    `${platform()}-${process.arch}`
+    platformKey
   );
-  const bundledPath = resolve(prebuildsDir, libName);
+  const legacyPath = resolve(prebuildsDir, libName);
   try {
-    accessSync(bundledPath);
-    return bundledPath;
+    accessSync(legacyPath);
+    return legacyPath;
   } catch {
     // no bundled lib for this platform
   }
