@@ -498,6 +498,14 @@ jobs:
       [publish-rust, publish-java, publish-npm, publish-nuget, publish-pypi]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
       - name: Set version and tag
         id: tag
         run: |
@@ -505,17 +513,29 @@ jobs:
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=${TAG#v}" >> $GITHUB_OUTPUT
 
-      - name: Install conventional-changelog-cli
+      - name: Delete current tag locally
         run: |
-          npm install -g conventional-changelog-cli
+          TAG="${{ steps.tag.outputs.tag }}"
+          git tag -d "$TAG" 2>/dev/null || true
+          # So conventional-changelog's "latest tag" is the previous release; commits from that tag to HEAD = this release
 
       - name: Generate changelog
         id: changelog
         run: |
-          conventional-changelog-cli -p angular -i CHANGELOG.md -s > changelog.md
+          npx conventional-changelog-cli@5 -p angular -i CHANGELOG.md -s -r 1 > changelog.md || true
+          # clean_changelog: strip first "## version" line so release body doesn't duplicate the release title
+          first=$(head -1 changelog.md 2>/dev/null || true)
+          if [[ "$first" == ##* ]]; then
+            tail -n +2 changelog.md > clean_changelog.md
+          else
+            cp changelog.md clean_changelog.md
+          fi
           echo "changelog<<CHANGELOG_EOF" >> $GITHUB_OUTPUT
           cat changelog.md >> $GITHUB_OUTPUT
           echo "CHANGELOG_EOF" >> $GITHUB_OUTPUT
+          echo "clean_changelog<<CLEAN_CHANGELOG_EOF" >> $GITHUB_OUTPUT
+          cat clean_changelog.md >> $GITHUB_OUTPUT
+          echo "CLEAN_CHANGELOG_EOF" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -523,7 +543,7 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.tag.outputs.tag }}
           body: |
-            ${{ steps.changelog.outputs.changelog }}
+            ${{ steps.changelog.outputs.clean_changelog }}
 
             Packages have been published to the following registries:
 
