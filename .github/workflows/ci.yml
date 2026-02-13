@@ -247,14 +247,17 @@ jobs:
         run: |
           eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
 
+      - name: pip install
+        working-directory: python
+        run: pip install -e '.[dev]'
+
       - name: Format check
-        run: mise run format-check-python
+        working-directory: python
+        run: ruff format --check .
 
       - name: Test
         working-directory: python
-        run: |
-          pip install -e '.[dev]'
-          pytest
+        run: pytest
 
   csharp:
     needs: shared-c-lib
