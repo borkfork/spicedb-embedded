@@ -47,19 +47,14 @@ jobs:
           - runner: windows-latest
             rid: win-x64
     runs-on: ${{ matrix.runner }}
+    env:
+      # Use a single cache path on all runners (macOS defaults to ~/Library/Caches/go-build)
+      GOCACHE: ~/.cache/go-build
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
           fetch-depth: 0
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
-          restore-keys: ${{ runner.os }}-go-
 
       - name: "Set RID from runner (macOS: we only publish osx-arm64; Intel Mac not supported)"
         id: set_rid
@@ -77,6 +72,14 @@ jobs:
       - uses: jdx/mise-action@v3
         with:
           install_args: "go"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
+          restore-keys: ${{ runner.os }}-go-
 
       - name: Build shared C library
         run: mise run shared-c-build
@@ -225,15 +228,15 @@ jobs:
             echo "$plat: $count file(s)"
           done
 
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "java maven"
+
       - uses: actions/cache@v4
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-m2-
-
-      - uses: jdx/mise-action@v3
-        with:
-          install_args: "java maven"
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -302,15 +305,15 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
           fetch-depth: 0
 
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "node"
+
       - uses: actions/cache@v4
         with:
           path: node/node_modules
           key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json', '**/package.json') }}
           restore-keys: ${{ runner.os }}-npm-
-
-      - uses: jdx/mise-action@v3
-        with:
-          install_args: "node"
 
       - uses: actions/setup-node@v6
         with:
@@ -436,15 +439,15 @@ jobs:
           done
           ls -R csharp/runtimes
 
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "dotnet"
+
       - uses: actions/cache@v4
         with:
           path: csharp/artifacts
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/bin/Release/SpiceDbEmbedded.nupkg') }}
           restore-keys: ${{ runner.os }}-nuget-
-
-      - uses: jdx/mise-action@v3
-        with:
-          install_args: "dotnet"
 
       - name: Build C# package
         run: dotnet build csharp/SpiceDbEmbedded.sln -c Release

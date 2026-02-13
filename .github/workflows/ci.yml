@@ -25,11 +25,17 @@ jobs:
     runs-on: ${{ matrix.runner }}
     env:
       MISE_ENABLE_TOOLS: "go"
+      # Use a single cache path on all runners (macOS defaults to ~/Library/Caches/go-build)
+      GOCACHE: ~/.cache/go-build
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "go"
 
       - uses: actions/cache@v4
         with:
@@ -38,10 +44,6 @@ jobs:
             ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
           restore-keys: ${{ runner.os }}-go-
-
-      - uses: jdx/mise-action@v3
-        with:
-          install_args: "go"
 
       - name: Build shared C library
         run: mise run shared-c-build
@@ -93,6 +95,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     env:
       MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,go,github:authzed/spicedb"
+      # Use a single cache path on all runners (macOS defaults to ~/Library/Caches/go-build)
+      GOCACHE: ~/.cache/go-build
       # Rust tests use testcontainers (postgres, mysql, cockroach); use Linux/amd64 Docker platform.
       DOCKER_DEFAULT_PLATFORM: linux/amd64
     defaults:
@@ -116,6 +120,14 @@ jobs:
       - uses: jdx/mise-action@v3
         with:
           install_args: "rust github:EmbarkStudios/cargo-deny go github:authzed/spicedb"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
+          restore-keys: ${{ runner.os }}-go-
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -164,11 +176,9 @@ jobs:
         with:
           name: prebuilds-${{ matrix.rid }}
 
-      - name: Set library path (Windows)
-        if: matrix.runner == 'windows-latest'
-        run: |
-          eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
-          echo "PATH=$PATH" >> "$GITHUB_ENV"
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "java maven"
 
       - uses: actions/cache@v4
         with:
@@ -176,9 +186,11 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-maven-
 
-      - uses: jdx/mise-action@v3
-        with:
-          install_args: "java maven"
+      - name: Set library path (Windows)
+        if: matrix.runner == 'windows-latest'
+        run: |
+          eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
+          echo "PATH=$PATH" >> "$GITHUB_ENV"
 
       - name: Format check
         run: mise run format-check-java
@@ -219,11 +231,9 @@ jobs:
         with:
           name: prebuilds-${{ matrix.rid }}
 
-      - name: Set library path (Windows)
-        if: matrix.runner == 'windows-latest'
-        run: |
-          eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
-          echo "PATH=$PATH" >> "$GITHUB_ENV"
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "python"
 
       - uses: actions/cache@v4
         with:
@@ -231,9 +241,11 @@ jobs:
           key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml', '**/requirements*.txt') }}
           restore-keys: ${{ runner.os }}-pip-
 
-      - uses: jdx/mise-action@v3
-        with:
-          install_args: "python"
+      - name: Set library path (Windows)
+        if: matrix.runner == 'windows-latest'
+        run: |
+          eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
+          echo "PATH=$PATH" >> "$GITHUB_ENV"
 
       - name: Format check
         run: mise run format-check-python
@@ -272,11 +284,9 @@ jobs:
         with:
           name: prebuilds-${{ matrix.rid }}
 
-      - name: Set library path (Windows)
-        if: matrix.runner == 'windows-latest'
-        run: |
-          eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
-          echo "PATH=$PATH" >> "$GITHUB_ENV"
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "dotnet"
 
       - uses: actions/cache@v4
         with:
@@ -284,9 +294,11 @@ jobs:
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
           restore-keys: ${{ runner.os }}-nuget-
 
-      - uses: jdx/mise-action@v3
-        with:
-          install_args: "dotnet"
+      - name: Set library path (Windows)
+        if: matrix.runner == 'windows-latest'
+        run: |
+          eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
+          echo "PATH=$PATH" >> "$GITHUB_ENV"
 
       - name: Format check
         run: mise run format-check-csharp
@@ -324,11 +336,9 @@ jobs:
         with:
           name: prebuilds-${{ matrix.rid }}
 
-      - name: Set library path (Windows)
-        if: matrix.runner == 'windows-latest'
-        run: |
-          eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
-          echo "PATH=$PATH" >> "$GITHUB_ENV"
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "node"
 
       - uses: actions/cache@v4
         with:
@@ -336,9 +346,11 @@ jobs:
           key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json', '**/package.json') }}
           restore-keys: ${{ runner.os }}-npm-
 
-      - uses: jdx/mise-action@v3
-        with:
-          install_args: "node"
+      - name: Set library path (Windows)
+        if: matrix.runner == 'windows-latest'
+        run: |
+          eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
+          echo "PATH=$PATH" >> "$GITHUB_ENV"
 
       - name: Format check
         run: mise run format-check-node
