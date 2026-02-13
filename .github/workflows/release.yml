@@ -47,14 +47,14 @@ jobs:
           - runner: windows-latest
             rid: win-x64
     runs-on: ${{ matrix.runner }}
-    env:
-      # Use a single cache path on all runners (macOS defaults to ~/Library/Caches/go-build)
-      GOCACHE: ~/.cache/go-build
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
           fetch-depth: 0
+
+      - name: Set GOCACHE (absolute path required by Go)
+        run: echo "GOCACHE=$HOME/.cache/go-build" >> $GITHUB_ENV
 
       - name: "Set RID from runner (macOS: we only publish osx-arm64; Intel Mac not supported)"
         id: set_rid
