@@ -53,7 +53,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: prebuilds-${{ matrix.rid }}
-          path: rust/prebuilds
+          path: rust/spicedb-embedded-sys/prebuilds
           retention-days: 1
 
       - name: Upload full prebuilds (for Java, Node, Python, C#)
@@ -66,7 +66,7 @@ jobs:
             csharp/runtimes
             java/src/main/resources/natives
             python/src/spicedb_embedded/natives
-            rust/prebuilds
+            rust/spicedb-embedded-sys/prebuilds
           retention-days: 1
 
   format-toml-shell:
@@ -112,12 +112,12 @@ jobs:
         with:
           name: prebuilds-${{ matrix.rid }}
 
-      - name: Merge prebuilds into rust/prebuilds
+      - name: Merge prebuilds into rust/spicedb-embedded-sys/prebuilds
         run: |
-          mkdir -p rust/prebuilds
-          # Artifact from path rust/prebuilds has one dir (e.g. linux-x64) at root
+          mkdir -p rust/spicedb-embedded-sys/prebuilds
+          # Artifact from path rust/spicedb-embedded-sys/prebuilds has one dir (e.g. linux-x64) at root
           for d in linux-x64 linux-arm64 osx-arm64 win-x64; do
-            [ -d "$d" ] && mv "$d" rust/prebuilds/ && break
+            [ -d "$d" ] && mv "$d" rust/spicedb-embedded-sys/prebuilds/ && break
           done
 
       - uses: jdx/mise-action@v3

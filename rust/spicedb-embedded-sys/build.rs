@@ -33,24 +33,15 @@ fn run(rid: &str, release_version: Option<&str>) {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR set by Cargo"));
     let (lib_filename, lib_path) = lib_artifact_name_and_path(rid, &out_dir);
 
-    let prebuild_crate = manifest_dir.join("prebuilds").join(rid).join(&lib_filename);
-    let prebuild_repo = manifest_dir
-        .join("..")
-        .join("prebuilds")
-        .join(rid)
-        .join(&lib_filename);
+    // When in repo, ensure Go source is present inside the -sys crate (for build-from-source and consistency).
+    ensure_go_source_in_crate(&manifest_dir);
+
+    let prebuild_dir = manifest_dir.join("prebuilds").join(rid);
+    let prebuild_crate = prebuild_dir.join(&lib_filename);
 
     #[allow(unused_variables)]
     let (prebuild, prebuild_dir) = if prebuild_crate.exists() {
-        (
-            prebuild_crate.clone(),
-            manifest_dir.join("prebuilds").join(rid),
-        )
-    } else if prebuild_repo.exists() {
-        (
-            prebuild_repo.clone(),
-            manifest_dir.join("..").join("prebuilds").join(rid),
-        )
+        (prebuild_crate.clone(), prebuild_dir)
     } else if try_build_from_source(&manifest_dir, &out_dir, &lib_filename) {
         let prebuild = out_dir.join(&lib_filename);
         (prebuild.clone(), out_dir.clone())
@@ -63,13 +54,12 @@ fn run(rid: &str, release_version: Option<&str>) {
             (prebuild.clone(), out_dir.clone())
         } else {
             panic!(
-                "Prebuild not found for {}. Looked in {} and {}. \
+                "Prebuild not found for {}. Looked in {}. \
                 Build from source: install Go (CGO enabled) and build from repo (mise run shared-c-build), \
-                or run ./scripts/stage-all-prebuilds.sh. \
+                or run ./scripts/stage-all-prebuilds.sh to stage into spicedb-embedded-sys/prebuilds/<rid>. \
                 When using the published crate, the build script uses CARGO_PKG_VERSION to download the lib from GitHub Release.",
                 rid,
-                prebuild_crate.display(),
-                prebuild_repo.display()
+                prebuild_crate.display()
             );
         }
     };
@@ -92,28 +82,30 @@ fn run(rid: &str, release_version: Option<&str>) {
     }
 }
 
-fn try_build_from_source(manifest_dir: &Path, out_dir: &Path, lib_filename: &str) -> bool {
-    // Build from shared/c inside the -sys crate (copy from repo first if not present).
-    let in_crate = manifest_dir.join("shared").join("c");
-    let shared_c = if in_crate.join("go.mod").exists() {
-        in_crate
-    } else {
-        // Copy repo shared/c into the -sys crate directory, then build from there.
-        let repo_root = match manifest_dir.ancestors().nth(2) {
-            Some(r) => r.to_path_buf(),
-            None => return false,
-        };
-        let repo_shared_c = repo_root.join("shared").join("c");
-        if !repo_shared_c.join("go.mod").exists() {
-            return false;
-        }
-        let dest = manifest_dir.join("shared");
-        if let Err(e) = copy_dir_recursive(&repo_shared_c, &dest.join("c")) {
-            eprintln!("cargo:warning=copy shared/c into -sys crate: {}", e);
-            return false;
-        }
-        dest.join("c")
+/// When building from repo, copy shared/c into the -sys crate so the crate always contains Go source.
+fn ensure_go_source_in_crate(manifest_dir: &Path) {
+    let repo_root = match manifest_dir.ancestors().nth(2) {
+        Some(r) => r.to_path_buf(),
+        None => return,
     };
+    let repo_shared_c = repo_root.join("shared").join("c");
+    if !repo_shared_c.join("go.mod").exists() {
+        return;
+    }
+    // Rerun when repo Go source changes so we copy again and build from fresh copy.
+    println!("cargo:rerun-if-changed={}", repo_shared_c.display());
+    let dest = manifest_dir.join("shared").join("c");
+    if let Err(e) = copy_dir_recursive(&repo_shared_c, &dest) {
+        eprintln!("cargo:warning=copy shared/c into -sys crate: {}", e);
+    }
+}
+
+fn try_build_from_source(manifest_dir: &Path, out_dir: &Path, lib_filename: &str) -> bool {
+    // Build from shared/c inside the -sys crate (ensure_go_source_in_crate already ran).
+    let shared_c = manifest_dir.join("shared").join("c");
+    if !shared_c.join("go.mod").exists() {
+        return false;
+    }
     let _ = std::fs::create_dir_all(out_dir);
     let out_lib = out_dir.join(lib_filename);
     let status = Command::new("go")

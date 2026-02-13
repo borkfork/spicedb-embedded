@@ -116,11 +116,11 @@ jobs:
         with:
           name: shared-lib-linux-x64
 
-      - name: Stage shared lib into rust/prebuilds for -sys crate build (verify step)
+      - name: Stage shared lib into -sys crate prebuilds for build (verify step)
         run: |
-          mkdir -p "rust/prebuilds/linux-x64"
-          cp -r linux-x64/native/* "rust/prebuilds/linux-x64/"
-          [ -f shared/c/spicedb.def ] && cp shared/c/spicedb.def "rust/prebuilds/linux-x64/" || true
+          mkdir -p "rust/spicedb-embedded-sys/prebuilds/linux-x64"
+          cp -r linux-x64/native/* "rust/spicedb-embedded-sys/prebuilds/linux-x64/"
+          [ -f shared/c/spicedb.def ] && cp shared/c/spicedb.def "rust/spicedb-embedded-sys/prebuilds/linux-x64/" || true
 
       - name: Package Go source into -sys crate and git add -f for publish
         run: |

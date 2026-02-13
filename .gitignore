@@ -24,7 +24,6 @@ node/prebuilds/
 csharp/runtimes/
 java/src/main/resources/natives/
 python/src/spicedb_embedded/natives/
-rust/prebuilds/
 
 # C# / .NET
 [Bb]in/
@@ -37,9 +36,6 @@ rust/prebuilds/
 *.nupkg
 .vs/
 **/*.rs.bk
-
-# rust/shared/ = only in release tag (workflow copies shared/c here, commits, pushes tag); not on main
-rust/shared/
 
 # shared/c build artifacts (top-level shared is canonical source)
 shared/c/libspicedb.so
