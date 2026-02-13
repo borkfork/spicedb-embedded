@@ -12,7 +12,7 @@ from spicedb_embedded.errors import SpiceDBError
 
 
 def _platform_key() -> str | None:
-    """Return natives dir name for this platform (linux-x64, darwin-arm64, win32-x64)."""
+    """Return natives dir name for this platform (Node-style: linux-x64, linux-arm64, darwin-arm64, win32-x64)."""
     machine = platform.machine().lower()
     if machine in ("x86_64", "amd64"):
         arch = "x64"

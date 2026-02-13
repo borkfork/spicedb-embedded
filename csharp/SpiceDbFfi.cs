@@ -122,7 +122,7 @@ internal static class SpiceDbFfi
 
         // Prefer native lib packaged with the NuGet package (runtimes/<rid>/native/).
         // RuntimeIdentifier can include qualifiers (e.g. win10-x64, osx.14-arm64, linux-musl-x64);
-        // we package under fixed RIDs (win-x64, osx-arm64, linux-x64), so try raw and normalized.
+        // we package under fixed RIDs (win-x64, osx-arm64, linux-x64, linux-arm64), so try raw and normalized.
         var asmDir = Path.GetDirectoryName(typeof(SpiceDbFfi).Assembly.Location);
         if (!string.IsNullOrEmpty(asmDir))
         {
@@ -147,7 +147,7 @@ internal static class SpiceDbFfi
 
         yield return rid;
 
-        // Normalize to match our workflow packaging: win-x64, osx-arm64, linux-x64
+        // Normalize to match our workflow packaging: win-x64, osx-arm64, linux-x64, linux-arm64
         var normalized = rid;
         normalized = Regex.Replace(normalized, @"^win\d+-", "win-");
         normalized = Regex.Replace(normalized, @"^osx\.\d+-", "osx-");

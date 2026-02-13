@@ -3,6 +3,11 @@
 # Use for local build/test and CI so all loaders use the same paths as the release process.
 # Run from repo root after shared-c-build (or after downloading the shared lib in CI).
 # Usage: ./scripts/stage-all-prebuilds.sh
+#
+# Naming conventions (one canonical platform set, names per ecosystem):
+#   RID (Rust, C#, CI artifact): linux-x64, linux-arm64, osx-arm64, win-x64
+#   key (Node, Python):          linux-x64, linux-arm64, darwin-arm64, win32-x64
+#   java_key (Java, os-maven):   linux-x86_64, linux-aarch_64, osx-aarch_64, osx-x86_64, windows-x86_64
 
 set -e
 root=$(git rev-parse --show-toplevel)

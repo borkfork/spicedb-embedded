@@ -1729,6 +1729,10 @@ dependencies = [
  "hyper-util",
  "serde",
  "serde_json",
+ "spicedb-embedded-sys-linux-arm64",
+ "spicedb-embedded-sys-linux-x64",
+ "spicedb-embedded-sys-osx-arm64",
+ "spicedb-embedded-sys-win-x64",
  "spicedb-grpc",
  "testcontainers-modules",
  "thiserror",
@@ -1737,6 +1741,38 @@ dependencies = [
  "tonic 0.12.3",
  "tower 0.5.3",
  "tracing",
+]
+
+[[package]]
+name = "spicedb-embedded-native-build"
+version = "0.2.0"
+
+[[package]]
+name = "spicedb-embedded-sys-linux-arm64"
+version = "0.2.0"
+dependencies = [
+ "spicedb-embedded-native-build",
+]
+
+[[package]]
+name = "spicedb-embedded-sys-linux-x64"
+version = "0.2.0"
+dependencies = [
+ "spicedb-embedded-native-build",
+]
+
+[[package]]
+name = "spicedb-embedded-sys-osx-arm64"
+version = "0.2.0"
+dependencies = [
+ "spicedb-embedded-native-build",
+]
+
+[[package]]
+name = "spicedb-embedded-sys-win-x64"
+version = "0.2.0"
+dependencies = [
+ "spicedb-embedded-native-build",
 ]
 
 [[package]]

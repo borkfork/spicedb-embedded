@@ -6,10 +6,19 @@
 
 use std::{
     ffi::{CStr, CString},
-    os::raw::{c_char, c_ulonglong},
+    os::raw::c_char,
 };
 
 use serde::{Deserialize, Serialize};
+// Platform-specific FFI is provided by the corresponding -sys crate.
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+use spicedb_embedded_sys_linux_arm64 as native;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use spicedb_embedded_sys_linux_x64 as native;
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+use spicedb_embedded_sys_osx_arm64 as native;
+#[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+use spicedb_embedded_sys_win_x64 as native;
 use spicedb_grpc::authzed::api::v1::{
     RelationshipUpdate, WriteRelationshipsRequest, WriteSchemaRequest,
     permissions_service_client::PermissionsServiceClient, relationship_update::Operation,
@@ -25,14 +34,6 @@ use tower::service_fn;
 use tracing::debug;
 
 use crate::SpiceDBError;
-
-// FFI declarations for the C-shared library
-#[link(name = "spicedb")]
-unsafe extern "C" {
-    fn spicedb_start(options_json: *const c_char) -> *mut c_char;
-    fn spicedb_dispose(handle: c_ulonglong) -> *mut c_char;
-    fn spicedb_free(ptr: *mut c_char);
-}
 
 /// Response from the C library (JSON parsed)
 #[derive(Debug, Deserialize)]
@@ -90,7 +91,7 @@ unsafe fn call_and_parse(ptr: *mut c_char) -> Result<serde_json::Value, SpiceDBE
 
     let c_str = unsafe { CStr::from_ptr(ptr) };
     let response_str = c_str.to_string_lossy().into_owned();
-    unsafe { spicedb_free(ptr) };
+    unsafe { native::spicedb_free(ptr) };
 
     debug!("FFI response: {}", response_str);
 
@@ -180,7 +181,7 @@ impl EmbeddedSpiceDB {
         };
 
         let data = unsafe {
-            let result = spicedb_start(options_ptr);
+            let result = native::spicedb_start(options_ptr);
             call_and_parse(result)?
         };
 
@@ -196,9 +197,9 @@ impl EmbeddedSpiceDB {
             .await
             .map_err(|e| {
                 unsafe {
-                    let result = spicedb_dispose(new_resp.handle);
+                    let result = native::spicedb_dispose(new_resp.handle);
                     if !result.is_null() {
-                        spicedb_free(result);
+                        native::spicedb_free(result);
                     }
                 }
                 SpiceDBError::Runtime(format!("failed to connect to SpiceDB: {e}"))
@@ -260,9 +261,9 @@ impl Drop for EmbeddedSpiceDB {
     fn drop(&mut self) {
         debug!("Disposing SpiceDB handle {}", self.handle);
         unsafe {
-            let result = spicedb_dispose(self.handle);
+            let result = native::spicedb_dispose(self.handle);
             if !result.is_null() {
-                spicedb_free(result);
+                native::spicedb_free(result);
             }
         }
     }

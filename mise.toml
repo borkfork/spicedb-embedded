@@ -124,8 +124,8 @@ dir = "node"
 run = "npm ci && npm run format"
 
 [tasks.clippy]
-description = "Run Clippy linter"
-run = "cargo clippy --locked --workspace --all-features --all-targets"
+description = "Run Clippy linter (main crate only so only current platform's -sys is built)"
+run = "cargo clippy -p spicedb-embedded --locked --all-features --all-targets"
 
 [tasks.test]
 description = "Run tests for all languages"
@@ -138,8 +138,8 @@ description = "Build and run all tests in Docker (uses BuildKit cache for faster
 run = "DOCKER_BUILDKIT=1 docker build -t spicedb-embedded-test -f Dockerfile ."
 
 [tasks.rust-test]
-description = "Run Rust tests"
-run = "mise run shared-c-build && bash ./scripts/stage-all-prebuilds.sh && cargo test --locked --workspace"
+description = "Run Rust tests (main crate only so only current platform's -sys is built)"
+run = "mise run shared-c-build && bash ./scripts/stage-all-prebuilds.sh && cargo test -p spicedb-embedded --locked"
 
 [tasks.cargo-deny]
 description = "Run cargo-deny (license, advisory, ban checks)"

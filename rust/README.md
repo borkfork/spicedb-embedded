@@ -119,7 +119,7 @@ spicedb-embedded = { path = "../spicedb-embedded/rust" }
 # spicedb-embedded = "0.1"
 ```
 
-**Prerequisites:** Go 1.23+ with CGO enabled (to build the shared library). The Rust build script compiles the C library from Go source at build time; the crate does not ship prebuilt `.so`/`.dll`/`.dylib` binaries, so it stays portable across platforms.
+**Prerequisites:** The main crate `spicedb-embedded` depends on a platform-specific `-sys` crate (`spicedb-embedded-sys-linux-x64`, `spicedb-embedded-sys-linux-arm64`, `spicedb-embedded-sys-osx-arm64`, `spicedb-embedded-sys-win-x64`) that provides the prebuilt C shared library. For local development from this repo, run `mise run shared-c-build` then `./scripts/stage-all-prebuilds.sh` so that `rust/prebuilds/<rid>/` is populated; the platform crate will use that. Published crates on crates.io bundle the binary in each `-sys` crate.
 
 ## Usage
 
