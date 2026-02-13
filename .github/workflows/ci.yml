@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set GOCACHE (absolute path required by Go)
-        run: echo "GOCACHE=$HOME/.cache/go-build" >> $GITHUB_ENV
+        run: echo "GOCACHE=$HOME/.cache/go-build" >> "$GITHUB_ENV"
 
       - uses: jdx/mise-action@v3
         with:
@@ -76,8 +76,8 @@ jobs:
         with:
           install_args: "taplo shellcheck shfmt"
 
-      - name: TOML and shell format check
-        run: mise run format-check-toml && mise run format-check-bash
+      - name: TOML, shell, and Actions format check
+        run: mise run format-check-toml && mise run format-check-bash && mise run format-check-actions
 
   rust:
     needs: shared-c-lib
@@ -105,7 +105,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set GOCACHE (absolute path required by Go)
-        run: echo "GOCACHE=$HOME/.cache/go-build" >> $GITHUB_ENV
+        run: echo "GOCACHE=$HOME/.cache/go-build" >> "$GITHUB_ENV"
 
       - name: Login to Docker Hub (testcontainers)
         if: matrix.runner == 'ubuntu-latest' || matrix.runner == 'ubuntu-24.04-arm'
@@ -191,6 +191,7 @@ jobs:
       - name: Set library path (Windows)
         if: matrix.runner == 'windows-latest'
         run: |
+          # shellcheck disable=SC2016
           eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
 
       - name: Format check
@@ -245,6 +246,7 @@ jobs:
       - name: Set library path (Windows)
         if: matrix.runner == 'windows-latest'
         run: |
+          # shellcheck disable=SC2016
           eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
 
       - name: pip install
@@ -300,6 +302,7 @@ jobs:
       - name: Set library path (Windows)
         if: matrix.runner == 'windows-latest'
         run: |
+          # shellcheck disable=SC2016
           eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
 
       - name: Format check
@@ -351,6 +354,7 @@ jobs:
       - name: Set library path (Windows)
         if: matrix.runner == 'windows-latest'
         run: |
+          # shellcheck disable=SC2016
           eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
 
       - name: Format check
