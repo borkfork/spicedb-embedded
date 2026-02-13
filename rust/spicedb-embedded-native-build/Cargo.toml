@@ -1,6 +1,6 @@
 [package]
 name = "spicedb-embedded-native-build"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 description = "Shared build script logic for spicedb-embedded platform crates (internal, not published)"
 license = "Apache-2.0"

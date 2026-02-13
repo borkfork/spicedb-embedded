@@ -308,7 +308,9 @@ async fn connect_unix_socket(
 fn connect_unix_socket(
     _address: &str,
 ) -> std::future::Ready<Result<Channel, Box<dyn std::error::Error + Send + Sync>>> {
-    std::future::ready(Err("Unix domain sockets are not supported on Windows".into()))
+    std::future::ready(Err(
+        "Unix domain sockets are not supported on Windows".into()
+    ))
 }
 
 #[cfg(test)]

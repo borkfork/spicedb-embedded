@@ -1724,7 +1724,7 @@ dependencies = [
 
 [[package]]
 name = "spicedb-embedded"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "hyper-util",
  "serde",
@@ -1745,32 +1745,32 @@ dependencies = [
 
 [[package]]
 name = "spicedb-embedded-native-build"
-version = "0.2.1"
+version = "0.2.2"
 
 [[package]]
 name = "spicedb-embedded-sys-linux-arm64"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "spicedb-embedded-native-build",
 ]
 
 [[package]]
 name = "spicedb-embedded-sys-linux-x64"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "spicedb-embedded-native-build",
 ]
 
 [[package]]
 name = "spicedb-embedded-sys-osx-arm64"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "spicedb-embedded-native-build",
 ]
 
 [[package]]
 name = "spicedb-embedded-sys-win-x64"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "spicedb-embedded-native-build",
 ]

@@ -1,6 +1,6 @@
 [package]
 name = "spicedb-embedded-sys-linux-x64"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 description = "Prebuilt SpiceDB C shared library for Linux x86_64 (used by spicedb-embedded)"
 license = "Apache-2.0"
