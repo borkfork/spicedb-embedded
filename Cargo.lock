@@ -1729,10 +1729,7 @@ dependencies = [
  "hyper-util",
  "serde",
  "serde_json",
- "spicedb-embedded-sys-linux-arm64",
- "spicedb-embedded-sys-linux-x64",
- "spicedb-embedded-sys-osx-arm64",
- "spicedb-embedded-sys-win-x64",
+ "spicedb-embedded-sys",
  "spicedb-grpc",
  "testcontainers-modules",
  "thiserror",
@@ -1744,36 +1741,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "spicedb-embedded-native-build"
+name = "spicedb-embedded-sys"
 version = "0.2.4"
-
-[[package]]
-name = "spicedb-embedded-sys-linux-arm64"
-version = "0.2.4"
-dependencies = [
- "spicedb-embedded-native-build",
-]
-
-[[package]]
-name = "spicedb-embedded-sys-linux-x64"
-version = "0.2.4"
-dependencies = [
- "spicedb-embedded-native-build",
-]
-
-[[package]]
-name = "spicedb-embedded-sys-osx-arm64"
-version = "0.2.4"
-dependencies = [
- "spicedb-embedded-native-build",
-]
-
-[[package]]
-name = "spicedb-embedded-sys-win-x64"
-version = "0.2.4"
-dependencies = [
- "spicedb-embedded-native-build",
-]
 
 [[package]]
 name = "spicedb-grpc"

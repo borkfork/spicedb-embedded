@@ -1,5 +1,9 @@
 [package]
-versioned_files = ["rust/Cargo.toml", "Cargo.lock"]
+versioned_files = [
+  "rust/Cargo.toml",
+  "rust/spicedb-embedded-sys/Cargo.toml",
+  "Cargo.lock",
+]
 
 [bot.releases]
 enabled = true

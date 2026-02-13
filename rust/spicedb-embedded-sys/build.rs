@@ -1,16 +1,32 @@
-//! Shared build logic for platform crates: locate prebuilt C lib, copy to OUT_DIR, emit link directives.
-//! Used as a build-dependency by spicedb-embedded-{linux-x64,osx-arm64,...}.
-//! Prefer: (1) local prebuild, (2) build from source (Go/CGO), (3) download from GitHub Release.
+//! Build script: detect target, then obtain C shared lib (local prebuild, build from Go, or download).
 
 use std::{
     path::{Path, PathBuf},
     process::Command,
 };
 
-/// Run the full build: find prebuild (local, build from source, or download), copy to OUT_DIR, emit cargo link directives.
-/// `rid` is e.g. "linux-x64", "osx-arm64", "win-x64".
-/// `release_version` is the crate version used when downloading from GitHub Release (e.g. from `env!("CARGO_PKG_VERSION")` in the -sys crate).
-pub fn run(rid: &str, release_version: Option<&str>) {
+fn main() {
+    let rid = target_rid();
+    run(rid, Some(env!("CARGO_PKG_VERSION")));
+}
+
+fn target_rid() -> &'static str {
+    let os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    match (os.as_str(), arch.as_str()) {
+        ("linux", "x86_64") => "linux-x64",
+        ("linux", "aarch64") => "linux-arm64",
+        ("macos", "aarch64") => "osx-arm64",
+        ("windows", "x86_64") => "win-x64",
+        _ => panic!(
+            "spicedb-embedded-sys does not support target {}-{}. \
+            Supported: linux-x64, linux-arm64, osx-arm64, win-x64.",
+            os, arch
+        ),
+    }
+}
+
+fn run(rid: &str, release_version: Option<&str>) {
     let manifest_dir = PathBuf::from(
         std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR set by Cargo"),
     );
@@ -35,7 +51,7 @@ pub fn run(rid: &str, release_version: Option<&str>) {
             prebuild_repo.clone(),
             manifest_dir.join("..").join("prebuilds").join(rid),
         )
-    } else if try_build_from_source(rid, &manifest_dir, &out_dir, &lib_filename) {
+    } else if try_build_from_source(&manifest_dir, &out_dir, &lib_filename) {
         let prebuild = out_dir.join(&lib_filename);
         (prebuild.clone(), out_dir.clone())
     } else {
@@ -47,10 +63,11 @@ pub fn run(rid: &str, release_version: Option<&str>) {
             (prebuild.clone(), out_dir.clone())
         } else {
             panic!(
-                "Prebuild not found. Looked in {} and {}. \
+                "Prebuild not found for {}. Looked in {} and {}. \
                 Build from source: install Go (CGO enabled) and build from repo (mise run shared-c-build), \
                 or run ./scripts/stage-all-prebuilds.sh. \
                 When using the published crate, the build script uses CARGO_PKG_VERSION to download the lib from GitHub Release.",
+                rid,
                 prebuild_crate.display(),
                 prebuild_repo.display()
             );
@@ -75,22 +92,28 @@ pub fn run(rid: &str, release_version: Option<&str>) {
     }
 }
 
-/// Try to build the C shared library from Go source (shared/c). Returns true if the lib was produced.
-fn try_build_from_source(
-    _rid: &str,
-    manifest_dir: &Path,
-    out_dir: &Path,
-    lib_filename: &str,
-) -> bool {
-    // When in repo: rust/spicedb-embedded-sys-<rid>/ -> repo root is manifest_dir.parent().parent()
-    let repo_root = match manifest_dir.ancestors().nth(2) {
-        Some(r) => r.to_path_buf(),
-        None => return false,
+fn try_build_from_source(manifest_dir: &Path, out_dir: &Path, lib_filename: &str) -> bool {
+    // Build from shared/c inside the -sys crate (copy from repo first if not present).
+    let in_crate = manifest_dir.join("shared").join("c");
+    let shared_c = if in_crate.join("go.mod").exists() {
+        in_crate
+    } else {
+        // Copy repo shared/c into the -sys crate directory, then build from there.
+        let repo_root = match manifest_dir.ancestors().nth(2) {
+            Some(r) => r.to_path_buf(),
+            None => return false,
+        };
+        let repo_shared_c = repo_root.join("shared").join("c");
+        if !repo_shared_c.join("go.mod").exists() {
+            return false;
+        }
+        let dest = manifest_dir.join("shared");
+        if let Err(e) = copy_dir_recursive(&repo_shared_c, &dest.join("c")) {
+            eprintln!("cargo:warning=copy shared/c into -sys crate: {}", e);
+            return false;
+        }
+        dest.join("c")
     };
-    let shared_c = repo_root.join("shared").join("c");
-    if !shared_c.join("go.mod").exists() {
-        return false;
-    }
     let _ = std::fs::create_dir_all(out_dir);
     let out_lib = out_dir.join(lib_filename);
     let status = Command::new("go")
@@ -124,6 +147,23 @@ fn try_build_from_source(
     } else {
         false
     }
+}
+
+/// Copy a directory recursively. Creates dest parent if needed.
+fn copy_dir_recursive(src: &Path, dest: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dest)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let src_path = entry.path();
+        let dest_path = dest.join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir_recursive(&src_path, &dest_path)?;
+        } else {
+            std::fs::copy(&src_path, &dest_path)?;
+        }
+    }
+    Ok(())
 }
 
 fn download_from_release(rid: &str, version: &str, out_dir: &Path) {

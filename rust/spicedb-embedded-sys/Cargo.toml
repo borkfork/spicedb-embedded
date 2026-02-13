@@ -1,0 +1,15 @@
+[package]
+name = "spicedb-embedded-sys"
+version = "0.2.4"
+edition = "2024"
+description = "FFI and native library for SpiceDB C shared library (builds from Go or downloads prebuilt)"
+license = "Apache-2.0"
+repository = "https://github.com/borkfork/spicedb-embedded"
+documentation = "https://docs.rs/spicedb-embedded-sys"
+homepage = "https://github.com/borkfork/spicedb-embedded"
+keywords = ["spicedb", "ffi", "native"]
+categories = ["development-tools::ffi"]
+include = ["Cargo.toml", "src/**", "build.rs", "shared/**"]
+
+[lib]
+path = "src/lib.rs"

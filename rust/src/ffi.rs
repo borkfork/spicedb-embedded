@@ -10,15 +10,8 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-// Platform-specific FFI is provided by the corresponding -sys crate.
-#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-use spicedb_embedded_sys_linux_arm64 as native;
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use spicedb_embedded_sys_linux_x64 as native;
-#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-use spicedb_embedded_sys_osx_arm64 as native;
-#[cfg(all(target_os = "windows", target_arch = "x86_64"))]
-use spicedb_embedded_sys_win_x64 as native;
+// FFI is provided by spicedb-embedded-sys (builds from Go or downloads prebuilt per target).
+use spicedb_embedded_sys as native;
 use spicedb_grpc::authzed::api::v1::{
     RelationshipUpdate, WriteRelationshipsRequest, WriteSchemaRequest,
     permissions_service_client::PermissionsServiceClient, relationship_update::Operation,

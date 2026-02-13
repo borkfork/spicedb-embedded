@@ -119,7 +119,7 @@ spicedb-embedded = { path = "../spicedb-embedded/rust" }
 # spicedb-embedded = "0.1"
 ```
 
-**Prerequisites:** The main crate `spicedb-embedded` depends on a platform-specific `-sys` crate (`spicedb-embedded-sys-linux-x64`, `spicedb-embedded-sys-linux-arm64`, `spicedb-embedded-sys-osx-arm64`, `spicedb-embedded-sys-win-x64`) that provides the prebuilt C shared library. For local development from this repo, run `mise run shared-c-build` then `./scripts/stage-all-prebuilds.sh` so that `rust/prebuilds/<rid>/` is populated; the platform crate will use that. Published crates on crates.io bundle the binary in each `-sys` crate.
+**Prerequisites:** The main crate `spicedb-embedded` depends on `spicedb-embedded-sys`, which either builds the C shared library from Go (when in this repo with Go installed) or downloads the prebuilt artifact for the current target. For local development, run `mise run shared-c-build` then `./scripts/stage-all-prebuilds.sh` so that `rust/prebuilds/<rid>/` is populated; otherwise the `-sys` crate will build from `shared/c` if Go is available, or download from the GitHub release when using the published crate.
 
 ## Usage
 

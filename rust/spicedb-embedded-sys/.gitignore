@@ -1,0 +1,4 @@
+# Copied Go source (build copies from repo shared/c; not committed)
+shared/
+# Prebuilds (CI copies and git add -f at publish time)
+prebuilds/
