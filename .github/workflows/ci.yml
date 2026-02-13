@@ -192,7 +192,6 @@ jobs:
         if: matrix.runner == 'windows-latest'
         run: |
           eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
-          echo "PATH=$PATH" >> "$GITHUB_ENV"
 
       - name: Format check
         run: mise run format-check-java
@@ -247,7 +246,6 @@ jobs:
         if: matrix.runner == 'windows-latest'
         run: |
           eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
-          echo "PATH=$PATH" >> "$GITHUB_ENV"
 
       - name: Format check
         run: mise run format-check-python
@@ -300,7 +298,6 @@ jobs:
         if: matrix.runner == 'windows-latest'
         run: |
           eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
-          echo "PATH=$PATH" >> "$GITHUB_ENV"
 
       - name: Format check
         run: mise run format-check-csharp
@@ -352,7 +349,6 @@ jobs:
         if: matrix.runner == 'windows-latest'
         run: |
           eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
-          echo "PATH=$PATH" >> "$GITHUB_ENV"
 
       - name: Format check
         run: mise run format-check-node
