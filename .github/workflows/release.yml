@@ -162,12 +162,12 @@ jobs:
         with:
           install_args: "rust"
 
-      - name: Set version from tag and pin native-build dependency
+      - name: Set version from tag and pin native-build dependency for publish
         run: |
           TAG="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}"
           VERSION="${TAG#v}"
           CARGO_TOML="rust/${{ matrix.crate }}/Cargo.toml"
-          sed 's/version = "0\.0\.0-placeholder"/version = "'"$VERSION"'"/' "$CARGO_TOML" > "$CARGO_TOML.tmp" && mv "$CARGO_TOML.tmp" "$CARGO_TOML"
+          sed 's|path = "\.\./spicedb-embedded-native-build" }|path = "../spicedb-embedded-native-build", version = "'"$VERSION"'" }|' "$CARGO_TOML" > "$CARGO_TOML.tmp" && mv "$CARGO_TOML.tmp" "$CARGO_TOML"
           grep "spicedb-embedded-native-build" "$CARGO_TOML"
 
       - name: Stage prebuild into platform crate and publish
