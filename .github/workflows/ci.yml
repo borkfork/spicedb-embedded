@@ -8,11 +8,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Build shared C library once and share as artifact
+  # Build shared C library per platform; Rust uses per-rid artifacts, other languages use full prebuilds from ubuntu
   shared-c-lib:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            rid: linux-x64
+          - runner: ubuntu-24.04-arm
+            rid: linux-arm64
+          - runner: macos-latest
+            rid: osx-arm64
+          - runner: windows-latest
+            rid: win-x64
+    runs-on: ${{ matrix.runner }}
     env:
       MISE_ENABLE_TOOLS: "go"
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -34,7 +49,15 @@ jobs:
       - name: Stage prebuilds for all languages
         run: bash ./scripts/stage-all-prebuilds.sh
 
-      - name: Upload prebuilds
+      - name: Upload Rust prebuilds (per-platform)
+        uses: actions/upload-artifact@v4
+        with:
+          name: prebuilds-${{ matrix.rid }}
+          path: rust/prebuilds
+          retention-days: 1
+
+      - name: Upload full prebuilds (for Java, Node, Python, C#)
+        if: matrix.runner == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
           name: prebuilds
@@ -48,6 +71,9 @@ jobs:
 
   format-toml-shell:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -60,26 +86,43 @@ jobs:
 
   rust:
     needs: shared-c-lib
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            rid: linux-x64
+          - runner: ubuntu-24.04-arm
+            rid: linux-arm64
+          - runner: macos-latest
+            rid: osx-arm64
+          - runner: windows-latest
+            rid: win-x64
+    runs-on: ${{ matrix.runner }}
     env:
-      MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,github:knope-dev/knope,go,github:authzed/spicedb"
+      MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,go,github:authzed/spicedb"
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ vars.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Download prebuilds
+      - name: Download Rust prebuilds for this platform
         uses: actions/download-artifact@v4
         with:
-          name: prebuilds
+          name: prebuilds-${{ matrix.rid }}
+
+      - name: Merge prebuilds into rust/prebuilds
+        run: |
+          mkdir -p rust/prebuilds
+          # Artifact from path rust/prebuilds has one dir (e.g. linux-x64) at root
+          for d in linux-x64 linux-arm64 osx-arm64 win-x64; do
+            [ -d "$d" ] && mv "$d" rust/prebuilds/ && break
+          done
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "rust github:EmbarkStudios/cargo-deny github:knope-dev/knope go github:authzed/spicedb"
+          install_args: "rust github:EmbarkStudios/cargo-deny go github:authzed/spicedb"
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -98,13 +141,16 @@ jobs:
         run: mise run cargo-deny
 
       - name: Test
-        run: cargo test --locked --workspace
+        run: cargo test -p spicedb-embedded --locked
 
   java:
     needs: shared-c-lib
     runs-on: ubuntu-latest
     env:
       MISE_ENABLE_TOOLS: "java,maven"
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -139,6 +185,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MISE_ENABLE_TOOLS: "python"
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -171,6 +220,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MISE_ENABLE_TOOLS: "dotnet"
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -202,6 +254,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MISE_ENABLE_TOOLS: "node"
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -304,7 +359,7 @@ jobs:
         run: bash ./scripts/stage-all-prebuilds.sh
 
       - name: Rust test
-        run: cargo test --locked --workspace
+        run: cargo test -p spicedb-embedded --locked
 
       - name: Compile (Java)
         working-directory: java

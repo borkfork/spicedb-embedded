@@ -1,0 +1,18 @@
+[package]
+name = "spicedb-embedded-sys-win-x64"
+version = "0.2.2"
+edition = "2024"
+description = "Prebuilt SpiceDB C shared library for Windows x86_64 (used by spicedb-embedded)"
+license = "Apache-2.0"
+repository = "https://github.com/borkfork/spicedb-embedded"
+documentation = "https://docs.rs/spicedb-embedded-sys-win-x64"
+homepage = "https://github.com/borkfork/spicedb-embedded"
+keywords = ["spicedb", "ffi", "windows", "x86_64", "native"]
+categories = ["development-tools::ffi"]
+exclude = []
+
+[lib]
+path = "src/lib.rs"
+
+[build-dependencies]
+spicedb-embedded-native-build = { path = "../spicedb-embedded-native-build" }

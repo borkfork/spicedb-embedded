@@ -40,6 +40,8 @@ jobs:
         include:
           - runner: ubuntu-latest
             rid: linux-x64
+          - runner: ubuntu-24.04-arm
+            rid: linux-arm64
           - runner: macos-latest
             rid: osx-arm64
           - runner: windows-latest
@@ -59,12 +61,12 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
           restore-keys: ${{ runner.os }}-go-
 
-      - name: Set RID from runner (detect macOS arch)
+      - name: "Set RID from runner (macOS: we only publish osx-arm64; Intel Mac not supported)"
         id: set_rid
         run: |
           if [[ "${{ matrix.runner }}" == macos* ]]; then
             case "$(uname -m)" in
-              x86_64) rid="osx-x64" ;;
+              x86_64) echo "::error::osx-x64 is no longer supported; use an arm64 Mac runner" ; exit 1 ;;
               *)      rid="osx-arm64" ;;
             esac
           else
@@ -94,45 +96,121 @@ jobs:
           name: shared-lib-${{ steps.set_rid.outputs.rid }}
           path: out
 
-  publish-rust:
+  publish-rust-native-build:
+    needs: build-shared-libs
     runs-on: ubuntu-latest
     env:
-      MISE_ENABLE_TOOLS: "go,rust,github:authzed/spicedb"
+      MISE_ENABLE_TOOLS: "rust"
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
           fetch-depth: 0
 
-      - uses: actions/cache@v4
+      - uses: jdx/mise-action@v3
         with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
-          restore-keys: ${{ runner.os }}-go-
+          install_args: "rust"
+
+      - name: Publish native-build crate to crates.io
+        run: cargo publish -p spicedb-embedded-native-build --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
+
+  publish-rust-platform:
+    needs: [build-shared-libs, publish-rust-native-build]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            rid: linux-x64
+            crate: spicedb-embedded-sys-linux-x64
+          - runner: ubuntu-24.04-arm
+            rid: linux-arm64
+            crate: spicedb-embedded-sys-linux-arm64
+          - runner: macos-latest
+            rid: osx-arm64
+            crate: spicedb-embedded-sys-osx-arm64
+          - runner: windows-latest
+            rid: win-x64
+            crate: spicedb-embedded-sys-win-x64
+    runs-on: ${{ matrix.runner }}
+    env:
+      MISE_ENABLE_TOOLS: "rust"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
+          fetch-depth: 0
+
+      - name: Download shared lib for this platform
+        uses: actions/download-artifact@v4
+        with:
+          name: shared-lib-${{ matrix.rid }}
+
+      - name: Stage into rust/prebuilds for platform crate
+        run: |
+          mkdir -p "rust/prebuilds/${{ matrix.rid }}"
+          cp -r ${{ matrix.rid }}/native/* "rust/prebuilds/${{ matrix.rid }}/"
+          [ -f shared/c/spicedb.def ] && cp shared/c/spicedb.def "rust/prebuilds/${{ matrix.rid }}/" || true
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "go rust github:authzed/spicedb"
+          install_args: "rust"
 
-      - name: Build shared C library
-        run: mise run shared-c-build
+      - name: Set version from tag and pin native-build dependency for publish
+        run: |
+          TAG="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}"
+          VERSION="${TAG#v}"
+          CARGO_TOML="rust/${{ matrix.crate }}/Cargo.toml"
+          sed 's|path = "\.\./spicedb-embedded-native-build" }|path = "../spicedb-embedded-native-build", version = "'"$VERSION"'" }|' "$CARGO_TOML" > "$CARGO_TOML.tmp" && mv "$CARGO_TOML.tmp" "$CARGO_TOML"
+          grep "spicedb-embedded-native-build" "$CARGO_TOML"
+
+      - name: Stage prebuild into platform crate and publish
+        run: |
+          bash ./scripts/stage-rust-platform-crate.sh
+          cargo publish -p ${{ matrix.crate }} --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
+
+  publish-rust-main:
+    needs: publish-rust-platform
+    runs-on: ubuntu-latest
+    env:
+      MISE_ENABLE_TOOLS: "rust"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
+          fetch-depth: 0
+
+      - name: Set version from tag
+        id: version
+        run: |
+          TAG="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}"
+          echo "version=${TAG#v}" >> $GITHUB_OUTPUT
+
+      - name: Update main crate to depend on published -sys crates by version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          cd rust
+          sed -i 's|{ path = "spicedb-embedded-sys-[^"]*" }|= "'"$VERSION"'"|g' Cargo.toml
+          grep "spicedb-embedded-sys" Cargo.toml
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: . -> target
 
-      - name: Run tests
-        run: cargo test --locked --workspace
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "rust"
 
-      - name: Vendor shared/c into crate for packaging
-        run: |
-          mkdir -p rust/shared
-          cp -r shared/c rust/shared/
-          git add -f rust/shared/
-
-      - name: Publish to crates.io
+      - name: Publish main crate to crates.io
         run: cargo publish -p spicedb-embedded --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -144,6 +222,9 @@ jobs:
       SONATYPE_USERNAME: ${{ vars.SONATYPE_USERNAME }}
       SONATYPE_TOKEN: ${{ secrets.SONATYPE_TOKEN }}
       GPG_PASSPHRASE: ""
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
@@ -160,16 +241,18 @@ jobs:
       - name: Lay out natives for classifier JARs (target/natives-layout for release profile)
         run: |
           mkdir -p java/target/natives-layout/linux-x86_64/natives/linux-x86_64 \
+                   java/target/natives-layout/linux-aarch_64/natives/linux-aarch_64 \
                    java/target/natives-layout/osx-aarch_64/natives/osx-aarch_64 \
                    java/target/natives-layout/windows-x86_64/natives/windows-x86_64
           cp shared-libs/linux-x64/native/* java/target/natives-layout/linux-x86_64/natives/linux-x86_64/
+          cp shared-libs/linux-arm64/native/* java/target/natives-layout/linux-aarch_64/natives/linux-aarch_64/
           cp shared-libs/osx-arm64/native/* java/target/natives-layout/osx-aarch_64/natives/osx-aarch_64/
           cp shared-libs/win-x64/native/* java/target/natives-layout/windows-x86_64/natives/windows-x86_64/
           ls -R java/target/natives-layout
 
       - name: Verify natives layout for classifier JARs
         run: |
-          for plat in linux-x86_64 osx-aarch_64 windows-x86_64; do
+          for plat in linux-x86_64 linux-aarch_64 osx-aarch_64 windows-x86_64; do
             dir="java/target/natives-layout/$plat/natives/$plat"
             count=$(find "$dir" -type f 2>/dev/null | wc -l)
             if [ "$count" -eq 0 ]; then
@@ -227,6 +310,7 @@ jobs:
         run: |
           mkdir -p java/src/main/resources/natives
           cp -r java/target/natives-layout/linux-x86_64/natives/* java/src/main/resources/natives/
+          cp -r java/target/natives-layout/linux-aarch_64/natives/* java/src/main/resources/natives/
           cp -r java/target/natives-layout/osx-aarch_64/natives/* java/src/main/resources/natives/
           cp -r java/target/natives-layout/windows-x86_64/natives/* java/src/main/resources/natives/
           ls -R java/src/main/resources/natives
@@ -241,11 +325,14 @@ jobs:
           mvn -B -ntp versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
           # No clean: natives are in target/natives-layout for classifier JARs
           mvn -B -ntp -P release package deploy
-          echo "Published Java $VERSION to Maven Central (main + linux-x86_64, osx-aarch_64, windows-x86_64 classifier JARs)" >> $GITHUB_STEP_SUMMARY
+          echo "Published Java $VERSION to Maven Central (main + linux-x86_64, linux-aarch_64, osx-aarch_64, windows-x86_64 classifier JARs)" >> $GITHUB_STEP_SUMMARY
 
   publish-npm:
     needs: [publish-npm-platforms]
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
@@ -277,6 +364,7 @@ jobs:
           const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
           p.optionalDependencies = {
             'spicedb-embedded-linux-x64': process.env.VERSION,
+            'spicedb-embedded-linux-arm64': process.env.VERSION,
             'spicedb-embedded-darwin-arm64': process.env.VERSION,
             'spicedb-embedded-win32-x64': process.env.VERSION
           };
@@ -297,6 +385,9 @@ jobs:
   # the npm dashboard so future releases can publish via OIDC.
   publish-npm-platforms:
     needs: [build-shared-libs]
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
@@ -304,6 +395,9 @@ jobs:
           - npm_platform: linux-x64
             artifact_name: shared-lib-linux-x64
             artifact_rid: linux-x64
+          - npm_platform: linux-arm64
+            artifact_name: shared-lib-linux-arm64
+            artifact_rid: linux-arm64
           - npm_platform: darwin-arm64
             artifact_name: shared-lib-osx-arm64
             artifact_rid: osx-arm64
@@ -354,6 +448,9 @@ jobs:
   publish-nuget:
     needs: [build-shared-libs]
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
@@ -418,6 +515,9 @@ jobs:
           - runner: ubuntu-latest
             artifact_rid: linux-x64
             natives_key: linux-x64
+          - runner: ubuntu-24.04-arm
+            artifact_rid: linux-arm64
+            natives_key: linux-arm64
           - runner: macos-latest
             artifact_rid: osx-arm64
             natives_key: darwin-arm64
@@ -439,7 +539,9 @@ jobs:
       - name: Stage native lib into package
         run: |
           mkdir -p python/src/spicedb_embedded/natives/${{ matrix.natives_key }}
-          cp ${{ matrix.artifact_rid }}/native/* python/src/spicedb_embedded/natives/${{ matrix.natives_key }}/
+          NATIVE_SRC="${{ matrix.artifact_rid }}/native"
+          [ ! -d "$NATIVE_SRC" ] && NATIVE_SRC="out/${{ matrix.artifact_rid }}/native"
+          cp "$NATIVE_SRC"/* python/src/spicedb_embedded/natives/${{ matrix.natives_key }}/
           ls -R python/src/spicedb_embedded/natives
 
       - uses: jdx/mise-action@v3
@@ -475,6 +577,9 @@ jobs:
   publish-pypi:
     needs: [build-python-wheels]
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
@@ -495,8 +600,17 @@ jobs:
 
   create-release:
     needs:
-      [publish-rust, publish-java, publish-npm, publish-nuget, publish-pypi]
+      [
+        publish-rust-main,
+        publish-java,
+        publish-npm,
+        publish-nuget,
+        publish-pypi,
+      ]
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
@@ -521,7 +635,6 @@ jobs:
 
       - name: Generate changelog
         id: changelog
-        shell: bash
         run: |
           npx conventional-changelog-cli@5 -p angular -i CHANGELOG.md -s -r 1 > changelog.md || true
           # clean_changelog: strip first "## version" line so release body doesn't duplicate the release title
@@ -578,14 +691,14 @@ jobs:
             pip install spicedb-embedded
             ```
 
-            **Java** (Maven). Add the main artifact and the matching classifier JAR for your platform (`linux-x86_64`, `osx-aarch_64`, `windows-x86_64`):
+            **Java** (Maven). Add the main artifact and the matching classifier JAR for your platform (`linux-x86_64`, `linux-aarch_64`, `osx-aarch_64`, `windows-x86_64`):
             ```xml
             <dependency>
               <groupId>com.borkfork</groupId>
               <artifactId>spicedb-embedded</artifactId>
               <version>${{ steps.tag.outputs.version }}</version>
             </dependency>
-            <!-- Platform native library (use one: linux-x86_64, osx-aarch_64, windows-x86_64) -->
+            <!-- Platform native library (use one: linux-x86_64, linux-aarch_64, osx-aarch_64, windows-x86_64) -->
             <dependency>
               <groupId>com.borkfork</groupId>
               <artifactId>spicedb-embedded</artifactId>
@@ -606,15 +719,15 @@ jobs:
             ```
             Then add the native dependency with `<classifier>${os.detected.classifier}</classifier>`.
 
-            **Java** (Gradle). Add the main artifact and the classifier for your platform (`linux-x86_64`, `osx-aarch_64`, or `windows-x86_64`):
+            **Java** (Gradle). Add the main artifact and the classifier for your platform (`linux-x86_64`, `linux-aarch_64`, `osx-aarch_64`, or `windows-x86_64`):
             ```groovy
             implementation 'com.borkfork:spicedb-embedded:${{ steps.tag.outputs.version }}'
-            implementation 'com.borkfork:spicedb-embedded:${{ steps.tag.outputs.version }}:linux-x86_64'  // or osx-aarch_64, windows-x86_64
+            implementation 'com.borkfork:spicedb-embedded:${{ steps.tag.outputs.version }}:linux-x86_64'  // or linux-aarch_64, osx-aarch_64, windows-x86_64
             ```
             Kotlin DSL:
             ```kotlin
             implementation("com.borkfork:spicedb-embedded:${{ steps.tag.outputs.version }}")
-            implementation("com.borkfork:spicedb-embedded:${{ steps.tag.outputs.version }}:linux-x86_64")  // or osx-aarch_64, windows-x86_64
+            implementation("com.borkfork:spicedb-embedded:${{ steps.tag.outputs.version }}:linux-x86_64")  // or linux-aarch_64, osx-aarch_64, windows-x86_64
             ```
             With [osdetector-gradle-plugin](https://github.com/google/osdetector-gradle-plugin) you can use the classifier dynamically:
             ```groovy

@@ -103,7 +103,7 @@ So you get the benefits of (1) using the same generated gRPC code to communicate
 
 ## Installation
 
-Add the main library and **one** classifier dependency for your platform (`linux-x86_64`, `osx-aarch_64`, or `windows-x86_64`; matches [os-maven-plugin](https://github.com/trustin/os-maven-plugin)) to your `pom.xml`:
+Add the main library and **one** classifier dependency for your platform (`linux-x86_64`, `linux-aarch_64`, `osx-aarch_64`, or `windows-x86_64`; matches [os-maven-plugin](https://github.com/trustin/os-maven-plugin)) to your `pom.xml`:
 
 ```xml
 <dependency>
@@ -115,7 +115,7 @@ Add the main library and **one** classifier dependency for your platform (`linux
     <groupId>com.borkfork</groupId>
     <artifactId>spicedb-embedded</artifactId>
     <version>0.2.0</version>
-    <classifier>linux-x86_64</classifier>  <!-- or osx-aarch_64, windows-x86_64 -->
+    <classifier>linux-x86_64</classifier>  <!-- or linux-aarch_64, osx-aarch_64, windows-x86_64 -->
 </dependency>
 ```
 

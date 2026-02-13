@@ -1,11 +1,13 @@
 [package]
 name = "spicedb-embedded"
-version = "0.2.0"
+version = "0.2.2"
 edition = "2024"
 description = "Embedded SpiceDB for Rust - embedded authorization using the standard gRPC API"
 license = "Apache-2.0"
 repository = "https://github.com/borkfork/spicedb-embedded"
-# Never package native binaries; we ship Go source and build at compile time for portability
+documentation = "https://docs.rs/spicedb-embedded"
+homepage = "https://github.com/borkfork/spicedb-embedded"
+# Native binaries are in -sys platform crates (spicedb-embedded-sys-linux-x64, etc.)
 exclude = ["**/*.so", "**/*.dylib", "**/*.dll", "**/*.lib"]
 categories = [
   "authentication",
@@ -36,8 +38,15 @@ tonic = "0.12"
 tower = "0.5"
 tracing = "0.1"
 
-[build-dependencies]
-# build.rs uses std only
+# Platform-specific -sys crates provide the prebuilt C shared library and FFI symbols.
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
+spicedb-embedded-sys-linux-x64 = { path = "spicedb-embedded-sys-linux-x64" }
+[target.'cfg(all(target_os = "linux", target_arch = "aarch64"))'.dependencies]
+spicedb-embedded-sys-linux-arm64 = { path = "spicedb-embedded-sys-linux-arm64" }
+[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
+spicedb-embedded-sys-osx-arm64 = { path = "spicedb-embedded-sys-osx-arm64" }
+[target.'cfg(all(target_os = "windows", target_arch = "x86_64"))'.dependencies]
+spicedb-embedded-sys-win-x64 = { path = "spicedb-embedded-sys-win-x64" }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
