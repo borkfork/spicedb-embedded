@@ -1724,7 +1724,7 @@ dependencies = [
 
 [[package]]
 name = "spicedb-embedded"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "hyper-util",
  "serde",
@@ -1742,7 +1742,7 @@ dependencies = [
 
 [[package]]
 name = "spicedb-embedded-sys"
-version = "0.2.4"
+version = "0.2.5"
 
 [[package]]
 name = "spicedb-grpc"
