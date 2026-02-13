@@ -96,8 +96,29 @@ jobs:
           name: shared-lib-${{ steps.set_rid.outputs.rid }}
           path: out
 
-  publish-rust-platform:
+  publish-rust-native-build:
     needs: build-shared-libs
+    runs-on: ubuntu-latest
+    env:
+      MISE_ENABLE_TOOLS: "rust"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
+          fetch-depth: 0
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "rust"
+
+      - name: Publish native-build crate to crates.io
+        run: cargo publish -p spicedb-embedded-native-build --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
+
+  publish-rust-platform:
+    needs: [build-shared-libs, publish-rust-native-build]
     strategy:
       fail-fast: false
       matrix:
@@ -140,6 +161,13 @@ jobs:
       - uses: jdx/mise-action@v3
         with:
           install_args: "rust"
+
+      - name: Set version from tag and pin native-build dependency
+        run: |
+          TAG="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}"
+          VERSION="${TAG#v}"
+          sed -i 's/version = "0\.2"/version = "'"$VERSION"'"/' rust/${{ matrix.crate }}/Cargo.toml
+          grep "spicedb-embedded-native-build" rust/${{ matrix.crate }}/Cargo.toml
 
       - name: Stage prebuild into platform crate and publish
         run: |

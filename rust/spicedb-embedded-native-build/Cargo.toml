@@ -5,7 +5,6 @@ edition = "2024"
 description = "Shared build script logic for spicedb-embedded platform crates (internal, not published)"
 license = "Apache-2.0"
 repository = "https://github.com/borkfork/spicedb-embedded"
-publish = false
 
 [lib]
 path = "src/lib.rs"

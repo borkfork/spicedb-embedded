@@ -15,4 +15,4 @@ exclude = []
 path = "src/lib.rs"
 
 [build-dependencies]
-spicedb-embedded-native-build = { path = "../spicedb-embedded-native-build" }
+spicedb-embedded-native-build = { path = "../spicedb-embedded-native-build", version = "0.2" }
