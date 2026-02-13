@@ -1,6 +1,6 @@
 {
   "name": "spicedb-embedded",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Embedded SpiceDB for TypeScript/Node.js — embedded authorization using the standard gRPC API",
   "type": "module",
   "main": "dist/index.js",
