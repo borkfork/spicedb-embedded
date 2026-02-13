@@ -137,6 +137,10 @@ jobs:
           cp -r out/${{ matrix.rid }}/native/* "rust/prebuilds/${{ matrix.rid }}/"
           [ -f shared/c/spicedb.def ] && cp shared/c/spicedb.def "rust/prebuilds/${{ matrix.rid }}/" || true
 
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "rust"
+
       - name: Stage prebuild into platform crate and publish
         run: |
           bash ./scripts/stage-rust-platform-crate.sh

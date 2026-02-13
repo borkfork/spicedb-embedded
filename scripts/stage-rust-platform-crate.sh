@@ -18,7 +18,12 @@ Darwin)
 	crate="spicedb-embedded-sys-osx-arm64"
 	;;
 Linux)
-	rid=$([ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ] && echo "linux-arm64" || echo "linux-x64")
+	arch=$(uname -m)
+	if [ "$arch" = "aarch64" ] || [ "$arch" = "arm64" ]; then
+		rid="linux-arm64"
+	else
+		rid="linux-x64"
+	fi
 	crate="spicedb-embedded-sys-linux-x64"
 	[ "$rid" = "linux-arm64" ] && crate="spicedb-embedded-sys-linux-arm64"
 	;;

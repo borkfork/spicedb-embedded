@@ -7,7 +7,7 @@ license = "Apache-2.0"
 repository = "https://github.com/borkfork/spicedb-embedded"
 documentation = "https://docs.rs/spicedb-embedded-sys-linux-arm64"
 homepage = "https://github.com/borkfork/spicedb-embedded"
-keywords = ["spicedb", "ffi", "linux", "aarch64", "arm64", "native"]
+keywords = ["spicedb", "ffi", "linux", "aarch64", "arm64"]
 categories = ["development-tools::ffi"]
 exclude = []
 
