@@ -8,7 +8,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Build shared C library per platform; Rust uses per-rid artifacts, other languages use full prebuilds from ubuntu
+  # Build shared C library per platform; each runner uploads prebuilds for that platform (all languages).
   shared-c-lib:
     strategy:
       fail-fast: false
@@ -31,6 +31,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set GOCACHE (absolute path required by Go)
+        run: echo "GOCACHE=$HOME/.cache/go-build" >> $GITHUB_ENV
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "go"
+
       - uses: actions/cache@v4
         with:
           path: |
@@ -39,34 +46,22 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
           restore-keys: ${{ runner.os }}-go-
 
-      - uses: jdx/mise-action@v3
-        with:
-          install_args: "go"
-
       - name: Build shared C library
         run: mise run shared-c-build
 
       - name: Stage prebuilds for all languages
         run: bash ./scripts/stage-all-prebuilds.sh
 
-      - name: Upload Rust prebuilds (per-platform)
+      - name: Upload prebuilds for this platform (all languages)
         uses: actions/upload-artifact@v4
         with:
           name: prebuilds-${{ matrix.rid }}
-          path: rust/prebuilds
-          retention-days: 1
-
-      - name: Upload full prebuilds (for Java, Node, Python, C#)
-        if: matrix.runner == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: prebuilds
           path: |
             node/prebuilds
             csharp/runtimes
             java/src/main/resources/natives
             python/src/spicedb_embedded/natives
-            rust/prebuilds
+            rust/spicedb-embedded-sys/prebuilds
           retention-days: 1
 
   format-toml-shell:
@@ -101,28 +96,40 @@ jobs:
     runs-on: ${{ matrix.runner }}
     env:
       MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,go,github:authzed/spicedb"
+      # Rust tests use testcontainers (postgres, mysql, cockroach); use Linux/amd64 Docker platform.
+      DOCKER_DEFAULT_PLATFORM: linux/amd64
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download Rust prebuilds for this platform
+      - name: Set GOCACHE (absolute path required by Go)
+        run: echo "GOCACHE=$HOME/.cache/go-build" >> $GITHUB_ENV
+
+      - name: Login to Docker Hub (testcontainers)
+        if: matrix.runner == 'ubuntu-latest' || matrix.runner == 'ubuntu-24.04-arm'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Download prebuilds for this platform
         uses: actions/download-artifact@v4
         with:
           name: prebuilds-${{ matrix.rid }}
 
-      - name: Merge prebuilds into rust/prebuilds
-        run: |
-          mkdir -p rust/prebuilds
-          # Artifact from path rust/prebuilds has one dir (e.g. linux-x64) at root
-          for d in linux-x64 linux-arm64 osx-arm64 win-x64; do
-            [ -d "$d" ] && mv "$d" rust/prebuilds/ && break
-          done
-
       - uses: jdx/mise-action@v3
         with:
           install_args: "rust github:EmbarkStudios/cargo-deny go github:authzed/spicedb"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
+          restore-keys: ${{ runner.os }}-go-
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -145,7 +152,19 @@ jobs:
 
   java:
     needs: shared-c-lib
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            rid: linux-x64
+          - runner: ubuntu-24.04-arm
+            rid: linux-arm64
+          - runner: macos-latest
+            rid: osx-arm64
+          - runner: windows-latest
+            rid: win-x64
+    runs-on: ${{ matrix.runner }}
     env:
       MISE_ENABLE_TOOLS: "java,maven"
     defaults:
@@ -154,10 +173,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download prebuilds
+      - name: Download prebuilds for this platform
         uses: actions/download-artifact@v4
         with:
-          name: prebuilds
+          name: prebuilds-${{ matrix.rid }}
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "java maven"
 
       - uses: actions/cache@v4
         with:
@@ -165,9 +188,10 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-maven-
 
-      - uses: jdx/mise-action@v3
-        with:
-          install_args: "java maven"
+      - name: Set library path (Windows)
+        if: matrix.runner == 'windows-latest'
+        run: |
+          eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
 
       - name: Format check
         run: mise run format-check-java
@@ -182,7 +206,19 @@ jobs:
 
   python:
     needs: shared-c-lib
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            rid: linux-x64
+          - runner: ubuntu-24.04-arm
+            rid: linux-arm64
+          - runner: macos-latest
+            rid: osx-arm64
+          - runner: windows-latest
+            rid: win-x64
+    runs-on: ${{ matrix.runner }}
     env:
       MISE_ENABLE_TOOLS: "python"
     defaults:
@@ -191,10 +227,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download prebuilds
+      - name: Download prebuilds for this platform
         uses: actions/download-artifact@v4
         with:
-          name: prebuilds
+          name: prebuilds-${{ matrix.rid }}
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "python"
 
       - uses: actions/cache@v4
         with:
@@ -202,22 +242,38 @@ jobs:
           key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml', '**/requirements*.txt') }}
           restore-keys: ${{ runner.os }}-pip-
 
-      - uses: jdx/mise-action@v3
-        with:
-          install_args: "python"
+      - name: Set library path (Windows)
+        if: matrix.runner == 'windows-latest'
+        run: |
+          eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
+
+      - name: pip install
+        working-directory: python
+        run: pip install -e '.[dev]'
 
       - name: Format check
-        run: mise run format-check-python
+        working-directory: python
+        run: ruff format --check .
 
       - name: Test
         working-directory: python
-        run: |
-          pip install -e '.[dev]'
-          pytest
+        run: pytest
 
   csharp:
     needs: shared-c-lib
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            rid: linux-x64
+          - runner: ubuntu-24.04-arm
+            rid: linux-arm64
+          - runner: macos-latest
+            rid: osx-arm64
+          - runner: windows-latest
+            rid: win-x64
+    runs-on: ${{ matrix.runner }}
     env:
       MISE_ENABLE_TOOLS: "dotnet"
     defaults:
@@ -226,10 +282,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download prebuilds
+      - name: Download prebuilds for this platform
         uses: actions/download-artifact@v4
         with:
-          name: prebuilds
+          name: prebuilds-${{ matrix.rid }}
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "dotnet"
 
       - uses: actions/cache@v4
         with:
@@ -237,9 +297,10 @@ jobs:
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
           restore-keys: ${{ runner.os }}-nuget-
 
-      - uses: jdx/mise-action@v3
-        with:
-          install_args: "dotnet"
+      - name: Set library path (Windows)
+        if: matrix.runner == 'windows-latest'
+        run: |
+          eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
 
       - name: Format check
         run: mise run format-check-csharp
@@ -251,7 +312,19 @@ jobs:
 
   node:
     needs: shared-c-lib
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            rid: linux-x64
+          - runner: ubuntu-24.04-arm
+            rid: linux-arm64
+          - runner: macos-latest
+            rid: osx-arm64
+          - runner: windows-latest
+            rid: win-x64
+    runs-on: ${{ matrix.runner }}
     env:
       MISE_ENABLE_TOOLS: "node"
     defaults:
@@ -260,127 +333,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download prebuilds
+      - name: Download prebuilds for this platform
         uses: actions/download-artifact@v4
         with:
-          name: prebuilds
-
-      - uses: actions/cache@v4
-        with:
-          path: node/node_modules
-          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json', '**/package.json') }}
-          restore-keys: ${{ runner.os }}-npm-
+          name: prebuilds-${{ matrix.rid }}
 
       - uses: jdx/mise-action@v3
         with:
           install_args: "node"
 
-      - name: Format check
-        run: mise run format-check-node
-
-      - name: Test
-        working-directory: node
-        run: |
-          npm ci
-          npm run build
-          npm test
-
-  windows:
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: bash
-    env:
-      MISE_ENABLE_TOOLS: "go,rust,java,maven,python,node,dotnet"
-      # Force Linux container images; testcontainers uses this for pulls (no windows/amd64 manifests).
-      DOCKER_DEFAULT_PLATFORM: linux/amd64
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ vars.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
-          restore-keys: ${{ runner.os }}-go-
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
-
-      - uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-maven-
-
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml', '**/requirements*.txt') }}
-          restore-keys: ${{ runner.os }}-pip-
-
-      - uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-          restore-keys: ${{ runner.os }}-nuget-
-
       - uses: actions/cache@v4
         with:
           path: node/node_modules
           key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json', '**/package.json') }}
           restore-keys: ${{ runner.os }}-npm-
 
-      - uses: jdx/mise-action@v3
-        with:
-          install_args: "go rust java maven python node dotnet"
-
-      - name: Set library path
+      - name: Set library path (Windows)
+        if: matrix.runner == 'windows-latest'
         run: |
           eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
 
-      - name: Build shared C library (Windows)
-        run: mise run shared-c-build
+      - name: Format check
+        run: mise run format-check-node
 
-      - name: Stage prebuilds for current platform
-        run: bash ./scripts/stage-all-prebuilds.sh
-
-      - name: Rust test
-        run: cargo test -p spicedb-embedded --locked
-
-      - name: Compile (Java)
-        working-directory: java
-        run: mvn compile -q
-
-      - name: Java test
-        working-directory: java
-        run: mvn test
-
-      - name: Python test
-        working-directory: python
-        run: |
-          pip install -e '.[dev]'
-          pytest
-
-      - name: C# test
-        run: |
-          dotnet build csharp/SpiceDbEmbedded.sln
-          dotnet test csharp/SpiceDbEmbedded.Tests/SpiceDbEmbedded.Tests.csproj --no-build
-
-      - name: Node test
+      - name: Test
         working-directory: node
         run: |
           npm ci

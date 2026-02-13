@@ -53,13 +53,8 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
           fetch-depth: 0
 
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
-          restore-keys: ${{ runner.os }}-go-
+      - name: Set GOCACHE (absolute path required by Go)
+        run: echo "GOCACHE=$HOME/.cache/go-build" >> $GITHUB_ENV
 
       - name: "Set RID from runner (macOS: we only publish osx-arm64; Intel Mac not supported)"
         id: set_rid
@@ -78,6 +73,14 @@ jobs:
         with:
           install_args: "go"
 
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
+          restore-keys: ${{ runner.os }}-go-
+
       - name: Build shared C library
         run: mise run shared-c-build
 
@@ -87,7 +90,10 @@ jobs:
           case "${{ matrix.runner }}" in
             ubuntu*) cp shared/c/libspicedb.so "out/${{ steps.set_rid.outputs.rid }}/native/" ;;
             macos*)  cp shared/c/libspicedb.dylib "out/${{ steps.set_rid.outputs.rid }}/native/" ;;
-            windows*) cp shared/c/spicedb.dll "out/${{ steps.set_rid.outputs.rid }}/native/" ;;
+            windows*)
+              cp shared/c/spicedb.dll "out/${{ steps.set_rid.outputs.rid }}/native/"
+              [ -f shared/c/spicedb.def ] && cp shared/c/spicedb.def "out/${{ steps.set_rid.outputs.rid }}/native/" || true
+              ;;
           esac
 
       - name: Upload shared lib
@@ -96,7 +102,7 @@ jobs:
           name: shared-lib-${{ steps.set_rid.outputs.rid }}
           path: out
 
-  publish-rust-native-build:
+  publish-rust-sys:
     needs: build-shared-libs
     runs-on: ubuntu-latest
     env:
@@ -110,73 +116,33 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
           fetch-depth: 0
 
-      - uses: jdx/mise-action@v3
-        with:
-          install_args: "rust"
-
-      - name: Publish native-build crate to crates.io
-        run: cargo publish -p spicedb-embedded-native-build --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
-
-  publish-rust-platform:
-    needs: [build-shared-libs, publish-rust-native-build]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-latest
-            rid: linux-x64
-            crate: spicedb-embedded-sys-linux-x64
-          - runner: ubuntu-24.04-arm
-            rid: linux-arm64
-            crate: spicedb-embedded-sys-linux-arm64
-          - runner: macos-latest
-            rid: osx-arm64
-            crate: spicedb-embedded-sys-osx-arm64
-          - runner: windows-latest
-            rid: win-x64
-            crate: spicedb-embedded-sys-win-x64
-    runs-on: ${{ matrix.runner }}
-    env:
-      MISE_ENABLE_TOOLS: "rust"
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
-          fetch-depth: 0
-
-      - name: Download shared lib for this platform
+      - name: Download shared lib for this platform (linux-x64)
         uses: actions/download-artifact@v4
         with:
-          name: shared-lib-${{ matrix.rid }}
+          name: shared-lib-linux-x64
 
-      - name: Stage into rust/prebuilds for platform crate
+      - name: Stage shared lib into -sys crate prebuilds for build (verify step)
         run: |
-          mkdir -p "rust/prebuilds/${{ matrix.rid }}"
-          cp -r ${{ matrix.rid }}/native/* "rust/prebuilds/${{ matrix.rid }}/"
-          [ -f shared/c/spicedb.def ] && cp shared/c/spicedb.def "rust/prebuilds/${{ matrix.rid }}/" || true
+          mkdir -p "rust/spicedb-embedded-sys/prebuilds/linux-x64"
+          cp -r linux-x64/native/* "rust/spicedb-embedded-sys/prebuilds/linux-x64/"
+          [ -f shared/c/spicedb.def ] && cp shared/c/spicedb.def "rust/spicedb-embedded-sys/prebuilds/linux-x64/" || true
+
+      - name: Package Go source into -sys crate and git add -f for publish
+        run: |
+          mkdir -p rust/spicedb-embedded-sys/shared
+          cp -r shared/c rust/spicedb-embedded-sys/shared/
+          git add -f rust/spicedb-embedded-sys/shared/
+          git status rust/spicedb-embedded-sys/shared/
 
       - uses: jdx/mise-action@v3
         with:
           install_args: "rust"
 
-      - name: Set version from tag and pin native-build dependency for publish
-        run: |
-          TAG="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}"
-          VERSION="${TAG#v}"
-          CARGO_TOML="rust/${{ matrix.crate }}/Cargo.toml"
-          sed 's|path = "\.\./spicedb-embedded-native-build" }|path = "../spicedb-embedded-native-build", version = "'"$VERSION"'" }|' "$CARGO_TOML" > "$CARGO_TOML.tmp" && mv "$CARGO_TOML.tmp" "$CARGO_TOML"
-          grep "spicedb-embedded-native-build" "$CARGO_TOML"
-
-      - name: Stage prebuild into platform crate and publish
-        run: |
-          bash ./scripts/stage-rust-platform-crate.sh
-          cargo publish -p ${{ matrix.crate }} --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
+      - name: Publish spicedb-embedded-sys to crates.io
+        run: cargo publish -p spicedb-embedded-sys --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
 
   publish-rust-main:
-    needs: publish-rust-platform
+    needs: publish-rust-sys
     runs-on: ubuntu-latest
     env:
       MISE_ENABLE_TOOLS: "rust"
@@ -195,11 +161,11 @@ jobs:
           TAG="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}"
           echo "version=${TAG#v}" >> $GITHUB_OUTPUT
 
-      - name: Update main crate to depend on published -sys crates by version
+      - name: Update main crate to depend on published spicedb-embedded-sys by version
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           cd rust
-          sed -i 's|{ path = "spicedb-embedded-sys-[^"]*" }|= "'"$VERSION"'"|g' Cargo.toml
+          sed -i 's|spicedb-embedded-sys = { path = "spicedb-embedded-sys" }|spicedb-embedded-sys = "'"$VERSION"'"|' Cargo.toml
           grep "spicedb-embedded-sys" Cargo.toml
 
       - uses: Swatinem/rust-cache@v2
@@ -262,15 +228,15 @@ jobs:
             echo "$plat: $count file(s)"
           done
 
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "java maven"
+
       - uses: actions/cache@v4
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-m2-
-
-      - uses: jdx/mise-action@v3
-        with:
-          install_args: "java maven"
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -339,15 +305,15 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
           fetch-depth: 0
 
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "node"
+
       - uses: actions/cache@v4
         with:
           path: node/node_modules
           key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json', '**/package.json') }}
           restore-keys: ${{ runner.os }}-npm-
-
-      - uses: jdx/mise-action@v3
-        with:
-          install_args: "node"
 
       - uses: actions/setup-node@v6
         with:
@@ -473,15 +439,15 @@ jobs:
           done
           ls -R csharp/runtimes
 
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "dotnet"
+
       - uses: actions/cache@v4
         with:
           path: csharp/artifacts
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/bin/Release/SpiceDbEmbedded.nupkg') }}
           restore-keys: ${{ runner.os }}-nuget-
-
-      - uses: jdx/mise-action@v3
-        with:
-          install_args: "dotnet"
 
       - name: Build C# package
         run: dotnet build csharp/SpiceDbEmbedded.sln -c Release
@@ -601,6 +567,7 @@ jobs:
   create-release:
     needs:
       [
+        build-shared-libs,
         publish-rust-main,
         publish-java,
         publish-npm,
@@ -616,16 +583,36 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-
       - name: Set version and tag
         id: tag
         run: |
           TAG="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}"
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=${TAG#v}" >> $GITHUB_OUTPUT
+
+      - name: Download shared libs for Rust release tarballs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: shared-lib-*
+          path: shared-libs
+          merge-multiple: true
+
+      - name: Build lib tarballs for Rust crates (download at build time)
+        run: |
+          set -e
+          for rid in linux-x64 linux-arm64 osx-arm64 win-x64; do
+            src="shared-libs/${rid}/native"
+            [[ ! -d "$src" ]] && src="shared-libs/out/${rid}/native"
+            [[ ! -d "$src" ]] && { echo "Missing shared lib for ${rid}"; exit 1; }
+            mkdir -p "rust-lib-assets/${rid}"
+            cp -r "${src}/." "rust-lib-assets/${rid}/"
+            (cd "rust-lib-assets/${rid}" && tar -czf "../../libspicedb-${rid}.tar.gz" .)
+          done
+          ls -la libspicedb-*.tar.gz
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
 
       - name: Delete current tag locally
         run: |
@@ -656,6 +643,11 @@ jobs:
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.tag.outputs.tag }}
+          files: |
+            libspicedb-linux-x64.tar.gz
+            libspicedb-linux-arm64.tar.gz
+            libspicedb-osx-arm64.tar.gz
+            libspicedb-win-x64.tar.gz
           body: |
             ${{ steps.changelog.outputs.clean_changelog }}
 

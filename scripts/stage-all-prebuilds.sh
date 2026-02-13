@@ -66,10 +66,10 @@ mkdir -p "$root/python/src/spicedb_embedded/natives/$key"
 cp "$lib_src" "$root/python/src/spicedb_embedded/natives/$key/"
 echo "Staged -> python/src/spicedb_embedded/natives/$key/"
 
-# Rust: prebuilds/<rid>/ (same RID as C#); on Windows include .def for MSVC import lib
-mkdir -p "$root/rust/prebuilds/$rid"
-cp "$lib_src" "$root/rust/prebuilds/$rid/"
+# Rust: spicedb-embedded-sys/prebuilds/<rid>/ (same RID as C#); on Windows include .def for MSVC import lib
+mkdir -p "$root/rust/spicedb-embedded-sys/prebuilds/$rid"
+cp "$lib_src" "$root/rust/spicedb-embedded-sys/prebuilds/$rid/"
 if [ -f "$root/shared/c/spicedb.def" ]; then
-	cp "$root/shared/c/spicedb.def" "$root/rust/prebuilds/$rid/"
+	cp "$root/shared/c/spicedb.def" "$root/rust/spicedb-embedded-sys/prebuilds/$rid/"
 fi
-echo "Staged -> rust/prebuilds/$rid/"
+echo "Staged -> rust/spicedb-embedded-sys/prebuilds/$rid/"

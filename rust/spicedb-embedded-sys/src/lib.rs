@@ -1,4 +1,4 @@
-//! FFI bindings to the prebuilt SpiceDB C shared library for macOS aarch64.
+//! FFI bindings to the SpiceDB C shared library (built from Go or downloaded per target).
 
 use std::os::raw::{c_char, c_ulonglong};
 
