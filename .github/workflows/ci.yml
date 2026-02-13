@@ -100,7 +100,7 @@ jobs:
             rid: win-x64
     runs-on: ${{ matrix.runner }}
     env:
-      MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,github:knope-dev/knope,go,github:authzed/spicedb"
+      MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,go,github:authzed/spicedb"
     defaults:
       run:
         shell: bash
@@ -128,7 +128,7 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "rust github:EmbarkStudios/cargo-deny github:knope-dev/knope go github:authzed/spicedb"
+          install_args: "rust github:EmbarkStudios/cargo-deny go github:authzed/spicedb"
 
       - uses: Swatinem/rust-cache@v2
         with:
