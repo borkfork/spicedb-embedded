@@ -61,7 +61,7 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
           restore-keys: ${{ runner.os }}-go-
 
-      - name: Set RID from runner (macOS: we only publish osx-arm64; Intel Mac not supported)
+      - name: "Set RID from runner (macOS: we only publish osx-arm64; Intel Mac not supported)"
         id: set_rid
         run: |
           if [[ "${{ matrix.runner }}" == macos* ]]; then
