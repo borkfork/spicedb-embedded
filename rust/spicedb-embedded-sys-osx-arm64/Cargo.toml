@@ -9,7 +9,7 @@ documentation = "https://docs.rs/spicedb-embedded-sys-osx-arm64"
 homepage = "https://github.com/borkfork/spicedb-embedded"
 keywords = ["spicedb", "ffi", "macos", "aarch64", "apple-silicon"]
 categories = ["development-tools::ffi"]
-include = ["Cargo.toml", "src/**", "build.rs", "prebuilds/**"]
+include = ["Cargo.toml", "src/**", "build.rs"]
 
 [lib]
 path = "src/lib.rs"

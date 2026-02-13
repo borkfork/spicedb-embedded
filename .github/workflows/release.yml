@@ -87,7 +87,8 @@ jobs:
           case "${{ matrix.runner }}" in
             ubuntu*) cp shared/c/libspicedb.so "out/${{ steps.set_rid.outputs.rid }}/native/" ;;
             macos*)  cp shared/c/libspicedb.dylib "out/${{ steps.set_rid.outputs.rid }}/native/" ;;
-            windows*) cp shared/c/spicedb.dll "out/${{ steps.set_rid.outputs.rid }}/native/" ;;
+            windows*) cp shared/c/spicedb.dll "out/${{ steps.set_rid.outputs.rid }}/native/"
+                     [ -f shared/c/spicedb.def ] && cp shared/c/spicedb.def "out/${{ steps.set_rid.outputs.rid }}/native/" || true ;;
           esac
 
       - name: Upload shared lib
@@ -601,6 +602,7 @@ jobs:
   create-release:
     needs:
       [
+        build-shared-libs,
         publish-rust-main,
         publish-java,
         publish-npm,
@@ -616,16 +618,34 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-
       - name: Set version and tag
         id: tag
         run: |
           TAG="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}"
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=${TAG#v}" >> $GITHUB_OUTPUT
+
+      - name: Download shared libs for Rust release tarballs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: shared-lib-*
+          path: shared-libs
+          merge-multiple: true
+
+      - name: Build lib tarballs for Rust crates (download at build time)
+        run: |
+          for rid in linux-x64 linux-arm64 osx-arm64 win-x64; do
+            src="shared-libs/$rid/native"
+            [ ! -d "$src" ] && src="shared-libs/out/$rid/native"
+            mkdir -p "rust-lib-assets/$rid"
+            cp "$src"/* "rust-lib-assets/$rid/"
+            (cd "rust-lib-assets/$rid" && tar -czf "../../libspicedb-$rid.tar.gz" .)
+          done
+          ls -la libspicedb-*.tar.gz
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
 
       - name: Delete current tag locally
         run: |
@@ -656,6 +676,11 @@ jobs:
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.tag.outputs.tag }}
+          files: |
+            libspicedb-linux-x64.tar.gz
+            libspicedb-linux-arm64.tar.gz
+            libspicedb-osx-arm64.tar.gz
+            libspicedb-win-x64.tar.gz
           body: |
             ${{ steps.changelog.outputs.clean_changelog }}
 
