@@ -2,8 +2,10 @@
 //! Used as a build-dependency by spicedb-embedded-{linux-x64,osx-arm64,...}.
 //! Prefer: (1) local prebuild, (2) build from source (Go/CGO), (3) download from GitHub Release.
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 /// Run the full build: find prebuild (local, build from source, or download), copy to OUT_DIR, emit cargo link directives.
 /// `rid` is e.g. "linux-x64", "osx-arm64", "win-x64".
@@ -24,7 +26,10 @@ pub fn run(rid: &str, release_version: Option<&str>) {
 
     #[allow(unused_variables)]
     let (prebuild, prebuild_dir) = if prebuild_crate.exists() {
-        (prebuild_crate.clone(), manifest_dir.join("prebuilds").join(rid))
+        (
+            prebuild_crate.clone(),
+            manifest_dir.join("prebuilds").join(rid),
+        )
     } else if prebuild_repo.exists() {
         (
             prebuild_repo.clone(),
@@ -143,11 +148,15 @@ fn download_from_release(rid: &str, version: &str, out_dir: &Path) {
         );
     }
     let status = Command::new("tar")
-        .args(["-xzf", archive.to_str().unwrap(), "-C", out_dir.to_str().unwrap()])
+        .args([
+            "-xzf",
+            archive.to_str().unwrap(),
+            "-C",
+            out_dir.to_str().unwrap(),
+        ])
         .status();
-    let status = status.unwrap_or_else(|e| {
-        panic!("Failed to run tar to extract {}: {}", archive.display(), e)
-    });
+    let status = status
+        .unwrap_or_else(|e| panic!("Failed to run tar to extract {}: {}", archive.display(), e));
     if !status.success() {
         panic!("tar failed ({}) extracting {}", status, archive.display());
     }
