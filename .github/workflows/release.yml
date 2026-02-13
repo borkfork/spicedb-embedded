@@ -134,7 +134,7 @@ jobs:
       - name: Stage into rust/prebuilds for platform crate
         run: |
           mkdir -p "rust/prebuilds/${{ matrix.rid }}"
-          cp -r out/${{ matrix.rid }}/native/* "rust/prebuilds/${{ matrix.rid }}/"
+          cp -r ${{ matrix.rid }}/native/* "rust/prebuilds/${{ matrix.rid }}/"
           [ -f shared/c/spicedb.def ] && cp shared/c/spicedb.def "rust/prebuilds/${{ matrix.rid }}/" || true
 
       - uses: jdx/mise-action@v3
