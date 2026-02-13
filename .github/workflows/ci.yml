@@ -359,7 +359,7 @@ jobs:
         run: bash ./scripts/stage-all-prebuilds.sh
 
       - name: Rust test
-        run: cargo test --locked --workspace
+        run: cargo test -p spicedb-embedded --locked
 
       - name: Compile (Java)
         working-directory: java

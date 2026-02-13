@@ -928,7 +928,7 @@ definition document {
     /// Run with: cargo test --ignored `datastore_shared`
     ///
     /// Requires: Docker (linux/amd64 images), and `spicedb` CLI in PATH for migrations.
-    /// Only run on x86_64: amd64 containers fail on arm64 (exec format error / QEMU).
+    /// Only run on `x86_64`: amd64 containers fail on arm64 (exec format error / QEMU).
     #[cfg(all(not(target_os = "windows"), target_arch = "x86_64"))]
     mod datastore_shared {
         /// Platform for testcontainers: use Linux so images work on Windows Docker Desktop.
