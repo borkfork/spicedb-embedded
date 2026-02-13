@@ -166,8 +166,9 @@ jobs:
         run: |
           TAG="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}"
           VERSION="${TAG#v}"
-          sed -i 's/version = "0\.2"/version = "'"$VERSION"'"/' rust/${{ matrix.crate }}/Cargo.toml
-          grep "spicedb-embedded-native-build" rust/${{ matrix.crate }}/Cargo.toml
+          CARGO_TOML="rust/${{ matrix.crate }}/Cargo.toml"
+          sed 's/version = "0\.0\.0-placeholder"/version = "'"$VERSION"'"/' "$CARGO_TOML" > "$CARGO_TOML.tmp" && mv "$CARGO_TOML.tmp" "$CARGO_TOML"
+          grep "spicedb-embedded-native-build" "$CARGO_TOML"
 
       - name: Stage prebuild into platform crate and publish
         run: |
