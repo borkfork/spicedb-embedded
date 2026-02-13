@@ -93,7 +93,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     env:
       MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,go,github:authzed/spicedb"
-      # Rust tests use testcontainers (postgres, mysql, cockroach
+      # Rust tests use testcontainers (postgres, mysql, cockroach); use Linux/amd64 Docker platform.
       DOCKER_DEFAULT_PLATFORM: linux/amd64
     defaults:
       run:
@@ -168,6 +168,7 @@ jobs:
         if: matrix.runner == 'windows-latest'
         run: |
           eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
+          echo "PATH=$PATH" >> "$GITHUB_ENV"
 
       - uses: actions/cache@v4
         with:
@@ -222,6 +223,7 @@ jobs:
         if: matrix.runner == 'windows-latest'
         run: |
           eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
+          echo "PATH=$PATH" >> "$GITHUB_ENV"
 
       - uses: actions/cache@v4
         with:
@@ -274,6 +276,7 @@ jobs:
         if: matrix.runner == 'windows-latest'
         run: |
           eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
+          echo "PATH=$PATH" >> "$GITHUB_ENV"
 
       - uses: actions/cache@v4
         with:
@@ -325,6 +328,7 @@ jobs:
         if: matrix.runner == 'windows-latest'
         run: |
           eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
+          echo "PATH=$PATH" >> "$GITHUB_ENV"
 
       - uses: actions/cache@v4
         with:

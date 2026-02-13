@@ -87,8 +87,10 @@ jobs:
           case "${{ matrix.runner }}" in
             ubuntu*) cp shared/c/libspicedb.so "out/${{ steps.set_rid.outputs.rid }}/native/" ;;
             macos*)  cp shared/c/libspicedb.dylib "out/${{ steps.set_rid.outputs.rid }}/native/" ;;
-            windows*) cp shared/c/spicedb.dll "out/${{ steps.set_rid.outputs.rid }}/native/"
-                     [ -f shared/c/spicedb.def ] && cp shared/c/spicedb.def "out/${{ steps.set_rid.outputs.rid }}/native/" || true ;;
+            windows*)
+              cp shared/c/spicedb.dll "out/${{ steps.set_rid.outputs.rid }}/native/"
+              [ -f shared/c/spicedb.def ] && cp shared/c/spicedb.def "out/${{ steps.set_rid.outputs.rid }}/native/" || true
+              ;;
           esac
 
       - name: Upload shared lib

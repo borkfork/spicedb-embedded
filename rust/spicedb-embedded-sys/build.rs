@@ -44,13 +44,26 @@ fn run(rid: &str, release_version: Option<&str>) {
         (prebuild_crate.clone(), prebuild_dir)
     } else if try_build_from_source(&manifest_dir, &out_dir, &lib_filename) {
         let prebuild = out_dir.join(&lib_filename);
+        if !prebuild.exists() {
+            panic!(
+                "Build from source reported success but library not found at {}.",
+                prebuild.display()
+            );
+        }
         (prebuild.clone(), out_dir.clone())
     } else {
         let env_version = std::env::var("SPICEDB_EMBEDDED_RELEASE_VERSION").ok();
         let version = release_version.or(env_version.as_deref());
         if let Some(version) = version {
+            validate_release_version(version);
             download_from_release(rid, version, &out_dir);
             let prebuild = out_dir.join(&lib_filename);
+            if !prebuild.exists() {
+                panic!(
+                    "Download completed but library not found at {}. Tarball may have wrong layout.",
+                    prebuild.display()
+                );
+            }
             (prebuild.clone(), out_dir.clone())
         } else {
             panic!(
@@ -64,13 +77,20 @@ fn run(rid: &str, release_version: Option<&str>) {
         }
     };
 
-    if prebuild.exists() {
-        println!("cargo:rerun-if-changed={}", prebuild.display());
-        std::fs::copy(&prebuild, &lib_path).expect("copy prebuild to OUT_DIR");
+    if !prebuild.exists() {
+        panic!(
+            "Expected prebuilt library at {} after attempting local prebuild, build-from-source, or download, \
+            but it was not found. Target rid: {}. Expected path in OUT_DIR: {}.",
+            prebuild.display(),
+            rid,
+            lib_path.display()
+        );
     }
+    println!("cargo:rerun-if-changed={}", prebuild.display());
+    std::fs::copy(&prebuild, &lib_path).expect("copy prebuild to OUT_DIR");
 
-    #[cfg(target_os = "windows")]
-    {
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    if target_os == "windows" {
         generate_import_lib_windows(&prebuild_dir, &out_dir);
     }
 
@@ -109,13 +129,9 @@ fn try_build_from_source(manifest_dir: &Path, out_dir: &Path, lib_filename: &str
     let _ = std::fs::create_dir_all(out_dir);
     let out_lib = out_dir.join(lib_filename);
     let status = Command::new("go")
-        .args([
-            "build",
-            "-buildmode=c-shared",
-            "-o",
-            out_lib.to_str().unwrap(),
-            ".",
-        ])
+        .args(["build", "-buildmode=c-shared", "-o"])
+        .arg(&out_lib)
+        .arg(".")
         .current_dir(&shared_c)
         .env("CGO_ENABLED", "1")
         .status();
@@ -126,8 +142,7 @@ fn try_build_from_source(manifest_dir: &Path, out_dir: &Path, lib_filename: &str
     if !ok {
         return false;
     }
-    #[cfg(target_os = "windows")]
-    {
+    if lib_filename.ends_with(".dll") {
         let def_src = shared_c.join("spicedb.def");
         if def_src.exists() {
             let _ = std::fs::copy(&def_src, out_dir.join("spicedb.def"));
@@ -158,6 +173,19 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+fn validate_release_version(version: &str) {
+    if version.is_empty()
+        || !version
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+    {
+        panic!(
+            "Invalid SPICEDB_EMBEDDED_RELEASE_VERSION '{}': only alphanumeric, dot, hyphen allowed",
+            version
+        );
+    }
+}
+
 fn download_from_release(rid: &str, version: &str, out_dir: &Path) {
     let url = format!(
         "https://github.com/borkfork/spicedb-embedded/releases/download/v{}/libspicedb-{}.tar.gz",
@@ -165,7 +193,9 @@ fn download_from_release(rid: &str, version: &str, out_dir: &Path) {
     );
     let archive = out_dir.join("libspicedb.tar.gz");
     let status = Command::new("curl")
-        .args(["-sSL", "-o", archive.to_str().unwrap(), &url])
+        .args(["-fsSL", "--proto", "=https", "-o"])
+        .arg(&archive)
+        .arg(&url)
         .status();
     let status = status.unwrap_or_else(|e| {
         panic!(
@@ -180,12 +210,10 @@ fn download_from_release(rid: &str, version: &str, out_dir: &Path) {
         );
     }
     let status = Command::new("tar")
-        .args([
-            "-xzf",
-            archive.to_str().unwrap(),
-            "-C",
-            out_dir.to_str().unwrap(),
-        ])
+        .args(["-xzf"])
+        .arg(&archive)
+        .args(["-C"])
+        .arg(out_dir)
         .status();
     let status = status
         .unwrap_or_else(|e| panic!("Failed to run tar to extract {}: {}", archive.display(), e));
@@ -216,14 +244,15 @@ fn copy_lib_to_target(lib_path: &Path, lib_filename: &str) {
 }
 
 fn emit_rpath(runtime_lib_dir: &Path) {
-    if cfg!(target_os = "macos") {
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    if target_os == "macos" {
         println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path");
         println!(
             "cargo:rustc-link-arg=-Wl,-rpath,{}",
             runtime_lib_dir.display()
         );
     }
-    if cfg!(target_os = "linux") {
+    if target_os == "linux" {
         println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN");
         println!(
             "cargo:rustc-link-arg=-Wl,-rpath,{}",
@@ -232,7 +261,6 @@ fn emit_rpath(runtime_lib_dir: &Path) {
     }
 }
 
-#[cfg(target_os = "windows")]
 fn generate_import_lib_windows(def_dir: &Path, out_dir: &Path) {
     let def_file = def_dir.join("spicedb.def");
     let lib_file = out_dir.join("spicedb.lib");
@@ -249,7 +277,6 @@ fn generate_import_lib_windows(def_dir: &Path, out_dir: &Path) {
     }
 }
 
-#[cfg(target_os = "windows")]
 fn try_generate_import_lib_win(def_file: &Path, lib_file: &Path) -> Result<(), ()> {
     let lib_exe = find_msvc_lib_exe().ok_or(())?;
     let status = Command::new(&lib_exe)
@@ -263,32 +290,36 @@ fn try_generate_import_lib_win(def_file: &Path, lib_file: &Path) -> Result<(), (
     }
 }
 
-#[cfg(target_os = "windows")]
 fn find_msvc_lib_exe() -> Option<PathBuf> {
-    let vswhere =
-        Path::new(r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe");
-    if !vswhere.exists() {
-        return None;
-    }
-    let out = Command::new(vswhere)
-        .args(["-latest", "-property", "installationPath"])
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let vs_path = std::str::from_utf8(&out.stdout).ok()?.trim_end();
-    let vc_tools = Path::new(vs_path).join("VC").join("Tools").join("MSVC");
-    for entry in std::fs::read_dir(&vc_tools).ok()?.flatten() {
-        let path = entry
-            .path()
-            .join("bin")
-            .join("Hostx64")
-            .join("x64")
-            .join("lib.exe");
-        if path.exists() {
-            return Some(path);
+    #[cfg(not(windows))]
+    return None;
+    #[cfg(windows)]
+    {
+        let vswhere =
+            Path::new(r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe");
+        if !vswhere.exists() {
+            return None;
         }
+        let out = Command::new(vswhere)
+            .args(["-latest", "-property", "installationPath"])
+            .output()
+            .ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        let vs_path = std::str::from_utf8(&out.stdout).ok()?.trim_end();
+        let vc_tools = Path::new(vs_path).join("VC").join("Tools").join("MSVC");
+        for entry in std::fs::read_dir(&vc_tools).ok()?.flatten() {
+            let path = entry
+                .path()
+                .join("bin")
+                .join("Hostx64")
+                .join("x64")
+                .join("lib.exe");
+            if path.exists() {
+                return Some(path);
+            }
+        }
+        return None;
     }
-    None
 }
