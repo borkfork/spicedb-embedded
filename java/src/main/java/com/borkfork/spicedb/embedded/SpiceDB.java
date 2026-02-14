@@ -5,10 +5,6 @@ import com.sun.jna.Native;
 import com.sun.jna.Pointer;
 import com.sun.jna.ptr.IntByReference;
 import com.sun.jna.ptr.PointerByReference;
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 
 /**
  * JNA interface to the SpiceDB C-shared library (shared/c).
@@ -19,78 +15,13 @@ import java.nio.file.Paths;
  */
 interface SpiceDB extends Library {
 
-  /** Cached path when loaded from JAR (so we use one library instance; see findLibraryPath). */
-  private static volatile String cachedJarLibPath;
-
   /**
    * Load the native library. Prefers bundled JAR natives, then spicedb.library.path, then
    * "spicedb".
    */
   static SpiceDB load() {
-    String libPath = findLibraryPath();
+    String libPath = SpiceDBLibraryPath.getLibraryPath(SpiceDB.class);
     return Native.load(libPath != null ? libPath : "spicedb", SpiceDB.class);
-  }
-
-  static String findLibraryPath() {
-    String explicit = System.getProperty("spicedb.library.path");
-    String os = System.getProperty("os.name").toLowerCase();
-    String arch = System.getProperty("os.arch").toLowerCase();
-    String libName;
-    if (os.contains("mac")) {
-      libName = "libspicedb.dylib";
-    } else if (os.contains("linux")) {
-      libName = "libspicedb.so";
-    } else if (os.contains("win")) {
-      libName = "spicedb.dll";
-    } else {
-      libName = null;
-    }
-    if (explicit != null && libName != null) {
-      Path dir = Paths.get(explicit).toAbsolutePath().normalize();
-      Path lib = dir.resolve(libName);
-      if (Files.isRegularFile(lib)) {
-        return lib.toString();
-      }
-      // Explicit path set but file missing (e.g. CI uses prebuilds from JAR); fall through to JAR
-    }
-
-    String platformKey = platformKey(os, arch);
-    if (platformKey != null) {
-      String cached = cachedJarLibPath;
-      if (cached != null) {
-        return cached;
-      }
-      String resource = "natives/" + platformKey + "/" + libName;
-      synchronized (SpiceDB.class) {
-        if (cachedJarLibPath != null) {
-          return cachedJarLibPath;
-        }
-        try (InputStream in = SpiceDB.class.getClassLoader().getResourceAsStream(resource)) {
-          if (in != null) {
-            Path tmp = Files.createTempFile("spicedb", libName);
-            tmp.toFile().deleteOnExit();
-            Files.copy(in, tmp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-            cachedJarLibPath = tmp.toAbsolutePath().toString();
-            return cachedJarLibPath;
-          }
-        } catch (Exception ignored) {
-          // fall through
-        }
-      }
-    }
-
-    return null;
-  }
-
-  private static String platformKey(String os, String arch) {
-    boolean x86_64 = arch.equals("amd64") || arch.equals("x86_64");
-    boolean aarch_64 = arch.equals("aarch64") || arch.equals("arm64");
-    if (os.contains("linux") && x86_64) return "linux-x86_64";
-    if (os.contains("linux") && aarch_64) return "linux-aarch_64";
-    if (os.contains("mac") && aarch_64) return "osx-aarch_64";
-    if (os.contains("mac") && x86_64) return "osx-x86_64";
-    if (os.contains("win") && x86_64) return "windows-x86_64";
-    return null;
   }
 
   /**
