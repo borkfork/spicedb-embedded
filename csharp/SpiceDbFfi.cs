@@ -8,6 +8,7 @@ namespace Borkfork.SpiceDb.Embedded;
 
 /// <summary>
 ///     P/Invoke bindings to the SpiceDB C-shared library (shared/c).
+///     Always uses in-memory transport; unary RPCs via FFI, streaming via proxy.
 ///     Build shared/c first: mise run shared-c-build
 /// </summary>
 internal static class SpiceDbFfi
@@ -37,27 +38,119 @@ internal static class SpiceDbFfi
     [DllImport(LibraryName, EntryPoint = "spicedb_free", CallingConvention = CallingConvention.Cdecl)]
     private static extern void SpicedbFree(IntPtr ptr);
 
-    public static StartResponse Start(StartOptions? options = null)
+    [DllImport(LibraryName, EntryPoint = "spicedb_free_bytes", CallingConvention = CallingConvention.Cdecl)]
+    private static extern void SpicedbFreeBytes(IntPtr ptr);
+
+    [DllImport(LibraryName, EntryPoint = "spicedb_permissions_check_permission", CallingConvention = CallingConvention.Cdecl)]
+    private static extern void SpicedbPermissionsCheckPermission(ulong handle, byte[] requestBytes, int requestLen,
+        out IntPtr outResponseBytes, out int outResponseLen, out IntPtr outError);
+
+    [DllImport(LibraryName, EntryPoint = "spicedb_schema_write_schema", CallingConvention = CallingConvention.Cdecl)]
+    private static extern void SpicedbSchemaWriteSchema(ulong handle, byte[] requestBytes, int requestLen,
+        out IntPtr outResponseBytes, out int outResponseLen, out IntPtr outError);
+
+    [DllImport(LibraryName, EntryPoint = "spicedb_permissions_write_relationships", CallingConvention = CallingConvention.Cdecl)]
+    private static extern void SpicedbPermissionsWriteRelationships(ulong handle, byte[] requestBytes, int requestLen,
+        out IntPtr outResponseBytes, out int outResponseLen, out IntPtr outError);
+
+    [DllImport(LibraryName, EntryPoint = "spicedb_permissions_delete_relationships", CallingConvention = CallingConvention.Cdecl)]
+    private static extern void SpicedbPermissionsDeleteRelationships(ulong handle, byte[] requestBytes, int requestLen,
+        out IntPtr outResponseBytes, out int outResponseLen, out IntPtr outError);
+
+    [DllImport(LibraryName, EntryPoint = "spicedb_permissions_check_bulk_permissions", CallingConvention = CallingConvention.Cdecl)]
+    private static extern void SpicedbPermissionsCheckBulkPermissions(ulong handle, byte[] requestBytes, int requestLen,
+        out IntPtr outResponseBytes, out int outResponseLen, out IntPtr outError);
+
+    [DllImport(LibraryName, EntryPoint = "spicedb_permissions_expand_permission_tree", CallingConvention = CallingConvention.Cdecl)]
+    private static extern void SpicedbPermissionsExpandPermissionTree(ulong handle, byte[] requestBytes, int requestLen,
+        out IntPtr outResponseBytes, out int outResponseLen, out IntPtr outError);
+
+    [DllImport(LibraryName, EntryPoint = "spicedb_schema_read_schema", CallingConvention = CallingConvention.Cdecl)]
+    private static extern void SpicedbSchemaReadSchema(ulong handle, byte[] requestBytes, int requestLen,
+        out IntPtr outResponseBytes, out int outResponseLen, out IntPtr outError);
+
+    private static byte[] CopyResponseAndFree(IntPtr outResp, int outLen, IntPtr outErr)
     {
-        var optionsPtr = IntPtr.Zero;
-        if (options.HasValue)
+        if (outErr != IntPtr.Zero)
         {
-            var opts = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
-            var json = JsonSerializer.Serialize(options.Value, opts);
-            var bytes = Encoding.UTF8.GetBytes(json + "\0");
-            optionsPtr = Marshal.AllocHGlobal(bytes.Length);
-            Marshal.Copy(bytes, 0, optionsPtr, bytes.Length);
+            try
+            {
+                var errMsg = Marshal.PtrToStringUTF8(outErr) ?? "Unknown error";
+                throw new SpiceDbException(errMsg);
+            }
+            finally
+            {
+                SpicedbFree(outErr);
+            }
         }
 
+        if (outLen <= 0 || outResp == IntPtr.Zero) return Array.Empty<byte>();
+        var copy = new byte[outLen];
+        Marshal.Copy(outResp, copy, 0, outLen);
+        SpicedbFreeBytes(outResp);
+        return copy;
+    }
+
+    internal static byte[] CheckPermission(ulong handle, byte[] requestBytes)
+    {
+        SpicedbPermissionsCheckPermission(handle, requestBytes, requestBytes.Length, out var r, out var len, out var e);
+        return CopyResponseAndFree(r, len, e);
+    }
+
+    internal static byte[] WriteSchema(ulong handle, byte[] requestBytes)
+    {
+        SpicedbSchemaWriteSchema(handle, requestBytes, requestBytes.Length, out var r, out var len, out var e);
+        return CopyResponseAndFree(r, len, e);
+    }
+
+    internal static byte[] WriteRelationships(ulong handle, byte[] requestBytes)
+    {
+        SpicedbPermissionsWriteRelationships(handle, requestBytes, requestBytes.Length, out var r, out var len, out var e);
+        return CopyResponseAndFree(r, len, e);
+    }
+
+    internal static byte[] DeleteRelationships(ulong handle, byte[] requestBytes)
+    {
+        SpicedbPermissionsDeleteRelationships(handle, requestBytes, requestBytes.Length, out var r, out var len, out var e);
+        return CopyResponseAndFree(r, len, e);
+    }
+
+    internal static byte[] CheckBulkPermissions(ulong handle, byte[] requestBytes)
+    {
+        SpicedbPermissionsCheckBulkPermissions(handle, requestBytes, requestBytes.Length, out var r, out var len, out var e);
+        return CopyResponseAndFree(r, len, e);
+    }
+
+    internal static byte[] ExpandPermissionTree(ulong handle, byte[] requestBytes)
+    {
+        SpicedbPermissionsExpandPermissionTree(handle, requestBytes, requestBytes.Length, out var r, out var len, out var e);
+        return CopyResponseAndFree(r, len, e);
+    }
+
+    internal static byte[] ReadSchema(ulong handle, byte[] requestBytes)
+    {
+        SpicedbSchemaReadSchema(handle, requestBytes, requestBytes.Length, out var r, out var len, out var e);
+        return CopyResponseAndFree(r, len, e);
+    }
+
+    public static StartResponse Start(StartOptions? options = null)
+    {
+        var opts = options ?? default;
+        var withMemory = opts with { GrpcTransport = "memory" };
+        var optsJson = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
+        var json = JsonSerializer.Serialize(withMemory, optsJson);
+        var bytes = Encoding.UTF8.GetBytes(json + "\0");
+        var optionsPtr = Marshal.AllocHGlobal(bytes.Length);
         try
         {
+            Marshal.Copy(bytes, 0, optionsPtr, bytes.Length);
             var ptr = SpicedbStart(optionsPtr);
             if (ptr == IntPtr.Zero) throw new SpiceDbException("Null response from C library");
 
             try
             {
-                var json = Marshal.PtrToStringUTF8(ptr) ?? throw new SpiceDbException("Invalid UTF-8 from C library");
-                var doc = JsonDocument.Parse(json);
+                var jsonResp = Marshal.PtrToStringUTF8(ptr) ?? throw new SpiceDbException("Invalid UTF-8 from C library");
+                var doc = JsonDocument.Parse(jsonResp);
                 var root = doc.RootElement;
 
                 if (!root.TryGetProperty("success", out var successProp) || !successProp.GetBoolean())
@@ -72,10 +165,12 @@ internal static class SpiceDbFfi
                 var handle = data.GetProperty("handle").GetUInt64();
                 var grpcTransport = data.GetProperty("grpc_transport").GetString()
                                     ?? throw new SpiceDbException("Missing grpc_transport in response");
-                var address = data.GetProperty("address").GetString()
-                              ?? throw new SpiceDbException("Missing address in response");
+                if (grpcTransport != "memory")
+                    throw new SpiceDbException("Expected memory transport; got " + grpcTransport);
+                var streamingAddress = data.GetProperty("streaming_address").GetString()
+                                      ?? throw new SpiceDbException("Missing streaming_address in response");
 
-                return new StartResponse(handle, grpcTransport, address);
+                return new StartResponse(handle, streamingAddress);
             }
             finally
             {
@@ -84,7 +179,7 @@ internal static class SpiceDbFfi
         }
         finally
         {
-            if (optionsPtr != IntPtr.Zero) Marshal.FreeHGlobal(optionsPtr);
+            Marshal.FreeHGlobal(optionsPtr);
         }
     }
 
@@ -120,9 +215,6 @@ internal static class SpiceDbFfi
                 ? "spicedb.dll"
                 : "libspicedb.so";
 
-        // Prefer native lib packaged with the NuGet package (runtimes/<rid>/native/).
-        // RuntimeIdentifier can include qualifiers (e.g. win10-x64, osx.14-arm64, linux-musl-x64);
-        // we package under fixed RIDs (win-x64, osx-arm64, linux-x64, linux-arm64), so try raw and normalized.
         var asmDir = Path.GetDirectoryName(typeof(SpiceDbFfi).Assembly.Location);
         if (!string.IsNullOrEmpty(asmDir))
         {
@@ -139,7 +231,6 @@ internal static class SpiceDbFfi
         return null;
     }
 
-    /// <summary>Returns RID candidates to try for runtimes/ (raw first, then normalized to match our packaged names).</summary>
     private static IEnumerable<string> GetPackagedRidCandidates()
     {
         var rid = RuntimeInformation.RuntimeIdentifier;
@@ -147,7 +238,6 @@ internal static class SpiceDbFfi
 
         yield return rid;
 
-        // Normalize to match our workflow packaging: win-x64, osx-arm64, linux-x64, linux-arm64
         var normalized = rid;
         normalized = Regex.Replace(normalized, @"^win\d+-", "win-");
         normalized = Regex.Replace(normalized, @"^osx\.\d+-", "osx-");
@@ -155,13 +245,13 @@ internal static class SpiceDbFfi
         if (normalized != rid) yield return normalized;
     }
 
-    public readonly record struct StartResponse(ulong Handle, string Transport, string Address);
+    public readonly record struct StartResponse(ulong Handle, string StreamingAddress);
 }
 
 /// <summary>
-///     Options for starting an embedded SpiceDB instance.
+///     Options for starting an embedded SpiceDB instance (in-memory only; no grpc_transport).
 /// </summary>
-// ReSharper disable UnusedMember.Global -- Properties are used by JsonSerializer in SpiceDbFfi.Start
+// ReSharper disable UnusedMember.Global, UnusedAutoPropertyAccessor.Global -- Properties used by JsonSerializer
 public record struct StartOptions
 {
     /// <summary>Datastore: "memory" (default), "postgres", "cockroachdb", "spanner", "mysql".</summary>
@@ -170,7 +260,7 @@ public record struct StartOptions
     /// <summary>Connection string for remote datastores.</summary>
     public string? DatastoreUri { get; init; }
 
-    /// <summary>gRPC transport: "unix" (default on Unix), "tcp" (default on Windows).</summary>
+    /// <summary>Ignored; always uses in-memory transport.</summary>
     public string? GrpcTransport { get; init; }
 
     /// <summary>Path to Spanner service account JSON (Spanner only).</summary>
@@ -183,6 +273,6 @@ public record struct StartOptions
     [JsonPropertyName("mysql_table_prefix")]
     public string? MySqlTablePrefix { get; init; }
 
-    /// <summary>Enable datastore Prometheus metrics (default: false; disabled allows multiple instances in same process).</summary>
+    /// <summary>Enable datastore Prometheus metrics (default: false).</summary>
     public bool? MetricsEnabled { get; init; }
 }

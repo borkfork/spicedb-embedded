@@ -75,6 +75,33 @@ public class EmbeddedSpiceDbTests
     }
 
     [Fact]
+    public async Task ReadRelationships_Streaming()
+    {
+        var relationships = new[]
+        {
+            Rel("document:doc1", "reader", "user:alice"),
+            Rel("document:doc1", "writer", "user:bob")
+        };
+        using var spicedb = EmbeddedSpiceDb.Create(TestSchema, relationships);
+
+        var req = new ReadRelationshipsRequest
+        {
+            RelationshipFilter = new RelationshipFilter
+            {
+                ResourceType = "document",
+                OptionalResourceId = "doc1"
+            }
+        };
+        var call = spicedb.Permissions().ReadRelationships(req);
+        var results = new List<ReadRelationshipsResponse>();
+        while (await call.ResponseStream.MoveNext(CancellationToken.None))
+            results.Add(call.ResponseStream.Current);
+
+        Assert.True(results.Count >= 2);
+        Assert.All(results, r => Assert.Equal("document", r.Relationship?.Resource?.ObjectType));
+    }
+
+    [Fact]
     public void AddRelationship()
     {
         using var spicedb = EmbeddedSpiceDb.Create(TestSchema, []);

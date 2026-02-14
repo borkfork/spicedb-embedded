@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+package spicedb_embedded_java.imports;
+
+// Pull in authzed.api.v1 (same as other languages).
+import "authzed/api/v1/permission_service.proto";
+import "authzed/api/v1/schema_service.proto";
+import "authzed/api/v1/watch_service.proto";

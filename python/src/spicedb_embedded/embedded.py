@@ -1,33 +1,61 @@
-"""Embedded SpiceDB instance."""
+"""Embedded SpiceDB instance.
+
+Uses in-memory transport: unary RPCs via FFI, streaming APIs (Watch, ReadRelationships, etc.)
+via a streaming proxy. Use permissions(), schema(), and watch() to access the full SpiceDB API.
+"""
 
 import grpc
 from authzed.api.v1 import (
-    Consistency,
-    ObjectReference,
+    CheckBulkPermissionsRequest,
+    CheckBulkPermissionsResponse,
+    CheckPermissionRequest,
+    CheckPermissionResponse,
+    DeleteRelationshipsRequest,
+    DeleteRelationshipsResponse,
+    ExpandPermissionTreeRequest,
+    ExpandPermissionTreeResponse,
+    ReadRelationshipsRequest,
+    ReadSchemaRequest,
+    ReadSchemaResponse,
     Relationship,
     RelationshipUpdate,
-    SubjectReference,
     WriteRelationshipsRequest,
+    WriteRelationshipsResponse,
     WriteSchemaRequest,
+    WriteSchemaResponse,
 )
 from authzed.api.v1.permission_service_pb2_grpc import PermissionsServiceStub
-from authzed.api.v1.schema_service_pb2_grpc import SchemaServiceStub
 from authzed.api.v1.watch_service_pb2_grpc import WatchServiceStub
 
 from spicedb_embedded.errors import SpiceDBError
-from spicedb_embedded.ffi import spicedb_dispose, spicedb_start
+from spicedb_embedded.ffi import (
+    spicedb_dispose,
+    spicedb_permissions_check_bulk_permissions,
+    spicedb_permissions_check_permission,
+    spicedb_permissions_delete_relationships,
+    spicedb_permissions_expand_permission_tree,
+    spicedb_permissions_write_relationships,
+    spicedb_schema_read_schema,
+    spicedb_schema_write_schema,
+    spicedb_start,
+)
 from spicedb_embedded.tcp_channel import get_target as get_tcp_target
 from spicedb_embedded.unix_socket_channel import get_target as get_unix_socket_target
 
 
+def _streaming_target(streaming_address: str) -> str:
+    """Return gRPC target for streaming_address (Unix path or host:port)."""
+    if streaming_address.startswith("/"):
+        return get_unix_socket_target(streaming_address)
+    return get_tcp_target(streaming_address)
+
+
 class EmbeddedSpiceDB:
     """
-    Embedded SpiceDB instance.
+    Embedded SpiceDB instance (in-memory only).
 
-    A thin wrapper that starts SpiceDB via the C-shared library, connects over a Unix
-    socket or TCP, and bootstraps schema and relationships via gRPC.
-
-    Use permissions(), schema(), and watch() to access the full SpiceDB API.
+    Unary RPCs go through FFI; streaming (Watch, ReadRelationships, etc.) goes through
+    the streaming proxy. Use permissions(), schema(), and watch() to access the API.
     """
 
     def __init__(
@@ -43,19 +71,12 @@ class EmbeddedSpiceDB:
         Args:
             schema: The SpiceDB schema definition (ZED language).
             relationships: Initial relationships. Defaults to [].
-            options: Optional config: {"datastore": "memory", "grpc_transport": "unix"|"tcp",
-                "datastore_uri": "...", ...}. Use None for defaults.
+            options: Optional config (datastore, datastore_uri, etc.). grpc_transport is not used; always in-memory.
         """
         data = spicedb_start(options)
         self._handle = data["handle"]
-        grpc_transport = data["grpc_transport"]
-        address = data["address"]
-
-        target = (
-            get_unix_socket_target(address)
-            if grpc_transport == "unix"
-            else get_tcp_target(address)
-        )
+        self._streaming_address = data["streaming_address"]
+        target = _streaming_target(self._streaming_address)
         self._channel = grpc.insecure_channel(target)
 
         try:
@@ -65,11 +86,10 @@ class EmbeddedSpiceDB:
             raise SpiceDBError(f"Failed to bootstrap: {e}") from e
 
     def _bootstrap(self, schema: str, relationships: list[Relationship]) -> None:
-        schema_stub = SchemaServiceStub(self._channel)
-        schema_stub.WriteSchema(WriteSchemaRequest(schema=schema))
+        write_schema_req = WriteSchemaRequest(schema=schema)
+        spicedb_schema_write_schema(self._handle, write_schema_req.SerializeToString())
 
         if relationships:
-            perm_stub = PermissionsServiceStub(self._channel)
             updates = [
                 RelationshipUpdate(
                     operation=RelationshipUpdate.Operation.OPERATION_TOUCH,
@@ -77,23 +97,30 @@ class EmbeddedSpiceDB:
                 )
                 for r in relationships
             ]
-            perm_stub.WriteRelationships(WriteRelationshipsRequest(updates=updates))
+            write_rel_req = WriteRelationshipsRequest(updates=updates)
+            spicedb_permissions_write_relationships(
+                self._handle, write_rel_req.SerializeToString()
+            )
 
-    def permissions(self) -> PermissionsServiceStub:
-        """Permissions service stub (CheckPermission, WriteRelationships, etc.)."""
-        return PermissionsServiceStub(self._channel)
+    def permissions(self) -> "EmbeddedPermissionsStub":
+        """Permissions service: unary via FFI, streaming (ReadRelationships, etc.) via proxy."""
+        return EmbeddedPermissionsStub(self._handle, self._channel)
 
-    def schema(self) -> SchemaServiceStub:
-        """Schema service stub (ReadSchema, WriteSchema, ReflectSchema, etc.)."""
-        return SchemaServiceStub(self._channel)
+    def schema(self) -> "EmbeddedSchemaStub":
+        """Schema service (ReadSchema, WriteSchema) via FFI."""
+        return EmbeddedSchemaStub(self._handle)
 
     def watch(self) -> WatchServiceStub:
-        """Watch service stub for relationship changes."""
+        """Watch service (streaming) via proxy."""
         return WatchServiceStub(self._channel)
 
     def channel(self) -> grpc.Channel:
-        """Underlying gRPC channel."""
+        """Channel connected to the streaming proxy."""
         return self._channel
+
+    def streaming_address(self) -> str:
+        """Streaming proxy address (Unix path or host:port)."""
+        return self._streaming_address
 
     def close(self) -> None:
         """Dispose the instance and close the channel."""
@@ -105,3 +132,84 @@ class EmbeddedSpiceDB:
 
     def __exit__(self, *args) -> None:
         self.close()
+
+
+class EmbeddedPermissionsStub:
+    """Permissions client: unary via FFI, ReadRelationships via streaming channel."""
+
+    def __init__(self, handle: int, channel: grpc.Channel) -> None:
+        self._handle = handle
+        self._stub = PermissionsServiceStub(channel)
+
+    def CheckPermission(
+        self, request: CheckPermissionRequest
+    ) -> CheckPermissionResponse:
+        raw = spicedb_permissions_check_permission(
+            self._handle, request.SerializeToString()
+        )
+        r = CheckPermissionResponse()
+        r.ParseFromString(raw)
+        return r
+
+    def WriteRelationships(
+        self, request: WriteRelationshipsRequest
+    ) -> WriteRelationshipsResponse:
+        raw = spicedb_permissions_write_relationships(
+            self._handle, request.SerializeToString()
+        )
+        r = WriteRelationshipsResponse()
+        r.ParseFromString(raw)
+        return r
+
+    def DeleteRelationships(
+        self, request: DeleteRelationshipsRequest
+    ) -> DeleteRelationshipsResponse:
+        raw = spicedb_permissions_delete_relationships(
+            self._handle, request.SerializeToString()
+        )
+        r = DeleteRelationshipsResponse()
+        r.ParseFromString(raw)
+        return r
+
+    def CheckBulkPermissions(
+        self, request: CheckBulkPermissionsRequest
+    ) -> CheckBulkPermissionsResponse:
+        raw = spicedb_permissions_check_bulk_permissions(
+            self._handle, request.SerializeToString()
+        )
+        r = CheckBulkPermissionsResponse()
+        r.ParseFromString(raw)
+        return r
+
+    def ExpandPermissionTree(
+        self, request: ExpandPermissionTreeRequest
+    ) -> ExpandPermissionTreeResponse:
+        raw = spicedb_permissions_expand_permission_tree(
+            self._handle, request.SerializeToString()
+        )
+        r = ExpandPermissionTreeResponse()
+        r.ParseFromString(raw)
+        return r
+
+    def ReadRelationships(self, request: ReadRelationshipsRequest, **kwargs):
+        """Streaming: uses the streaming proxy."""
+        return self._stub.ReadRelationships(request, **kwargs)
+
+
+class EmbeddedSchemaStub:
+    """Schema client (ReadSchema, WriteSchema) via FFI."""
+
+    def __init__(self, handle: int) -> None:
+        self._handle = handle
+
+    def ReadSchema(self, request: ReadSchemaRequest) -> ReadSchemaResponse:
+        raw = spicedb_schema_read_schema(self._handle, request.SerializeToString())
+        r = ReadSchemaResponse()
+        r.ParseFromString(raw)
+        return r
+
+    def WriteSchema(self, request: WriteSchemaRequest) -> WriteSchemaResponse:
+        raw = spicedb_schema_write_schema(self._handle, request.SerializeToString())
+        r = WriteSchemaResponse()
+        r.ParseFromString(raw)
+        return r
