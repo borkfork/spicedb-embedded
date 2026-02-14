@@ -322,11 +322,11 @@ mod tests {
     /// Connect to the streaming proxy (addr + transport from C library start response).
     async fn connect_streaming(
         addr: &str,
-        transport: &str,
+        _transport: &str,
     ) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
         #[cfg(unix)]
         {
-            if transport == "unix" {
+            if _transport == "unix" {
                 let path = addr.to_string();
                 Endpoint::try_from("http://[::]:50051")?
                     .connect_with_connector(tower::service_fn(move |_: tonic::transport::Uri| {

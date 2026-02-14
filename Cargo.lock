@@ -1942,7 +1942,7 @@ dependencies = [
 
 [[package]]
 name = "spicedb-embedded"
-version = "0.2.6"
+version = "0.3.0"
 dependencies = [
  "hyper-util",
  "prost 0.13.5",
@@ -1962,7 +1962,7 @@ dependencies = [
 
 [[package]]
 name = "spicedb-embedded-sys"
-version = "0.2.6"
+version = "0.3.0"
 dependencies = [
  "prost 0.13.5",
  "spicedb-api",

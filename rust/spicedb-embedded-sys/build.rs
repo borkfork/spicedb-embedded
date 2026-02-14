@@ -320,6 +320,6 @@ fn find_msvc_lib_exe() -> Option<PathBuf> {
                 return Some(path);
             }
         }
-        return None;
+        None
     }
 }
