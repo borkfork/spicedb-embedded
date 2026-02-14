@@ -95,7 +95,7 @@ jobs:
             rid: win-x64
     runs-on: ${{ matrix.runner }}
     env:
-      MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,go,github:authzed/spicedb,buf"
+      MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,go,github:authzed/spicedb,buf,protoc"
       # Rust tests use testcontainers (postgres, mysql, cockroach); use Linux/amd64 Docker platform.
       DOCKER_DEFAULT_PLATFORM: linux/amd64
     defaults:
@@ -121,7 +121,7 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "rust github:EmbarkStudios/cargo-deny go github:authzed/spicedb buf"
+          install_args: "rust github:EmbarkStudios/cargo-deny go github:authzed/spicedb buf protoc"
 
       - uses: actions/cache@v4
         with:
