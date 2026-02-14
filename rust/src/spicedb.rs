@@ -320,13 +320,14 @@ mod tests {
     use crate::v1::check_permission_response::Permissionship;
 
     /// Connect to the streaming proxy (addr + transport from C library start response).
+    #[allow(unused_variables)] // transport only used on Unix
     async fn connect_streaming(
         addr: &str,
-        _transport: &str,
+        transport: &str,
     ) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
         #[cfg(unix)]
         {
-            if _transport == "unix" {
+            if transport == "unix" {
                 let path = addr.to_string();
                 Endpoint::try_from("http://[::]:50051")?
                     .connect_with_connector(tower::service_fn(move |_: tonic::transport::Uri| {
