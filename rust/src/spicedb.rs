@@ -31,9 +31,6 @@ pub struct StartOptions {
     /// Connection string for remote datastores. Required for postgres, cockroachdb, spanner, mysql.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub datastore_uri: Option<String>,
-    /// gRPC transport: "unix" (default on Unix), "tcp" (default on Windows)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub grpc_transport: Option<String>,
     /// Path to Spanner service account JSON (Spanner only)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spanner_credentials_file: Option<String>,
@@ -77,6 +74,8 @@ pub struct EmbeddedSpiceDB {
     handle: u64,
     /// Set from the C library start response; use for `Watch`, `ReadRelationships`, `LookupResources`, `LookupSubjects`.
     streaming_address: String,
+    /// Set from the C library start response: "unix" or "tcp".
+    streaming_transport: String,
 }
 
 unsafe impl Send for EmbeddedSpiceDB {}
@@ -96,8 +95,6 @@ impl EmbeddedSpiceDB {
         options: Option<&StartOptions>,
     ) -> Result<Self, SpiceDBError> {
         let opts = options.cloned().unwrap_or_default();
-        let mut opts = opts;
-        opts.grpc_transport = Some("memory".into());
         let json = serde_json::to_string(&opts)
             .map_err(|e| SpiceDBError::Protocol(format!("serialize options: {e}")))?;
         let response_str = start(Some(&json)).map_err(SpiceDBError::Runtime)?;
@@ -106,16 +103,6 @@ impl EmbeddedSpiceDB {
             .get("handle")
             .and_then(serde_json::Value::as_u64)
             .ok_or_else(|| SpiceDBError::Protocol("missing handle in start response".into()))?;
-        let grpc_transport = data
-            .get("grpc_transport")
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| SpiceDBError::Protocol("missing grpc_transport".into()))?;
-        if grpc_transport != "memory" {
-            return Err(SpiceDBError::Protocol(format!(
-                "expected grpc_transport memory, got {grpc_transport}"
-            )));
-        }
-
         let streaming_address = data
             .get("streaming_address")
             .and_then(serde_json::Value::as_str)
@@ -123,10 +110,18 @@ impl EmbeddedSpiceDB {
             .ok_or_else(|| {
                 SpiceDBError::Protocol("missing streaming_address in start response".into())
             })?;
+        let streaming_transport = data
+            .get("streaming_transport")
+            .and_then(serde_json::Value::as_str)
+            .map(String::from)
+            .ok_or_else(|| {
+                SpiceDBError::Protocol("missing streaming_transport in start response".into())
+            })?;
 
         let db = Self {
             handle,
             streaming_address,
+            streaming_transport,
         };
 
         if !schema.is_empty() {
@@ -188,6 +183,12 @@ impl EmbeddedSpiceDB {
     #[must_use]
     pub fn streaming_address(&self) -> &str {
         &self.streaming_address
+    }
+
+    /// Streaming proxy transport: "unix" or "tcp" (from C library start response).
+    #[must_use]
+    pub fn streaming_transport(&self) -> &str {
+        &self.streaming_transport
     }
 }
 
@@ -318,13 +319,14 @@ mod tests {
     use super::*;
     use crate::v1::check_permission_response::Permissionship;
 
-    /// Connect to the streaming proxy address (Unix path or host:port).
+    /// Connect to the streaming proxy (addr + transport from C library start response).
     async fn connect_streaming(
         addr: &str,
+        transport: &str,
     ) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
         #[cfg(unix)]
         {
-            if addr.starts_with('/') {
+            if transport == "unix" {
                 let path = addr.to_string();
                 Endpoint::try_from("http://[::]:50051")?
                     .connect_with_connector(tower::service_fn(move |_: tonic::transport::Uri| {
@@ -462,11 +464,11 @@ definition document {
             }
         };
 
-        let streaming_addr = db.streaming_address();
-
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            let channel = connect_streaming(streaming_addr).await.unwrap();
+            let channel = connect_streaming(db.streaming_address(), db.streaming_transport())
+                .await
+                .unwrap();
             let mut watch_client = WatchServiceClient::new(channel);
             // Request checkpoints so the server sends an initial response and keeps the stream alive.
             let watch_req = WatchRequest {
@@ -627,7 +629,7 @@ definition document {
         ];
 
         let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &relationships, None).unwrap();
-        let channel = connect_streaming(spicedb.streaming_address())
+        let channel = connect_streaming(spicedb.streaming_address(), spicedb.streaming_transport())
             .await
             .unwrap();
         let mut client =
@@ -1005,7 +1007,6 @@ definition document {
             let opts = StartOptions {
                 datastore: Some(datastore.into()),
                 datastore_uri: Some(datastore_uri.into()),
-                grpc_transport: Some("tcp".into()),
                 ..Default::default()
             };
 
@@ -1104,7 +1105,6 @@ definition document {
             let opts = StartOptions {
                 datastore: Some("spanner".into()),
                 datastore_uri: Some(uri),
-                grpc_transport: Some("tcp".into()),
                 spanner_emulator_host: Some(emulator_host),
                 ..Default::default()
             };

@@ -165,7 +165,6 @@ Use types from `authzed.api.v1` (ObjectReference, SubjectReference, Relationship
 ```python
 options = {
     "datastore": "memory",          # or "postgres", "cockroachdb", "spanner", "mysql"
-    "grpc_transport": "unix",       # or "tcp"; default by platform
     "datastore_uri": "postgres://user:pass@localhost:5432/spicedb",  # required for remote
     "spanner_credentials_file": "/path/to/key.json",  # Spanner only
     "spanner_emulator_host": "localhost:9010",       # Spanner emulator

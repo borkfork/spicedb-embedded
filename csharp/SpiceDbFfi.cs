@@ -136,9 +136,8 @@ internal static class SpiceDbFfi
     public static StartResponse Start(StartOptions? options = null)
     {
         var opts = options ?? default;
-        var withMemory = opts with { GrpcTransport = "memory" };
         var optsJson = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
-        var json = JsonSerializer.Serialize(withMemory, optsJson);
+        var json = JsonSerializer.Serialize(opts, optsJson);
         var bytes = Encoding.UTF8.GetBytes(json + "\0");
         var optionsPtr = Marshal.AllocHGlobal(bytes.Length);
         try
@@ -163,14 +162,11 @@ internal static class SpiceDbFfi
 
                 var data = root.GetProperty("data");
                 var handle = data.GetProperty("handle").GetUInt64();
-                var grpcTransport = data.GetProperty("grpc_transport").GetString()
-                                    ?? throw new SpiceDbException("Missing grpc_transport in response");
-                if (grpcTransport != "memory")
-                    throw new SpiceDbException("Expected memory transport; got " + grpcTransport);
                 var streamingAddress = data.GetProperty("streaming_address").GetString()
                                       ?? throw new SpiceDbException("Missing streaming_address in response");
-
-                return new StartResponse(handle, streamingAddress);
+                var streamingTransport = data.GetProperty("streaming_transport").GetString()
+                                         ?? throw new SpiceDbException("Missing streaming_transport in response");
+                return new StartResponse(handle, streamingAddress, streamingTransport);
             }
             finally
             {
@@ -245,11 +241,11 @@ internal static class SpiceDbFfi
         if (normalized != rid) yield return normalized;
     }
 
-    public readonly record struct StartResponse(ulong Handle, string StreamingAddress);
+    public readonly record struct StartResponse(ulong Handle, string StreamingAddress, string StreamingTransport);
 }
 
 /// <summary>
-///     Options for starting an embedded SpiceDB instance (in-memory only; no grpc_transport).
+///     Options for starting an embedded SpiceDB instance (in-memory only).
 /// </summary>
 // ReSharper disable UnusedMember.Global, UnusedAutoPropertyAccessor.Global -- Properties used by JsonSerializer
 public record struct StartOptions
@@ -259,9 +255,6 @@ public record struct StartOptions
 
     /// <summary>Connection string for remote datastores.</summary>
     public string? DatastoreUri { get; init; }
-
-    /// <summary>Ignored; always uses in-memory transport.</summary>
-    public string? GrpcTransport { get; init; }
 
     /// <summary>Path to Spanner service account JSON (Spanner only).</summary>
     public string? SpannerCredentialsFile { get; init; }

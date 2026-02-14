@@ -36,25 +36,21 @@ This generates:
 
 All functions return a JSON string that must be freed with `spicedb_free()`.
 
-### `spicedb_start(options_json) -> handle + grpc_transport + address`
+### `spicedb_start(options_json) -> handle + streaming_address`
 
-Create a new SpiceDB instance (empty server). Schema and relationships should be written by the caller via gRPC.
+Create a new SpiceDB instance (in-memory; empty server). Schema and relationships should be written by the caller via gRPC.
 
 - `options_json`: Optional pointer to JSON string. Use `NULL` for defaults.
   - **datastore**: `"memory"` (default), `"postgres"`, `"cockroachdb"`, `"spanner"`, `"mysql"`
   - **datastore_uri**: Connection string (required for postgres, cockroachdb, spanner, mysql). E.g. `postgres://user:pass@localhost:5432/spicedb`
-  - **grpc_transport**: `"unix"` (default on Unix), `"tcp"` (default on Windows), `"memory"` (in-memory buffer; use FFI RPCs only, no address returned)
   - **spanner_credentials_file**: Path to service account JSON (Spanner only; omit for ADC)
   - **spanner_emulator_host**: e.g. `localhost:9010` (Spanner emulator)
   - **mysql_table_prefix**: Prefix for all tables (MySQL only, optional)
   - **metrics_enabled**: Enable datastore Prometheus metrics (default: false; disabled allows multiple instances in same process)
 
-Returns:
-- Unix: `{"success": true, "data": {"handle": 123, "grpc_transport": "unix", "address": "/tmp/spicedb-xxx.sock"}}`
-- Windows: `{"success": true, "data": {"handle": 123, "grpc_transport": "tcp", "address": "127.0.0.1:50051"}}`
-- Memory: `{"success": true, "data": {"handle": 123, "grpc_transport": "memory", "streaming_address": "/path/to/sock"}}`. A **streaming proxy** is started on a Unix (or TCP on Windows) listener; use `streaming_address` for Watch, ReadRelationships, LookupResources, LookupSubjects. Use the handle with RPC FFI for unary calls. If the proxy fails to bind, `spicedb_start` returns an error.
+Returns: `{"success": true, "data": {"handle": 123, "grpc_transport": "memory", "streaming_address": "...", "streaming_transport": "unix"|"tcp"}}`. **streaming_address** is a Unix path when **streaming_transport** is `"unix"`, or `127.0.0.1:port` when `"tcp"`. A streaming proxy is started there for Watch, ReadRelationships, LookupResources, LookupSubjects. Use the handle with RPC FFI for unary calls. If the proxy fails to bind, `spicedb_start` returns an error.
 
-All RPC FFI functions use the same ABI: `(handle, request_bytes, request_len, out_response_bytes, out_response_len, out_error)`. **Only valid when the instance was started with `grpc_transport: "memory"`.** On success, caller frees `*out_response_bytes` with `spicedb_free_bytes`. On error, caller frees `*out_error` with `spicedb_free`.
+All RPC FFI functions use the same ABI: `(handle, request_bytes, request_len, out_response_bytes, out_response_len, out_error)`. On success, caller frees `*out_response_bytes` with `spicedb_free_bytes`. On error, caller frees `*out_error` with `spicedb_free`.
 
 **PermissionsService:** `spicedb_permissions_check_permission`, `spicedb_permissions_write_relationships`, `spicedb_permissions_delete_relationships`, `spicedb_permissions_check_bulk_permissions`, `spicedb_permissions_expand_permission_tree`
 

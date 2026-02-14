@@ -1,7 +1,7 @@
 //! FFI bindings to the SpiceDB C shared library (built from Go or downloaded per target).
 //!
-//! When the server is started with `grpc_transport: "memory"`, use [`memory`] for safe, typed RPCs
-//! or the raw C functions below for marshalled protobuf bytes.
+//! The server is always in-memory. Use [`memory`] for safe, typed RPCs or the raw C functions
+//! below for marshalled protobuf bytes.
 
 mod instance;
 mod memory;

@@ -159,7 +159,6 @@ Use types from `Authzed.Api.V1` (ObjectReference, SubjectReference, Relationship
 var options = new StartOptions
 {
     Datastore = "memory",           // or "postgres", "cockroachdb", "spanner", "mysql"
-    GrpcTransport = "unix",         // or "tcp"; default by platform
     DatastoreUri = "postgres://...", // required for postgres, cockroachdb, spanner, mysql
     SpannerCredentialsFile = "/path/to/key.json",  // Spanner only
     SpannerEmulatorHost = "localhost:9010",       // Spanner emulator

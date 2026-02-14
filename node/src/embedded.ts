@@ -51,9 +51,12 @@ export class SpiceDBError extends Error {
   }
 }
 
-/** Build gRPC target from streaming_address (Unix path or host:port). */
-function streamingTarget(streamingAddress: string): string {
-  return streamingAddress.startsWith("/")
+/** Build gRPC target from streaming_address and streaming_transport. */
+function streamingTarget(
+  streamingAddress: string,
+  streamingTransport: string
+): string {
+  return streamingTransport === "unix"
     ? getUnixSocketTarget(streamingAddress)
     : getTcpTarget(streamingAddress);
 }
@@ -79,7 +82,7 @@ export class EmbeddedSpiceDB {
    *
    * @param schema - The SpiceDB schema definition (ZED language)
    * @param relationships - Initial relationships (empty array allowed)
-   * @param options - Optional datastore options (no grpc_transport; always memory)
+   * @param options - Optional datastore options (always in-memory)
    * @returns New EmbeddedSpiceDB instance
    */
   static async create(
@@ -88,9 +91,9 @@ export class EmbeddedSpiceDB {
     options?: SpiceDBStartOptions | null
   ): Promise<EmbeddedSpiceDB> {
     const data = spicedb_start(options ?? undefined);
-    const { handle, streaming_address } = data;
+    const { handle, streaming_address, streaming_transport } = data;
 
-    const target = streamingTarget(streaming_address);
+    const target = streamingTarget(streaming_address, streaming_transport);
     const creds = grpc.credentials.createInsecure();
     const streamingClient = NewClientWithChannelCredentials(target, creds, 0);
 

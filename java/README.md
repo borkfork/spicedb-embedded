@@ -184,7 +184,7 @@ try (var spicedb = EmbeddedSpiceDB.create(schema, List.of(rel))) {
 ## API
 
 - **`EmbeddedSpiceDB.create(schema, relationships)`** — Create an instance. Pass `List.of()` for no initial relationships.
-- **`EmbeddedSpiceDB.create(schema, relationships, options)`** — Create with options (datastore, `grpc_transport`, etc.). Pass `null` for defaults.
+- **`EmbeddedSpiceDB.create(schema, relationships, options)`** — Create with options (datastore, etc.). Pass `null` for defaults.
 - **`permissions()`** — Blocking stub for CheckPermission, WriteRelationships, ReadRelationships, etc.
 - **`schema()`** — Blocking stub for ReadSchema, WriteSchema, ReflectSchema, etc.
 - **`watch()`** — Blocking stub for watching relationship changes.
@@ -195,12 +195,11 @@ Use types from `com.authzed.api.v1` (ObjectReference, SubjectReference, Relation
 
 ### StartOptions
 
-Configure datastore and transport via `StartOptions`:
+Configure datastore via `StartOptions`:
 
 ```java
 var options = StartOptions.builder()
     .datastore("memory")           // default; or "postgres", "cockroachdb", "spanner", "mysql"
-    .grpcTransport("unix")          // or "tcp"; default by platform
     .datastoreUri("postgres://...")  // required for postgres, cockroachdb, spanner, mysql
     .build();
 
@@ -211,7 +210,6 @@ try (var spicedb = EmbeddedSpiceDB.create(schema, List.of(), options)) {
 
 - **datastore**: `"memory"` (default), `"postgres"`, `"cockroachdb"`, `"spanner"`, `"mysql"`
 - **datastore_uri**: Connection string (required for remote datastores)
-- **grpc_transport**: `"unix"` (default on Unix), `"tcp"` (default on Windows)
 - **spanner_credentials_file**, **spanner_emulator_host**: Spanner-only
 - **mysql_table_prefix**: MySQL-only (optional)
 - **metrics_enabled**: Enable datastore Prometheus metrics (default: false)

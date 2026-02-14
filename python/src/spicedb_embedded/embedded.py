@@ -43,9 +43,9 @@ from spicedb_embedded.tcp_channel import get_target as get_tcp_target
 from spicedb_embedded.unix_socket_channel import get_target as get_unix_socket_target
 
 
-def _streaming_target(streaming_address: str) -> str:
-    """Return gRPC target for streaming_address (Unix path or host:port)."""
-    if streaming_address.startswith("/"):
+def _streaming_target(streaming_address: str, streaming_transport: str) -> str:
+    """Return gRPC target for streaming_address using streaming_transport ('unix' or 'tcp')."""
+    if streaming_transport == "unix":
         return get_unix_socket_target(streaming_address)
     return get_tcp_target(streaming_address)
 
@@ -71,12 +71,13 @@ class EmbeddedSpiceDB:
         Args:
             schema: The SpiceDB schema definition (ZED language).
             relationships: Initial relationships. Defaults to [].
-            options: Optional config (datastore, datastore_uri, etc.). grpc_transport is not used; always in-memory.
+            options: Optional config (datastore, datastore_uri, etc.). Instance is always in-memory.
         """
         data = spicedb_start(options)
         self._handle = data["handle"]
         self._streaming_address = data["streaming_address"]
-        target = _streaming_target(self._streaming_address)
+        self._streaming_transport = data["streaming_transport"]
+        target = _streaming_target(self._streaming_address, self._streaming_transport)
         self._channel = grpc.insecure_channel(target)
 
         try:
@@ -121,6 +122,10 @@ class EmbeddedSpiceDB:
     def streaming_address(self) -> str:
         """Streaming proxy address (Unix path or host:port)."""
         return self._streaming_address
+
+    def streaming_transport(self) -> str:
+        """Streaming proxy transport: 'unix' or 'tcp'."""
+        return self._streaming_transport
 
     def close(self) -> None:
         """Dispose the instance and close the channel."""

@@ -17,6 +17,8 @@ export interface SpiceDBStartResult {
   grpc_transport: "memory";
   /** Address for streaming APIs (Watch, ReadRelationships, etc.). Unix path or host:port. */
   streaming_address: string;
+  /** Transport for streaming proxy: "unix" or "tcp". */
+  streaming_transport: string;
 }
 
 /** Options for starting an embedded instance. Only datastore-related options are used. */
@@ -258,20 +260,11 @@ function getLib(): SpiceDBLib {
   return lib;
 }
 
-/** Start options forced to memory transport (no grpc_transport option exposed). */
-function memoryStartOptions(
-  options?: SpiceDBStartOptions | null
-): Record<string, unknown> {
-  const opts = options != null ? { ...options } : {};
-  (opts as Record<string, unknown>).grpc_transport = "memory";
-  return opts;
-}
-
 export function spicedb_start(
   options?: SpiceDBStartOptions | null
 ): SpiceDBStartResult {
   const l = getLib();
-  const opts = memoryStartOptions(options);
+  const opts = options != null ? { ...options } : {};
   const optionsJson = JSON.stringify(opts);
   const raw = l.spicedb_start(optionsJson);
   if (!raw) throw new Error("Null response from C library");
@@ -283,9 +276,9 @@ export function spicedb_start(
   }
 
   const d = data.data;
-  if (d.grpc_transport !== "memory" || !d.streaming_address) {
+  if (!d.streaming_address || !d.streaming_transport) {
     throw new Error(
-      "Expected memory transport and streaming_address from C library"
+      "Missing streaming_address or streaming_transport in C library response"
     );
   }
 
@@ -293,6 +286,7 @@ export function spicedb_start(
     handle: d.handle,
     grpc_transport: "memory",
     streaming_address: d.streaming_address,
+    streaming_transport: d.streaming_transport,
   };
 }
 

@@ -47,15 +47,14 @@ public final class EmbeddedSpiceDB implements AutoCloseable {
    *
    * @param schema The SpiceDB schema definition (ZED language)
    * @param relationships Initial relationships (empty list allowed)
-   * @param options Optional datastore options. Pass null for defaults. grpc_transport is ignored.
+   * @param options Optional datastore options. Pass null for defaults.
    * @return New EmbeddedSpiceDB instance
    */
   public static EmbeddedSpiceDB create(
       String schema, List<Relationship> relationships, StartOptions options) {
     SpiceDB lib = SpiceDB.load();
-    StartOptions withMemory = options != null ? options : new StartOptions();
-    withMemory.grpcTransport = "memory";
-    String optionsJson = new Gson().toJson(withMemory);
+    StartOptions opts = options != null ? options : new StartOptions();
+    String optionsJson = new Gson().toJson(opts);
     Pointer result = lib.spicedb_start(optionsJson);
     if (result == null) {
       throw new SpiceDBException("Null response from C library");
@@ -74,16 +73,13 @@ public final class EmbeddedSpiceDB implements AutoCloseable {
 
     JsonObject data = parsed.getAsJsonObject("data");
     long handle = data.getAsJsonPrimitive("handle").getAsLong();
-    String transport = data.getAsJsonPrimitive("grpc_transport").getAsString();
-    if (!"memory".equals(transport)) {
-      throw new SpiceDBException("Expected memory transport; got " + transport);
-    }
     String streamingAddr = data.getAsJsonPrimitive("streaming_address").getAsString();
+    String streamingTransport = data.getAsJsonPrimitive("streaming_transport").getAsString();
 
     ManagedChannel ch;
     try {
       ch =
-          streamingAddr.startsWith("/")
+          "unix".equalsIgnoreCase(streamingTransport)
               ? UnixSocketChannel.build(streamingAddr)
               : TcpChannel.build(streamingAddr);
     } catch (Exception e) {

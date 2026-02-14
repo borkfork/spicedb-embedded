@@ -56,9 +56,9 @@ public sealed class EmbeddedSpiceDb : IDisposable
         IReadOnlyList<Relationship>? relationships = null,
         StartOptions? options = null)
     {
-        var (handle, streamingAddress) = SpiceDbFfi.Start(options);
+        var start = SpiceDbFfi.Start(options);
 
-        var httpHandler = CreateHandlerForStreamingAddress(streamingAddress);
+        var httpHandler = CreateHandlerForStreaming(start.StreamingAddress, start.StreamingTransport);
         var httpClient = new HttpClient(httpHandler) { BaseAddress = new Uri("http://localhost") };
         var channelOptions = new GrpcChannelOptions
         {
@@ -73,11 +73,11 @@ public sealed class EmbeddedSpiceDb : IDisposable
         }
         catch (Exception ex)
         {
-            try { SpiceDbFfi.Dispose(handle); } catch { /* best effort */ }
+            try { SpiceDbFfi.Dispose(start.Handle); } catch { /* best effort */ }
             throw new SpiceDbException("Failed to connect to streaming proxy: " + ex.Message, ex);
         }
 
-        var db = new EmbeddedSpiceDb(handle, channel, streamingAddress);
+        var db = new EmbeddedSpiceDb(start.Handle, channel, start.StreamingAddress);
 
         try
         {
@@ -92,11 +92,11 @@ public sealed class EmbeddedSpiceDb : IDisposable
         return db;
     }
 
-    private static SocketsHttpHandler CreateHandlerForStreamingAddress(string streamingAddress)
+    private static SocketsHttpHandler CreateHandlerForStreaming(string streamingAddress, string streamingTransport)
     {
-        if (streamingAddress.StartsWith("/", StringComparison.Ordinal))
-            return UnixSocketChannel.CreateHandler(streamingAddress);
-        return TcpChannel.CreateHandler(streamingAddress);
+        return string.Equals(streamingTransport, "unix", StringComparison.OrdinalIgnoreCase)
+            ? UnixSocketChannel.CreateHandler(streamingAddress)
+            : TcpChannel.CreateHandler(streamingAddress);
     }
 
     private void Bootstrap(string schema, IReadOnlyList<Relationship> relationships)

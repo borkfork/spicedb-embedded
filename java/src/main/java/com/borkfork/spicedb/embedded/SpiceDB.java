@@ -83,7 +83,7 @@ interface SpiceDB extends Library {
   /**
    * Start a new SpiceDB instance (always in-memory).
    *
-   * @param optionsJson JSON options. Pass null for defaults. grpc_transport is forced to "memory".
+   * @param optionsJson JSON options. Pass null for defaults. Instance is always in-memory.
    * @return JSON: {"success": true, "data": {"handle": N, "streaming_address": "..."}}
    */
   Pointer spicedb_start(String optionsJson);

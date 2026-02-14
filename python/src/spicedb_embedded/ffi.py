@@ -133,15 +133,14 @@ def _call_rpc(handle: int, request_bytes: bytes, rpc_name: str) -> bytes:
 
 
 def spicedb_start(options: dict | None = None) -> dict:
-    """Start a new SpiceDB instance (always in-memory). Returns handle and streaming_address.
+    """Start a new SpiceDB instance (in-memory). Returns handle, streaming_address, and streaming_transport.
 
     Args:
-        options: Optional config. grpc_transport is forced to "memory". Supported keys:
-            datastore, datastore_uri, spanner_credentials_file, spanner_emulator_host,
-            mysql_table_prefix, metrics_enabled.
+        options: Optional config. Supported keys: datastore, datastore_uri,
+            spanner_credentials_file, spanner_emulator_host, mysql_table_prefix,
+            metrics_enabled.
     """
     opts = dict(options) if options else {}
-    opts["grpc_transport"] = "memory"
     lib = _get_lib()
     options_json = json.dumps(opts).encode("utf-8") + b"\0"
     ptr = lib.spicedb_start(options_json)
@@ -158,11 +157,15 @@ def spicedb_start(options: dict | None = None) -> dict:
         raise SpiceDBError(data.get("error", "Unknown error"))
 
     d = data["data"]
-    if d.get("grpc_transport") != "memory" or "streaming_address" not in d:
+    if "streaming_address" not in d or "streaming_transport" not in d:
         raise SpiceDBError(
-            "Expected memory transport and streaming_address from C library"
+            "Missing streaming_address or streaming_transport in C library response"
         )
-    return {"handle": d["handle"], "streaming_address": d["streaming_address"]}
+    return {
+        "handle": d["handle"],
+        "streaming_address": d["streaming_address"],
+        "streaming_transport": d["streaming_transport"],
+    }
 
 
 def spicedb_dispose(handle: int) -> None:
