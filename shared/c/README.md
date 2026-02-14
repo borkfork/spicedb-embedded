@@ -1,22 +1,15 @@
-# SpiceDB CGO Library
+# SpiceDB C-shared library (shared/c)
 
-This Go package builds a C-shared library (`libspicedb.so` / `libspicedb.dylib`) that embeds SpiceDB for use via FFI from Rust or other languages.
+This Go package builds a C-shared library (`libspicedb.so` / `libspicedb.dylib`) that embeds SpiceDB for use via FFI from Rust, Java, Python, C#, Node.js, or other languages.
 
 ## Architecture
 
-This implementation uses SpiceDB's `server` package with an in-memory datastore and Unix socket:
+The server uses an in-memory buffer (no main socket). Each instance is independent, enabling parallel testing.
 
-1. **In-memory datastore** - No external database required
-2. **Unix socket** - Each instance listens on a unique Unix socket path
-3. **Instance-based** - Each call to `spicedb_new` creates an independent server
+- **Unary RPCs** (CheckPermission, WriteRelationships, ReadSchema, etc.) go through the FFI layer: callers pass marshalled protobuf bytes; the library unmarshals, calls the in-memory SpiceDB server, and returns marshalled response bytes.
+- **Streaming RPCs** (Watch, ReadRelationships, LookupResources, LookupSubjects) use a **streaming proxy**: `spicedb_start` starts a small gRPC server on a Unix socket (or TCP on Windows) that forwards those RPCs to the in-memory server. Language bindings connect to `streaming_address` with native gRPC.
 
-The Rust side then connects using native **tonic gRPC** over the Unix socket, giving you:
-- Production-like API (same as a real SpiceDB server)
-- Native Rust protobufs (no JSON serialization overhead)
-- **Parallel testing** - each test can have its own isolated instance
-- Full gRPC compatibility without network overhead
-
-Based on [authzed/examples/spicedb-as-library](https://github.com/authzed/examples/tree/main/spicedb-as-library).
+Supports multiple datastores: **memory** (default), **postgres**, **cockroachdb**, **spanner**, and **mysql**. See the [root README](../../README.md#architecture) for the full diagram.
 
 ## Building
 
@@ -82,21 +75,12 @@ All exported functions are thread-safe:
 
 Tests can run in parallel since each test creates its own instance!
 
-## Integration with Rust
+## Language bindings
 
-See `../../rust/` for the Rust FFI bindings that link against this library.
+All bindings build on this library via C FFI:
 
-```rust
-use spicedb_embedded::EmbeddedSpiceDB;
-
-// Create an instance with schema and relationships
-let spicedb = EmbeddedSpiceDB::new(schema, &relationships).await?;
-
-// Uses native tonic gRPC over Unix socket
-let allowed = spicedb.check("document:readme", "read", "user:alice").await?;
-
-// Instance is automatically disposed when dropped
-```
-
-The Rust client uses native tonic gRPC to communicate with the SpiceDB server,
-giving you production-like APIs with minimal overhead.
+- **Rust** — [rust/](../../rust/README.md)
+- **Java** — [java/](../../java/README.md)
+- **Python** — [python/](../../python/README.md)
+- **C# / .NET** — [csharp/](../../csharp/README.md)
+- **Node.js** — [node/](../../node/README.md)

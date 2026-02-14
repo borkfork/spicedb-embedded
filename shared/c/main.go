@@ -20,17 +20,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"os"
-	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
 
-	pb "github.com/authzed/authzed-go/proto/authzed/api/v1"
 	"github.com/authzed/spicedb/pkg/cmd/datastore"
 	"github.com/authzed/spicedb/pkg/cmd/server"
 	"github.com/authzed/spicedb/pkg/cmd/util"
@@ -38,7 +35,6 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/protobuf/proto"
 )
 
 // Instance holds a SpiceDB server instance (in-memory + streaming proxy).
@@ -122,8 +118,8 @@ type StartOptions struct {
 // streaming_address: Unix path (when streaming_transport is "unix") or "127.0.0.1:port" (when "tcp").
 //
 //export spicedb_start
-func spicedb_start(options_json *C.char) *C.char {
-	opts := parseStartOptions(options_json)
+func spicedb_start(optionsJSON *C.char) *C.char {
+	opts := parseStartOptions(optionsJSON)
 
 	// Validate: remote datastores require datastore_uri
 	engine := opts.Datastore
@@ -195,159 +191,25 @@ func spicedb_start(options_json *C.char) *C.char {
 		streamingTransport = "tcp"
 	}
 	data := map[string]interface{}{
-		"handle":               id,
-		"grpc_transport":       "memory",
-		"streaming_address":    instance.streamingAddr,
-		"streaming_transport":  streamingTransport,
+		"handle":              id,
+		"grpc_transport":      "memory",
+		"streaming_address":   instance.streamingAddr,
+		"streaming_transport": streamingTransport,
 	}
 	return makeSuccess(data)
 }
 
-func parseStartOptions(options_json *C.char) StartOptions {
+func parseStartOptions(optionsJSON *C.char) StartOptions {
 	opts := StartOptions{}
-	if options_json == nil {
+	if optionsJSON == nil {
 		return opts
 	}
-	s := C.GoString(options_json)
+	s := C.GoString(optionsJSON)
 	if s == "" {
 		return opts
 	}
 	_ = json.Unmarshal([]byte(s), &opts)
 	return opts
-}
-
-// streamingProxyAddr returns the address for the streaming proxy (Unix or TCP).
-func streamingProxyAddr(id uint64) string {
-	if runtime.GOOS == "windows" {
-		return fmt.Sprintf("127.0.0.1:%d", 50151+int(id%5000))
-	}
-	return filepath.Join(os.TempDir(), fmt.Sprintf("spicedb-streaming-%d-%d.sock", os.Getpid(), id))
-}
-
-// permissionsStreamingProxy forwards only the streaming RPCs to the bufconn backend.
-type permissionsStreamingProxy struct {
-	pb.UnimplementedPermissionsServiceServer
-	client pb.PermissionsServiceClient
-}
-
-func (p *permissionsStreamingProxy) ReadRelationships(req *pb.ReadRelationshipsRequest, srv grpc.ServerStreamingServer[pb.ReadRelationshipsResponse]) error {
-	ctx := srv.Context()
-	stream, err := p.client.ReadRelationships(ctx, req)
-	if err != nil {
-		return err
-	}
-	for {
-		msg, err := stream.Recv()
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		if err := srv.Send(msg); err != nil {
-			return err
-		}
-	}
-}
-
-func (p *permissionsStreamingProxy) LookupResources(req *pb.LookupResourcesRequest, srv grpc.ServerStreamingServer[pb.LookupResourcesResponse]) error {
-	ctx := srv.Context()
-	stream, err := p.client.LookupResources(ctx, req)
-	if err != nil {
-		return err
-	}
-	for {
-		msg, err := stream.Recv()
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		if err := srv.Send(msg); err != nil {
-			return err
-		}
-	}
-}
-
-func (p *permissionsStreamingProxy) LookupSubjects(req *pb.LookupSubjectsRequest, srv grpc.ServerStreamingServer[pb.LookupSubjectsResponse]) error {
-	ctx := srv.Context()
-	stream, err := p.client.LookupSubjects(ctx, req)
-	if err != nil {
-		return err
-	}
-	for {
-		msg, err := stream.Recv()
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		if err := srv.Send(msg); err != nil {
-			return err
-		}
-	}
-}
-
-// watchStreamingProxy forwards Watch to the bufconn backend.
-type watchStreamingProxy struct {
-	pb.UnimplementedWatchServiceServer
-	client pb.WatchServiceClient
-	id     uint64 // instance id (for logging; same instance that owns client)
-}
-
-func (w *watchStreamingProxy) Watch(req *pb.WatchRequest, srv grpc.ServerStreamingServer[pb.WatchResponse]) error {
-	ctx := srv.Context()
-	stream, err := w.client.Watch(ctx, req)
-	if err != nil {
-		return err
-	}
-	for {
-		msg, err := stream.Recv()
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		if err := srv.Send(msg); err != nil {
-			return err
-		}
-	}
-}
-
-// startStreamingProxy starts a gRPC server on a unix/tcp listener that forwards only streaming RPCs to the bufconn clientConn.
-func startStreamingProxy(ctx context.Context, instance *Instance, id uint64, wg *errgroup.Group) (string, error) {
-	addr := streamingProxyAddr(id)
-	var lis net.Listener
-	var err error
-	if runtime.GOOS == "windows" {
-		lis, err = net.Listen("tcp", addr)
-	} else {
-		_ = os.Remove(addr)
-		lis, err = net.Listen("unix", addr)
-	}
-	if err != nil {
-		return "", err
-	}
-	instance.streamingListener = lis
-
-	permClient := pb.NewPermissionsServiceClient(instance.clientConn)
-	watchClient := pb.NewWatchServiceClient(instance.clientConn)
-
-	srv := grpc.NewServer()
-	pb.RegisterPermissionsServiceServer(srv, &permissionsStreamingProxy{client: permClient})
-	pb.RegisterWatchServiceServer(srv, &watchStreamingProxy{client: watchClient, id: id})
-	instance.streamingServer = srv
-
-	wg.Go(func() error {
-		if err := srv.Serve(lis); err != nil && ctx.Err() == nil {
-			return err
-		}
-		return nil
-	})
-	return addr, nil
 }
 
 // newDatastoreFromOpts creates a datastore from StartOptions (used for memory transport in spicedb_start).
@@ -448,279 +310,6 @@ func spicedb_dispose(handle C.ulonglong) *C.char {
 	}
 
 	return makeSuccess(nil)
-}
-
-// spicedb_free_bytes frees a byte buffer returned by the permissions/schema RPC FFI functions
-// (out_response_bytes). Safe to call with NULL (no-op). Caller must call this for every buffer
-// returned in *out_response_bytes.
-//
-//export spicedb_free_bytes
-func spicedb_free_bytes(ptr *C.void) {
-	if ptr != nil {
-		C.free(unsafe.Pointer(ptr))
-	}
-}
-
-// spicedb_permissions_check_permission invokes PermissionsService.CheckPermission.
-// handle: from spicedb_start.
-// request_bytes/request_len: marshalled authzed.api.v1.CheckPermissionRequest (protobuf).
-// On success: *out_response_bytes and *out_response_len are set; *out_error is NULL. Caller frees *out_response_bytes with spicedb_free_bytes.
-// On error: *out_response_bytes is NULL, *out_response_len is 0, *out_error is set. Caller frees *out_error with spicedb_free.
-//
-//export spicedb_permissions_check_permission
-func spicedb_permissions_check_permission(
-	handle C.ulonglong,
-	request_bytes *C.uchar,
-	request_len C.int,
-	out_response_bytes **C.uchar,
-	out_response_len *C.int,
-	out_error **C.char,
-) {
-	*out_response_bytes = nil
-	*out_response_len = 0
-	*out_error = nil
-
-	instanceMu.RLock()
-	instance, ok := instances[uint64(handle)]
-	instanceMu.RUnlock()
-	if !ok || instance == nil {
-		*out_error = C.CString(fmt.Sprintf("invalid handle: %d", handle))
-		return
-	}
-	if instance.clientConn == nil {
-		*out_error = C.CString("instance not available for FFI RPCs")
-		return
-	}
-
-	reqBytes := C.GoBytes(unsafe.Pointer(request_bytes), request_len)
-	var req pb.CheckPermissionRequest
-	if err := proto.Unmarshal(reqBytes, &req); err != nil {
-		*out_error = C.CString(fmt.Sprintf("failed to unmarshal CheckPermissionRequest: %v", err))
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	client := pb.NewPermissionsServiceClient(instance.clientConn)
-	resp, err := client.CheckPermission(ctx, &req)
-	if err != nil {
-		*out_error = C.CString(err.Error())
-		return
-	}
-
-	respBytes, err := proto.Marshal(resp)
-	if err != nil {
-		*out_error = C.CString(fmt.Sprintf("failed to marshal CheckPermissionResponse: %v", err))
-		return
-	}
-	n := len(respBytes)
-	*out_response_len = C.int(n)
-	if n > 0 {
-		*out_response_bytes = (*C.uchar)(C.CBytes(respBytes))
-	}
-}
-
-// runRPC is a helper for FFI RPCs: validate handle/transport, unmarshal req, call fn, marshal resp.
-func runRPC(handle C.ulonglong, requestBytes []byte, outResponseBytes **C.uchar, outResponseLen *C.int, outError **C.char,
-	unmarshalReq func([]byte) (proto.Message, error),
-	callRPC func(context.Context, *grpc.ClientConn, proto.Message) (proto.Message, error),
-) {
-	*outResponseBytes = nil
-	*outResponseLen = 0
-	*outError = nil
-
-	instanceMu.RLock()
-	instance, ok := instances[uint64(handle)]
-	instanceMu.RUnlock()
-	if !ok || instance == nil {
-		*outError = C.CString(fmt.Sprintf("invalid handle: %d", handle))
-		return
-	}
-	if instance.clientConn == nil {
-		*outError = C.CString("instance not available for FFI RPCs")
-		return
-	}
-
-	req, err := unmarshalReq(requestBytes)
-	if err != nil {
-		*outError = C.CString(err.Error())
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	resp, err := callRPC(ctx, instance.clientConn, req)
-	if err != nil {
-		*outError = C.CString(err.Error())
-		return
-	}
-
-	respBytes, err := proto.Marshal(resp)
-	if err != nil {
-		*outError = C.CString(fmt.Sprintf("failed to marshal response: %v", err))
-		return
-	}
-	n := len(respBytes)
-	*outResponseLen = C.int(n)
-	if n > 0 {
-		*outResponseBytes = (*C.uchar)(C.CBytes(respBytes))
-	}
-}
-
-// spicedb_schema_write_schema invokes SchemaService.WriteSchema.
-//
-//export spicedb_schema_write_schema
-func spicedb_schema_write_schema(
-	handle C.ulonglong,
-	request_bytes *C.uchar,
-	request_len C.int,
-	out_response_bytes **C.uchar,
-	out_response_len *C.int,
-	out_error **C.char,
-) {
-	reqBytes := C.GoBytes(unsafe.Pointer(request_bytes), request_len)
-	runRPC(handle, reqBytes, out_response_bytes, out_response_len, out_error,
-		func(b []byte) (proto.Message, error) {
-			var req pb.WriteSchemaRequest
-			if err := proto.Unmarshal(b, &req); err != nil {
-				return nil, err
-			}
-			return &req, nil
-		},
-		func(ctx context.Context, conn *grpc.ClientConn, req proto.Message) (proto.Message, error) {
-			return pb.NewSchemaServiceClient(conn).WriteSchema(ctx, req.(*pb.WriteSchemaRequest))
-		},
-	)
-}
-
-// spicedb_permissions_write_relationships invokes PermissionsService.WriteRelationships.
-//
-//export spicedb_permissions_write_relationships
-func spicedb_permissions_write_relationships(
-	handle C.ulonglong,
-	request_bytes *C.uchar,
-	request_len C.int,
-	out_response_bytes **C.uchar,
-	out_response_len *C.int,
-	out_error **C.char,
-) {
-	reqBytes := C.GoBytes(unsafe.Pointer(request_bytes), request_len)
-	runRPC(handle, reqBytes, out_response_bytes, out_response_len, out_error,
-		func(b []byte) (proto.Message, error) {
-			var req pb.WriteRelationshipsRequest
-			if err := proto.Unmarshal(b, &req); err != nil {
-				return nil, err
-			}
-			return &req, nil
-		},
-		func(ctx context.Context, conn *grpc.ClientConn, req proto.Message) (proto.Message, error) {
-			return pb.NewPermissionsServiceClient(conn).WriteRelationships(ctx, req.(*pb.WriteRelationshipsRequest))
-		},
-	)
-}
-
-// spicedb_permissions_delete_relationships invokes PermissionsService.DeleteRelationships.
-//
-//export spicedb_permissions_delete_relationships
-func spicedb_permissions_delete_relationships(
-	handle C.ulonglong,
-	request_bytes *C.uchar,
-	request_len C.int,
-	out_response_bytes **C.uchar,
-	out_response_len *C.int,
-	out_error **C.char,
-) {
-	reqBytes := C.GoBytes(unsafe.Pointer(request_bytes), request_len)
-	runRPC(handle, reqBytes, out_response_bytes, out_response_len, out_error,
-		func(b []byte) (proto.Message, error) {
-			var req pb.DeleteRelationshipsRequest
-			if err := proto.Unmarshal(b, &req); err != nil {
-				return nil, err
-			}
-			return &req, nil
-		},
-		func(ctx context.Context, conn *grpc.ClientConn, req proto.Message) (proto.Message, error) {
-			return pb.NewPermissionsServiceClient(conn).DeleteRelationships(ctx, req.(*pb.DeleteRelationshipsRequest))
-		},
-	)
-}
-
-// spicedb_permissions_check_bulk_permissions invokes PermissionsService.CheckBulkPermissions.
-//
-//export spicedb_permissions_check_bulk_permissions
-func spicedb_permissions_check_bulk_permissions(
-	handle C.ulonglong,
-	request_bytes *C.uchar,
-	request_len C.int,
-	out_response_bytes **C.uchar,
-	out_response_len *C.int,
-	out_error **C.char,
-) {
-	reqBytes := C.GoBytes(unsafe.Pointer(request_bytes), request_len)
-	runRPC(handle, reqBytes, out_response_bytes, out_response_len, out_error,
-		func(b []byte) (proto.Message, error) {
-			var req pb.CheckBulkPermissionsRequest
-			if err := proto.Unmarshal(b, &req); err != nil {
-				return nil, err
-			}
-			return &req, nil
-		},
-		func(ctx context.Context, conn *grpc.ClientConn, req proto.Message) (proto.Message, error) {
-			return pb.NewPermissionsServiceClient(conn).CheckBulkPermissions(ctx, req.(*pb.CheckBulkPermissionsRequest))
-		},
-	)
-}
-
-// spicedb_permissions_expand_permission_tree invokes PermissionsService.ExpandPermissionTree.
-//
-//export spicedb_permissions_expand_permission_tree
-func spicedb_permissions_expand_permission_tree(
-	handle C.ulonglong,
-	request_bytes *C.uchar,
-	request_len C.int,
-	out_response_bytes **C.uchar,
-	out_response_len *C.int,
-	out_error **C.char,
-) {
-	reqBytes := C.GoBytes(unsafe.Pointer(request_bytes), request_len)
-	runRPC(handle, reqBytes, out_response_bytes, out_response_len, out_error,
-		func(b []byte) (proto.Message, error) {
-			var req pb.ExpandPermissionTreeRequest
-			if err := proto.Unmarshal(b, &req); err != nil {
-				return nil, err
-			}
-			return &req, nil
-		},
-		func(ctx context.Context, conn *grpc.ClientConn, req proto.Message) (proto.Message, error) {
-			return pb.NewPermissionsServiceClient(conn).ExpandPermissionTree(ctx, req.(*pb.ExpandPermissionTreeRequest))
-		},
-	)
-}
-
-// spicedb_schema_read_schema invokes SchemaService.ReadSchema.
-//
-//export spicedb_schema_read_schema
-func spicedb_schema_read_schema(
-	handle C.ulonglong,
-	request_bytes *C.uchar,
-	request_len C.int,
-	out_response_bytes **C.uchar,
-	out_response_len *C.int,
-	out_error **C.char,
-) {
-	reqBytes := C.GoBytes(unsafe.Pointer(request_bytes), request_len)
-	runRPC(handle, reqBytes, out_response_bytes, out_response_len, out_error,
-		func(b []byte) (proto.Message, error) {
-			var req pb.ReadSchemaRequest
-			if err := proto.Unmarshal(b, &req); err != nil {
-				return nil, err
-			}
-			return &req, nil
-		},
-		func(ctx context.Context, conn *grpc.ClientConn, req proto.Message) (proto.Message, error) {
-			return pb.NewSchemaServiceClient(conn).ReadSchema(ctx, req.(*pb.ReadSchemaRequest))
-		},
-	)
 }
 
 // main is required but not used for c-shared build mode
