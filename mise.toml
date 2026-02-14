@@ -45,6 +45,7 @@ depends = [
   "format-check-rust",
   "format-check-bash",
   "format-check-toml",
+  "format-check-actions",
   "format-check-python",
   "format-check-java",
   "format-check-csharp",
@@ -58,6 +59,11 @@ run = "dotnet tool restore && dotnet tool run jb -- inspectcode csharp/SpiceDbEm
 [tasks.format-check-bash]
 description = "Lint and verify Bash script format (check only, no writes)"
 run = "shellcheck scripts/*.sh && shfmt -d -s scripts/"
+
+[tasks.format-check-actions]
+description = "Lint GitHub Actions workflows and inline shell (via actionlint + shellcheck)"
+tools.actionlint = "1.7.10"
+run = "actionlint"
 
 [tasks.format-check-rust]
 description = "Verify Rust format"
