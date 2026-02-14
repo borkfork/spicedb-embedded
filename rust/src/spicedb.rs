@@ -4,19 +4,13 @@
 //! connects tonic-generated gRPC clients over a Unix socket (Unix) or TCP (Windows).
 //! Schema and relationships are written via gRPC (not JSON).
 
-use std::{
-    ffi::{CStr, CString},
-    os::raw::c_char,
-};
-
 use serde::{Deserialize, Serialize};
-// FFI is provided by spicedb-embedded-sys (builds from Go or downloads prebuilt per target).
-use spicedb_embedded_sys as native;
-use spicedb_grpc::authzed::api::v1::{
+use spicedb_api::v1::{
     RelationshipUpdate, WriteRelationshipsRequest, WriteSchemaRequest,
     permissions_service_client::PermissionsServiceClient, relationship_update::Operation,
     schema_service_client::SchemaServiceClient, watch_service_client::WatchServiceClient,
 };
+use spicedb_embedded_sys::{dispose, start};
 #[cfg(unix)]
 use tokio::net::UnixStream;
 #[cfg(unix)]
@@ -24,7 +18,6 @@ use tonic::transport::Uri;
 use tonic::transport::{Channel, Endpoint};
 #[cfg(unix)]
 use tower::service_fn;
-use tracing::debug;
 
 use crate::SpiceDBError;
 
@@ -71,24 +64,9 @@ pub struct StartOptions {
     pub metrics_enabled: Option<bool>,
 }
 
-/// Helper to call a C function and parse the JSON response
-///
-/// # Safety
-///
-/// The caller must ensure `ptr` is a valid pointer returned by one of the
-/// `spicedb_*` functions, or null.
-unsafe fn call_and_parse(ptr: *mut c_char) -> Result<serde_json::Value, SpiceDBError> {
-    if ptr.is_null() {
-        return Err(SpiceDBError::Runtime("null response from C library".into()));
-    }
-
-    let c_str = unsafe { CStr::from_ptr(ptr) };
-    let response_str = c_str.to_string_lossy().into_owned();
-    unsafe { native::spicedb_free(ptr) };
-
-    debug!("FFI response: {}", response_str);
-
-    let response: CResponse = serde_json::from_str(&response_str)
+/// Parses the JSON response string from the C library (start/dispose) into the inner data or error.
+fn parse_json_response(response_str: &str) -> Result<serde_json::Value, SpiceDBError> {
+    let response: CResponse = serde_json::from_str(response_str)
         .map_err(|e| SpiceDBError::Protocol(format!("invalid JSON: {e} (raw: {response_str})")))?;
 
     if response.success {
@@ -122,14 +100,14 @@ impl EmbeddedSpiceDB {
     /// # Arguments
     ///
     /// * `schema` - The `SpiceDB` schema definition (ZED language)
-    /// * `relationships` - Initial relationships (uses types from `spicedb_grpc::authzed::api::v1`)
+    /// * `relationships` - Initial relationships (uses types from `spicedb_api::v1`)
     ///
     /// # Errors
     ///
     /// Returns an error if the server fails to start, connection fails, or gRPC writes fail.
     pub async fn new(
         schema: &str,
-        relationships: &[spicedb_grpc::authzed::api::v1::Relationship],
+        relationships: &[spicedb_api::v1::Relationship],
     ) -> Result<Self, SpiceDBError> {
         Self::new_with_options(schema, relationships, None).await
     }
@@ -142,7 +120,7 @@ impl EmbeddedSpiceDB {
     /// # Arguments
     ///
     /// * `schema` - The `SpiceDB` schema definition (ZED language)
-    /// * `relationships` - Initial relationships (uses types from `spicedb_grpc::authzed::api::v1`)
+    /// * `relationships` - Initial relationships (uses types from `spicedb_api::v1`)
     /// * `options` - Optional configuration (`datastore`, `grpc_transport`). Use `None` for defaults.
     ///
     /// # Errors
@@ -150,51 +128,27 @@ impl EmbeddedSpiceDB {
     /// Returns an error if the server fails to start, connection fails, or gRPC writes fail.
     pub async fn new_with_options(
         schema: &str,
-        relationships: &[spicedb_grpc::authzed::api::v1::Relationship],
+        relationships: &[spicedb_api::v1::Relationship],
         options: Option<&StartOptions>,
     ) -> Result<Self, SpiceDBError> {
-        debug!(
-            "Starting SpiceDB instance with schema ({} bytes), {} relationships",
-            schema.len(),
-            relationships.len()
-        );
-
-        let (options_ptr, _cstr_guard): (*const c_char, Option<CString>) = match options {
-            Some(opts) => {
-                let json = serde_json::to_string(opts).map_err(|e| {
+        let options_json = options
+            .map(|opts| {
+                serde_json::to_string(opts).map_err(|e| {
                     SpiceDBError::Protocol(format!("failed to serialize options: {e}"))
-                })?;
-                let cstr = CString::new(json).map_err(|e| {
-                    SpiceDBError::Protocol(format!("options contains null byte: {e}"))
-                })?;
-                let ptr = cstr.as_ptr();
-                (ptr, Some(cstr))
-            }
-            None => (std::ptr::null(), None),
-        };
+                })
+            })
+            .transpose()?;
 
-        let data = unsafe {
-            let result = native::spicedb_start(options_ptr);
-            call_and_parse(result)?
-        };
+        let response_str = start(options_json.as_deref()).map_err(SpiceDBError::Runtime)?;
+        let data = parse_json_response(&response_str)?;
 
         let new_resp: NewResponse = serde_json::from_value(data)
             .map_err(|e| SpiceDBError::Protocol(format!("invalid new response: {e}")))?;
 
-        debug!(
-            "Connecting to SpiceDB at {} ({})",
-            new_resp.address, new_resp.grpc_transport
-        );
-
         let channel = connect_to_spicedb(&new_resp.grpc_transport, &new_resp.address)
             .await
             .map_err(|e| {
-                unsafe {
-                    let result = native::spicedb_dispose(new_resp.handle);
-                    if !result.is_null() {
-                        native::spicedb_free(result);
-                    }
-                }
+                let _ = dispose(new_resp.handle);
                 SpiceDBError::Runtime(format!("failed to connect to SpiceDB: {e}"))
             })?;
 
@@ -223,6 +177,7 @@ impl EmbeddedSpiceDB {
                 .write_relationships(tonic::Request::new(WriteRelationshipsRequest {
                     updates,
                     optional_preconditions: vec![],
+                    optional_transaction_metadata: None,
                 }))
                 .await
                 .map_err(|e| SpiceDBError::SpiceDB(format!("write relationships failed: {e}")))?;
@@ -252,13 +207,7 @@ impl EmbeddedSpiceDB {
 
 impl Drop for EmbeddedSpiceDB {
     fn drop(&mut self) {
-        debug!("Disposing SpiceDB handle {}", self.handle);
-        unsafe {
-            let result = native::spicedb_dispose(self.handle);
-            if !result.is_null() {
-                native::spicedb_free(result);
-            }
-        }
+        let _ = dispose(self.handle);
     }
 }
 
@@ -266,29 +215,37 @@ impl Drop for EmbeddedSpiceDB {
 // Memory transport: idiomatic API using -sys safe layer (no unsafe in this crate)
 // -----------------------------------------------------------------------------
 
-use spicedb_embedded_sys::memory_transport;
-use spicedb_grpc::authzed::api::v1::{
+use spicedb_api::v1::{
     CheckBulkPermissionsRequest, CheckBulkPermissionsResponse, CheckPermissionRequest,
     CheckPermissionResponse, DeleteRelationshipsRequest, DeleteRelationshipsResponse,
     ExpandPermissionTreeRequest, ExpandPermissionTreeResponse, ReadSchemaRequest,
     ReadSchemaResponse, WriteRelationshipsResponse, WriteSchemaResponse,
 };
+use spicedb_embedded_sys::memory_transport;
 
-/// Embedded SpiceDB using in-memory transport (no socket). All RPCs go through the FFI.
-/// Use [`permissions`](MemorySpiceDB::permissions) and [`schema`](MemorySpiceDB::schema) for typed APIs.
+/// Embedded `SpiceDB` using in-memory transport (no socket). All RPCs go through the FFI.
+/// For streaming APIs (Watch, `ReadRelationships`, etc.) use [`streaming_address`](MemorySpiceDB::streaming_address)
+/// (the C library starts a streaming proxy and returns it in the start response).
 pub struct MemorySpiceDB {
     handle: u64,
+    /// Set from the C library start response; use for `Watch`, `ReadRelationships`, `LookupResources`, `LookupSubjects`.
+    streaming_address_from_start: Option<String>,
 }
 
 unsafe impl Send for MemorySpiceDB {}
 unsafe impl Sync for MemorySpiceDB {}
 
 impl MemorySpiceDB {
-    /// Start a SpiceDB instance with `grpc_transport: "memory"` and optional bootstrap.
-    /// If `schema` is non-empty, writes it via SchemaService. If `relationships` is non-empty, writes them via WriteRelationships.
+    /// Start a `SpiceDB` instance with `grpc_transport: "memory"` and optional bootstrap.
+    ///
+    /// If `schema` is non-empty, writes it via `SchemaService`. If `relationships` is non-empty, writes them via `WriteRelationships`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the C library fails to start, returns invalid JSON, or schema/relationship write fails.
     pub fn new(
         schema: &str,
-        relationships: &[spicedb_grpc::authzed::api::v1::Relationship],
+        relationships: &[spicedb_api::v1::Relationship],
         options: Option<&StartOptions>,
     ) -> Result<Self, SpiceDBError> {
         let opts = options.cloned().unwrap_or_default();
@@ -296,17 +253,15 @@ impl MemorySpiceDB {
         opts.grpc_transport = Some("memory".into());
         let json = serde_json::to_string(&opts)
             .map_err(|e| SpiceDBError::Protocol(format!("serialize options: {e}")))?;
-        let cstr = std::ffi::CString::new(json)
-            .map_err(|e| SpiceDBError::Protocol(format!("options null byte: {e}")))?;
-        let ptr = unsafe { native::spicedb_start(cstr.as_ptr()) };
-        let data = unsafe { call_and_parse(ptr)? };
+        let response_str = start(Some(&json)).map_err(SpiceDBError::Runtime)?;
+        let data = parse_json_response(&response_str)?;
         let handle = data
             .get("handle")
-            .and_then(|v| v.as_u64())
+            .and_then(serde_json::Value::as_u64)
             .ok_or_else(|| SpiceDBError::Protocol("missing handle in start response".into()))?;
         let grpc_transport = data
             .get("grpc_transport")
-            .and_then(|v| v.as_str())
+            .and_then(serde_json::Value::as_str)
             .ok_or_else(|| SpiceDBError::Protocol("missing grpc_transport".into()))?;
         if grpc_transport != "memory" {
             return Err(SpiceDBError::Protocol(format!(
@@ -314,7 +269,15 @@ impl MemorySpiceDB {
             )));
         }
 
-        let db = Self { handle };
+        let streaming_address_from_start = data
+            .get("streaming_address")
+            .and_then(serde_json::Value::as_str)
+            .map(String::from);
+
+        let db = Self {
+            handle,
+            streaming_address_from_start,
+        };
 
         if !schema.is_empty() {
             memory_transport::write_schema(
@@ -339,6 +302,7 @@ impl MemorySpiceDB {
                 &WriteRelationshipsRequest {
                     updates,
                     optional_preconditions: vec![],
+                    optional_transaction_metadata: None,
                 },
             )
             .map_err(|e| SpiceDBError::SpiceDB(e.0))?;
@@ -347,17 +311,17 @@ impl MemorySpiceDB {
         Ok(db)
     }
 
-    /// Permissions service (CheckPermission, WriteRelationships, DeleteRelationships, etc.).
+    /// Permissions service (`CheckPermission`, `WriteRelationships`, `DeleteRelationships`, etc.).
     #[must_use]
-    pub fn permissions(&self) -> MemoryPermissionsClient {
+    pub const fn permissions(&self) -> MemoryPermissionsClient {
         MemoryPermissionsClient {
             handle: self.handle,
         }
     }
 
-    /// Schema service (ReadSchema, WriteSchema).
+    /// Schema service (`ReadSchema`, `WriteSchema`).
     #[must_use]
-    pub fn schema(&self) -> MemorySchemaClient {
+    pub const fn schema(&self) -> MemorySchemaClient {
         MemorySchemaClient {
             handle: self.handle,
         }
@@ -365,20 +329,21 @@ impl MemorySpiceDB {
 
     /// Raw handle for advanced use (e.g. with [`spicedb_embedded_sys::memory_transport`]).
     #[must_use]
-    pub fn handle(&self) -> u64 {
+    pub const fn handle(&self) -> u64 {
         self.handle
+    }
+
+    /// Returns the address for streaming APIs (Watch, `ReadRelationships`, `LookupResources`, `LookupSubjects`).
+    /// Set from the C library start response when the streaming proxy was started.
+    #[must_use]
+    pub fn streaming_address(&self) -> Option<String> {
+        self.streaming_address_from_start.clone()
     }
 }
 
 impl Drop for MemorySpiceDB {
     fn drop(&mut self) {
-        debug!("Disposing memory SpiceDB handle {}", self.handle);
-        unsafe {
-            let result = native::spicedb_dispose(self.handle);
-            if !result.is_null() {
-                native::spicedb_free(result);
-            }
-        }
+        let _ = dispose(self.handle);
     }
 }
 
@@ -388,31 +353,50 @@ pub struct MemoryPermissionsClient {
 }
 
 impl MemoryPermissionsClient {
-    /// CheckPermission.
+    /// `CheckPermission`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the FFI call fails or the response cannot be decoded.
     pub fn check_permission(
         &self,
         request: &CheckPermissionRequest,
     ) -> Result<CheckPermissionResponse, SpiceDBError> {
-        memory_transport::check_permission(self.handle, request).map_err(|e| SpiceDBError::SpiceDB(e.0))
+        memory_transport::check_permission(self.handle, request)
+            .map_err(|e| SpiceDBError::SpiceDB(e.0))
     }
 
-    /// WriteRelationships.
+    /// `WriteRelationships`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the FFI call fails or the response cannot be decoded.
     pub fn write_relationships(
         &self,
         request: &WriteRelationshipsRequest,
     ) -> Result<WriteRelationshipsResponse, SpiceDBError> {
-        memory_transport::write_relationships(self.handle, request).map_err(|e| SpiceDBError::SpiceDB(e.0))
+        memory_transport::write_relationships(self.handle, request)
+            .map_err(|e| SpiceDBError::SpiceDB(e.0))
     }
 
-    /// DeleteRelationships.
+    /// `DeleteRelationships`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the FFI call fails or the response cannot be decoded.
     pub fn delete_relationships(
         &self,
         request: &DeleteRelationshipsRequest,
     ) -> Result<DeleteRelationshipsResponse, SpiceDBError> {
-        memory_transport::delete_relationships(self.handle, request).map_err(|e| SpiceDBError::SpiceDB(e.0))
+        memory_transport::delete_relationships(self.handle, request)
+            .map_err(|e| SpiceDBError::SpiceDB(e.0))
     }
 
-    /// CheckBulkPermissions.
+    /// `CheckBulkPermissions`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the FFI call fails or the response cannot be decoded.
     pub fn check_bulk_permissions(
         &self,
         request: &CheckBulkPermissionsRequest,
@@ -421,7 +405,11 @@ impl MemoryPermissionsClient {
             .map_err(|e| SpiceDBError::SpiceDB(e.0))
     }
 
-    /// ExpandPermissionTree.
+    /// `ExpandPermissionTree`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the FFI call fails or the response cannot be decoded.
     pub fn expand_permission_tree(
         &self,
         request: &ExpandPermissionTreeRequest,
@@ -437,7 +425,11 @@ pub struct MemorySchemaClient {
 }
 
 impl MemorySchemaClient {
-    /// ReadSchema.
+    /// `ReadSchema`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the FFI call fails or the response cannot be decoded.
     pub fn read_schema(
         &self,
         request: &ReadSchemaRequest,
@@ -445,7 +437,11 @@ impl MemorySchemaClient {
         memory_transport::read_schema(self.handle, request).map_err(|e| SpiceDBError::SpiceDB(e.0))
     }
 
-    /// WriteSchema.
+    /// `WriteSchema`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the FFI call fails or the response cannot be decoded.
     pub fn write_schema(
         &self,
         request: &WriteSchemaRequest,
@@ -500,20 +496,58 @@ fn connect_unix_socket(
 
 #[cfg(test)]
 mod tests {
-    use std::ffi::CString;
-    use std::os::raw::{c_char, c_int, c_uchar, c_ulonglong};
+    // Memory transport tests (test_memory_transport_*) call into the C/Go library and may hang if the
+    // library blocks (e.g. streaming proxy bind). They run serially. If they hang, run:
+    //   cargo test test_memory_transport -- --test-threads=1
+    // or: timeout 60 cargo test test_memory_transport
 
-    use prost::Message;
-    use spicedb_grpc::authzed::api::v1::{
-        CheckPermissionRequest, CheckPermissionResponse, Consistency, ObjectReference,
+    use std::time::Duration;
+    use serial_test::serial;
+    use spicedb_api::v1::{
+        CheckPermissionRequest, Consistency, ObjectReference,
         ReadRelationshipsRequest, Relationship, RelationshipFilter, RelationshipUpdate,
-        SubjectReference, WriteRelationshipsRequest, WriteSchemaRequest,
-        relationship_update::Operation,
+        SubjectReference, WatchKind, WatchRequest, WriteRelationshipsRequest, WriteSchemaRequest,
+        relationship_update::Operation, watch_service_client::WatchServiceClient,
     };
+    use tokio::time::timeout;
     use tokio_stream::StreamExt;
 
     use super::*;
     use crate::v1::check_permission_response::Permissionship;
+
+    /// Connect to the streaming proxy address (Unix path or host:port).
+    async fn connect_streaming(
+        addr: &str,
+    ) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
+        #[cfg(unix)]
+        {
+            if addr.starts_with('/') {
+                let path = addr.to_string();
+                Endpoint::try_from("http://[::]:50051")?
+                    .connect_with_connector(tower::service_fn(move |_: tonic::transport::Uri| {
+                        let path = path.clone();
+                        async move {
+                            let stream = tokio::net::UnixStream::connect(&path).await?;
+                            Ok::<_, std::io::Error>(hyper_util::rt::TokioIo::new(stream))
+                        }
+                    }))
+                    .await
+                    .map_err(Into::into)
+            } else {
+                Endpoint::from_shared(format!("http://{addr}"))?
+                    .connect()
+                    .await
+                    .map_err(Into::into)
+            }
+        }
+        #[cfg(windows)]
+        {
+            Endpoint::from_shared(format!("http://{addr}"))?
+                .connect()
+                .await
+                .map_err(Into::into)
+        }
+    }
 
     const TEST_SCHEMA: &str = r"
 definition user {}
@@ -544,6 +578,7 @@ definition document {
                 optional_relation: String::new(),
             }),
             optional_caveat: None,
+            optional_expires_at: None,
         }
     }
 
@@ -575,84 +610,56 @@ definition document {
         }
     }
 
-    /// Calls an RPC FFI (check_permission, write_schema, write_relationships). Returns response bytes or error string.
-    unsafe fn call_memory_rpc(
-        handle: u64,
-        request_bytes: &[u8],
-        rpc_fn: unsafe extern "C" fn(
-            c_ulonglong,
-            *const c_uchar,
-            c_int,
-            *mut *mut c_uchar,
-            *mut c_int,
-            *mut *mut c_char,
-        ),
-    ) -> Result<Vec<u8>, String> {
-        let mut out_response_bytes: *mut c_uchar = std::ptr::null_mut();
-        let mut out_response_len: c_int = 0;
-        let mut out_error: *mut c_char = std::ptr::null_mut();
-        unsafe {
-            rpc_fn(
-                handle as c_ulonglong,
-                request_bytes.as_ptr(),
-                request_bytes.len() as c_int,
-                &mut out_response_bytes,
-                &mut out_response_len,
-                &mut out_error,
-            );
-        }
-        if !out_error.is_null() {
-            let s = unsafe { std::ffi::CStr::from_ptr(out_error) }
-                .to_string_lossy()
-                .into_owned();
-            unsafe { native::spicedb_free(out_error) };
-            return Err(s);
-        }
-        let len = out_response_len as usize;
-        let bytes = if len == 0 {
-            vec![]
-        } else {
-            unsafe { std::slice::from_raw_parts(out_response_bytes, len).to_vec() }
-        };
-        if !out_response_bytes.is_null() {
-            unsafe { native::spicedb_free_bytes(out_response_bytes as *mut std::ffi::c_void) };
-        }
-        Ok(bytes)
-    }
-
-    /// Starts a SpiceDB instance with grpc_transport "memory" via raw FFI; returns (handle, _guard to free start result).
-    fn start_memory_server() -> Result<(u64, CString), SpiceDBError> {
+    /// Starts a `SpiceDB` instance with `grpc_transport` "memory"; returns (handle, ()).
+    fn start_memory_server() -> Result<(u64, ()), SpiceDBError> {
         let opts = StartOptions {
             grpc_transport: Some("memory".into()),
             ..Default::default()
         };
-        let json = serde_json::to_string(&opts).map_err(|e| SpiceDBError::Protocol(format!("serialize options: {e}")))?;
-        let cstr = CString::new(json).map_err(|e| SpiceDBError::Protocol(format!("options null byte: {e}")))?;
-        let ptr = unsafe { native::spicedb_start(cstr.as_ptr()) };
-        let data = unsafe { call_and_parse(ptr)? };
+        let json = serde_json::to_string(&opts)
+            .map_err(|e| SpiceDBError::Protocol(format!("serialize options: {e}")))?;
+        let response_str = start(Some(&json)).map_err(SpiceDBError::Runtime)?;
+        let data = parse_json_response(&response_str)?;
         let handle = data
             .get("handle")
-            .and_then(|v| v.as_u64())
+            .and_then(serde_json::Value::as_u64)
             .ok_or_else(|| SpiceDBError::Protocol("missing handle in start response".into()))?;
         let grpc_transport = data
             .get("grpc_transport")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| SpiceDBError::Protocol("missing grpc_transport in start response".into()))?;
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                SpiceDBError::Protocol("missing grpc_transport in start response".into())
+            })?;
         if grpc_transport != "memory" {
-            return Err(SpiceDBError::Protocol(format!("expected grpc_transport memory, got {grpc_transport}")));
+            return Err(SpiceDBError::Protocol(format!(
+                "expected grpc_transport memory, got {grpc_transport}"
+            )));
         }
-        Ok((handle, cstr))
+        Ok((handle, ()))
     }
 
-    /// Idiomatic memory transport: MemorySpiceDB::new + .permissions().check_permission() (uses -sys safe layer).
-    #[tokio::test]
-    async fn test_memory_transport_check_permission() {
+    /// Idiomatic memory transport: `MemorySpiceDB::new` + `.permissions().check_permission()` (uses -sys safe layer).
+    /// Skipped when the C library was built without memory transport.
+    #[serial]
+    #[test]
+    fn test_memory_transport_check_permission() {
         let relationships = vec![
             rel("document:readme", "reader", "user:alice"),
             rel("document:readme", "writer", "user:bob"),
         ];
-
-        let spicedb = MemorySpiceDB::new(TEST_SCHEMA, &relationships, None).unwrap();
+        let spicedb = match MemorySpiceDB::new(TEST_SCHEMA, &relationships, None) {
+            Ok(db) => db,
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("streaming proxy")
+                    || msg.contains("bind")
+                    || msg.contains("operation not permitted")
+                {
+                    return;
+                }
+                panic!("MemorySpiceDB::new failed: {e}");
+            }
+        };
 
         let response = spicedb
             .permissions()
@@ -663,6 +670,80 @@ definition document {
             Permissionship::HasPermission as i32,
             "alice should have read on document:readme"
         );
+    }
+
+    /// Verifies that the streaming server receives updates: start Watch stream, write a relationship via FFI, receive update on stream.
+    /// Skipped when the C library was built without memory transport or `streaming_address` is unavailable.
+    #[serial]
+    #[test]
+    fn test_memory_transport_watch_streaming() {
+        let db = match MemorySpiceDB::new(TEST_SCHEMA, &[], None) {
+            Ok(d) => d,
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("streaming proxy")
+                    || msg.contains("bind")
+                    || msg.contains("operation not permitted")
+                {
+                    return;
+                }
+                panic!("MemorySpiceDB::new failed: {e}");
+            }
+        };
+
+        let Some(streaming_addr) = db.streaming_address() else {
+            return;
+        };
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let channel = connect_streaming(&streaming_addr).await.unwrap();
+            let mut watch_client = WatchServiceClient::new(channel);
+            // Request checkpoints so the server sends an initial response and keeps the stream alive.
+            let watch_req = WatchRequest {
+                optional_update_kinds: vec![
+                    WatchKind::IncludeRelationshipUpdates.into(),
+                    WatchKind::IncludeCheckpoints.into(),
+                ],
+                ..Default::default()
+            };
+            let mut stream =
+                match timeout(Duration::from_secs(10), watch_client.watch(watch_req)).await {
+                    Ok(Ok(response)) => response.into_inner(),
+                    Ok(Err(e)) => panic!("watch() failed: {e}"),
+                    Err(_) => return,
+                };
+
+            let write_req = WriteRelationshipsRequest {
+                updates: vec![RelationshipUpdate {
+                    operation: Operation::Touch as i32,
+                    relationship: Some(rel("document:watched", "reader", "user:alice")),
+                }],
+                optional_preconditions: vec![],
+                optional_transaction_metadata: None,
+            };
+            db.permissions().write_relationships(&write_req).unwrap();
+
+            let mut received_update = false;
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+            while tokio::time::Instant::now() < deadline {
+                match timeout(Duration::from_millis(200), stream.next()).await {
+                    Ok(Some(Ok(resp))) => {
+                        if !resp.updates.is_empty() {
+                            received_update = true;
+                            break;
+                        }
+                    }
+                    Ok(Some(Err(e))) => panic!("watch stream error: {e}"),
+                    Ok(None) => break,
+                    Err(_) => {}
+                }
+            }
+            assert!(
+                received_update,
+                "expected at least one Watch response with updates within 3s"
+            );
+        });
     }
 
     #[tokio::test]
@@ -760,6 +841,7 @@ definition document {
                     relationship: Some(rel("document:test", "reader", "user:alice")),
                 }],
                 optional_preconditions: vec![],
+                optional_transaction_metadata: None,
             }))
             .await
             .unwrap();
@@ -804,6 +886,7 @@ definition document {
                     relationship: Some(rel("document:doc1", "reader", "user:alice")),
                 }],
                 optional_preconditions: vec![],
+                optional_transaction_metadata: None,
             }))
             .await
             .unwrap();
@@ -985,6 +1068,7 @@ definition document {
                         )),
                     }],
                     optional_preconditions: vec![],
+                    optional_transaction_metadata: None,
                 }))
                 .await
                 .unwrap();
@@ -1035,6 +1119,7 @@ definition document {
                         })
                         .collect(),
                     optional_preconditions: vec![],
+                    optional_transaction_metadata: None,
                 }))
                 .await
                 .unwrap();
@@ -1067,6 +1152,7 @@ definition document {
                         )),
                     }],
                     optional_preconditions: vec![],
+                    optional_transaction_metadata: None,
                 }))
                 .await
                 .unwrap();
@@ -1089,6 +1175,7 @@ definition document {
                     })
                     .collect(),
                 optional_preconditions: vec![],
+                optional_transaction_metadata: None,
             }))
             .await
             .unwrap();
@@ -1141,6 +1228,7 @@ definition document {
                         })
                         .collect(),
                     optional_preconditions: vec![],
+                    optional_transaction_metadata: None,
                 }))
                 .await
                 .unwrap();
@@ -1218,16 +1306,12 @@ definition document {
 
         let (handle, _guard) = start_memory_server().unwrap();
 
-        // Bootstrap schema
-        let mut schema_bytes = Vec::new();
-        WriteSchemaRequest {
-            schema: TEST_SCHEMA.to_string(),
-        }
-        .encode(&mut schema_bytes)
-        .unwrap();
-        unsafe {
-            call_memory_rpc(handle, &schema_bytes, native::spicedb_schema_write_schema)
-        }
+        memory_transport::write_schema(
+            handle,
+            &WriteSchemaRequest {
+                schema: TEST_SCHEMA.to_string(),
+            },
+        )
         .unwrap();
 
         // Create 1000 relationships
@@ -1247,31 +1331,25 @@ definition document {
                 relationship: Some(r.clone()),
             })
             .collect();
-        let mut rel_bytes = Vec::new();
-        WriteRelationshipsRequest {
-            updates,
-            optional_preconditions: vec![],
-        }
-        .encode(&mut rel_bytes)
-        .unwrap();
 
         println!("\n=== Performance (memory transport): Check with 1000 relationships ===");
 
         let start = Instant::now();
-        unsafe {
-            call_memory_rpc(handle, &rel_bytes, native::spicedb_permissions_write_relationships)
-        }
+        memory_transport::write_relationships(
+            handle,
+            &WriteRelationshipsRequest {
+                updates,
+                optional_preconditions: vec![],
+                optional_transaction_metadata: None,
+            },
+        )
         .unwrap();
         println!("Write 1000 relationships: {:?}", start.elapsed());
 
         // Warm up
         let warm = check_req("document:doc0", "read", "user:user0");
-        let mut warm_bytes = Vec::new();
-        warm.encode(&mut warm_bytes).unwrap();
         for _ in 0..10 {
-            let _ = unsafe {
-                call_memory_rpc(handle, &warm_bytes, native::spicedb_permissions_check_permission)
-            };
+            let _ = memory_transport::check_permission(handle, &warm);
         }
 
         // Benchmark permission checks
@@ -1282,13 +1360,7 @@ definition document {
                 "read",
                 &format!("user:user{}", i % 100),
             );
-            let mut buf = Vec::new();
-            req.encode(&mut buf).unwrap();
-            let resp = unsafe {
-                call_memory_rpc(handle, &buf, native::spicedb_permissions_check_permission)
-            }
-            .unwrap();
-            let _ = CheckPermissionResponse::decode(&resp[..]).unwrap();
+            let _ = memory_transport::check_permission(handle, &req).unwrap();
         }
         let elapsed = start.elapsed();
 
@@ -1300,10 +1372,7 @@ definition document {
             f64::from(num_checks_u32) / elapsed.as_secs_f64()
         );
 
-        let result = unsafe { native::spicedb_dispose(handle) };
-        if !result.is_null() {
-            unsafe { native::spicedb_free(result) };
-        }
+        let _ = dispose(handle);
     }
 
     /// Performance test (memory transport): Add individual relationships.
@@ -1314,15 +1383,12 @@ definition document {
         use std::time::Instant;
 
         let (handle, _guard) = start_memory_server().unwrap();
-        let mut schema_bytes = Vec::new();
-        WriteSchemaRequest {
-            schema: TEST_SCHEMA.to_string(),
-        }
-        .encode(&mut schema_bytes)
-        .unwrap();
-        unsafe {
-            call_memory_rpc(handle, &schema_bytes, native::spicedb_schema_write_schema)
-        }
+        memory_transport::write_schema(
+            handle,
+            &WriteSchemaRequest {
+                schema: TEST_SCHEMA.to_string(),
+            },
+        )
         .unwrap();
 
         println!("\n=== Performance (memory transport): Add individual relationships ===");
@@ -1332,20 +1398,12 @@ definition document {
             let req = WriteRelationshipsRequest {
                 updates: vec![RelationshipUpdate {
                     operation: Operation::Touch as i32,
-                    relationship: Some(rel(
-                        &format!("document:perf{i}"),
-                        "reader",
-                        "user:alice",
-                    )),
+                    relationship: Some(rel(&format!("document:perf{i}"), "reader", "user:alice")),
                 }],
                 optional_preconditions: vec![],
+                optional_transaction_metadata: None,
             };
-            let mut buf = Vec::new();
-            req.encode(&mut buf).unwrap();
-            unsafe {
-                call_memory_rpc(handle, &buf, native::spicedb_permissions_write_relationships)
-            }
-            .unwrap();
+            memory_transport::write_relationships(handle, &req).unwrap();
         }
         let elapsed = start.elapsed();
 
@@ -1357,28 +1415,23 @@ definition document {
             f64::from(num_adds_u32) / elapsed.as_secs_f64()
         );
 
-        let result = unsafe { native::spicedb_dispose(handle) };
-        if !result.is_null() {
-            unsafe { native::spicedb_free(result) };
-        }
+        let _ = dispose(handle);
     }
 
     /// Performance test (memory transport): Bulk write relationships.
     #[tokio::test]
     #[ignore = "performance test - run manually with --ignored flag"]
+    #[allow(clippy::too_many_lines)]
     async fn perf_memory_bulk_write_relationships() {
         use std::time::Instant;
 
         let (handle, _guard) = start_memory_server().unwrap();
-        let mut schema_bytes = Vec::new();
-        WriteSchemaRequest {
-            schema: TEST_SCHEMA.to_string(),
-        }
-        .encode(&mut schema_bytes)
-        .unwrap();
-        unsafe {
-            call_memory_rpc(handle, &schema_bytes, native::spicedb_schema_write_schema)
-        }
+        memory_transport::write_schema(
+            handle,
+            &WriteSchemaRequest {
+                schema: TEST_SCHEMA.to_string(),
+            },
+        )
         .unwrap();
 
         println!("\n=== Performance (memory transport): Bulk write relationships ===");
@@ -1401,19 +1454,14 @@ definition document {
                     relationship: Some(r.clone()),
                 })
                 .collect();
-            let mut buf = Vec::new();
-            WriteRelationshipsRequest {
+            let req = WriteRelationshipsRequest {
                 updates,
                 optional_preconditions: vec![],
-            }
-            .encode(&mut buf)
-            .unwrap();
+                optional_transaction_metadata: None,
+            };
 
             let start = Instant::now();
-            unsafe {
-                call_memory_rpc(handle, &buf, native::spicedb_permissions_write_relationships)
-            }
-            .unwrap();
+            memory_transport::write_relationships(handle, &req).unwrap();
             let elapsed = start.elapsed();
 
             println!(
@@ -1431,20 +1479,12 @@ definition document {
             let req = WriteRelationshipsRequest {
                 updates: vec![RelationshipUpdate {
                     operation: Operation::Touch as i32,
-                    relationship: Some(rel(
-                        &format!("document:cmp_ind{i}"),
-                        "reader",
-                        "user:bob",
-                    )),
+                    relationship: Some(rel(&format!("document:cmp_ind{i}"), "reader", "user:bob")),
                 }],
                 optional_preconditions: vec![],
+                optional_transaction_metadata: None,
             };
-            let mut buf = Vec::new();
-            req.encode(&mut buf).unwrap();
-            unsafe {
-                call_memory_rpc(handle, &buf, native::spicedb_permissions_write_relationships)
-            }
-            .unwrap();
+            memory_transport::write_relationships(handle, &req).unwrap();
         }
         let individual_time = start.elapsed();
         println!("10 individual adds: {individual_time:?}");
@@ -1459,18 +1499,13 @@ definition document {
                 relationship: Some(r.clone()),
             })
             .collect();
-        let mut buf = Vec::new();
-        WriteRelationshipsRequest {
+        let req = WriteRelationshipsRequest {
             updates,
             optional_preconditions: vec![],
-        }
-        .encode(&mut buf)
-        .unwrap();
+            optional_transaction_metadata: None,
+        };
         let start = Instant::now();
-        unsafe {
-            call_memory_rpc(handle, &buf, native::spicedb_permissions_write_relationships)
-        }
-        .unwrap();
+        memory_transport::write_relationships(handle, &req).unwrap();
         let bulk_time = start.elapsed();
         println!("10 bulk add: {bulk_time:?}");
         println!(
@@ -1478,15 +1513,13 @@ definition document {
             individual_time.as_secs_f64() / bulk_time.as_secs_f64()
         );
 
-        let result = unsafe { native::spicedb_dispose(handle) };
-        if !result.is_null() {
-            unsafe { native::spicedb_free(result) };
-        }
+        let _ = dispose(handle);
     }
 
     /// Performance test (memory transport): 50,000 relationships.
     #[tokio::test]
     #[ignore = "performance test - run manually with --ignored flag"]
+    #[allow(clippy::too_many_lines)]
     async fn perf_memory_embedded_50k_relationships() {
         const TOTAL_RELS: usize = 50_000;
         const BATCH_SIZE: usize = 1000;
@@ -1494,15 +1527,12 @@ definition document {
         use std::time::Instant;
 
         let (handle, _guard) = start_memory_server().unwrap();
-        let mut schema_bytes = Vec::new();
-        WriteSchemaRequest {
-            schema: TEST_SCHEMA.to_string(),
-        }
-        .encode(&mut schema_bytes)
-        .unwrap();
-        unsafe {
-            call_memory_rpc(handle, &schema_bytes, native::spicedb_schema_write_schema)
-        }
+        memory_transport::write_schema(
+            handle,
+            &WriteSchemaRequest {
+                schema: TEST_SCHEMA.to_string(),
+            },
+        )
         .unwrap();
 
         println!("\n=== Performance (memory transport): 50,000 relationships ===");
@@ -1528,17 +1558,12 @@ definition document {
                     relationship: Some(r.clone()),
                 })
                 .collect();
-            let mut buf = Vec::new();
-            WriteRelationshipsRequest {
+            let req = WriteRelationshipsRequest {
                 updates,
                 optional_preconditions: vec![],
-            }
-            .encode(&mut buf)
-            .unwrap();
-            unsafe {
-                call_memory_rpc(handle, &buf, native::spicedb_permissions_write_relationships)
-            }
-            .unwrap();
+                optional_transaction_metadata: None,
+            };
+            memory_transport::write_relationships(handle, &req).unwrap();
         }
         println!(
             "Total time to add {} relationships: {:?}",
@@ -1547,12 +1572,8 @@ definition document {
         );
 
         let warm = check_req("document:doc0", "read", "user:user0");
-        let mut warm_bytes = Vec::new();
-        warm.encode(&mut warm_bytes).unwrap();
         for _ in 0..20 {
-            let _ = unsafe {
-                call_memory_rpc(handle, &warm_bytes, native::spicedb_permissions_check_permission)
-            };
+            let _ = memory_transport::check_permission(handle, &warm);
         }
 
         let num_checks_u32 = u32::try_from(NUM_CHECKS).unwrap();
@@ -1563,13 +1584,7 @@ definition document {
                 "read",
                 &format!("user:user{}", i % 1000),
             );
-            let mut buf = Vec::new();
-            req.encode(&mut buf).unwrap();
-            let resp = unsafe {
-                call_memory_rpc(handle, &buf, native::spicedb_permissions_check_permission)
-            }
-            .unwrap();
-            let _ = CheckPermissionResponse::decode(&resp[..]).unwrap();
+            let _ = memory_transport::check_permission(handle, &req).unwrap();
         }
         let elapsed = start.elapsed();
 
@@ -1587,20 +1602,13 @@ definition document {
                 "read",
                 "user:nonexistent",
             );
-            let mut buf = Vec::new();
-            req.encode(&mut buf).unwrap();
-            let _ = unsafe {
-                call_memory_rpc(handle, &buf, native::spicedb_permissions_check_permission)
-            };
+            let _ = memory_transport::check_permission(handle, &req);
         }
         let elapsed = start.elapsed();
         println!("\nNegative checks (user not found):");
         println!("Average per check: {:?}", elapsed / num_checks_u32);
 
-        let result = unsafe { native::spicedb_dispose(handle) };
-        if !result.is_null() {
-            unsafe { native::spicedb_free(result) };
-        }
+        let _ = dispose(handle);
     }
 
     /// Shared-datastore tests: two embedded servers using the same remote datastore.
@@ -1680,6 +1688,7 @@ definition document {
                         relationship: Some(rel("document:shared", "reader", "user:alice")),
                     }],
                     optional_preconditions: vec![],
+                    optional_transaction_metadata: None,
                 }))
                 .await
                 .unwrap();
@@ -1791,6 +1800,7 @@ definition document {
                         relationship: Some(rel("document:shared", "reader", "user:alice")),
                     }],
                     optional_preconditions: vec![],
+                    optional_transaction_metadata: None,
                 }))
                 .await
                 .unwrap();

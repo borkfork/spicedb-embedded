@@ -3,13 +3,14 @@ min_version = '2025.9.19'
 
 [tools]
 rust = { version = "1.91.1", components = "rustfmt,clippy" }
+buf = "1.49"
 "github:authzed/spicedb" = { version = "1.49.0", version_prefix = "v" }
 "github:EmbarkStudios/cargo-deny" = { version = "0.19.0", version_prefix = "" }
 taplo = "0.10.0"
 jq = "1.7"
 shellcheck = "0.10.0"
 shfmt = "3.8.0"
-go = "1.23"
+go = "1.25"
 node = "22"
 python = "3.11"
 java = "temurin-17"

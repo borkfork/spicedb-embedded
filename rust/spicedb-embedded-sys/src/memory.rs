@@ -6,14 +6,13 @@
 use std::os::raw::{c_char, c_int, c_uchar, c_ulonglong};
 
 use prost::Message;
-use spicedb_grpc::authzed::api::v1::{
+use spicedb_api::v1::{
     CheckBulkPermissionsRequest, CheckBulkPermissionsResponse, CheckPermissionRequest,
     CheckPermissionResponse, DeleteRelationshipsRequest, DeleteRelationshipsResponse,
     ExpandPermissionTreeRequest, ExpandPermissionTreeResponse, ReadSchemaRequest,
-    ReadSchemaResponse, WriteRelationshipsRequest, WriteRelationshipsResponse,
-    WriteSchemaRequest, WriteSchemaResponse,
+    ReadSchemaResponse, WriteRelationshipsRequest, WriteRelationshipsResponse, WriteSchemaRequest,
+    WriteSchemaResponse,
 };
-
 
 /// Error from a memory-transport RPC (FFI or decode).
 #[derive(Debug, Clone)]
@@ -86,7 +85,9 @@ pub fn check_permission(
     request: &CheckPermissionRequest,
 ) -> RpcResult<CheckPermissionResponse> {
     let mut buf = Vec::new();
-    request.encode(&mut buf).map_err(|e| RpcError(e.to_string()))?;
+    request
+        .encode(&mut buf)
+        .map_err(|e| RpcError(e.to_string()))?;
     let bytes = raw_call(handle, &buf, crate::spicedb_permissions_check_permission)?;
     CheckPermissionResponse::decode(&bytes[..]).map_err(|e| RpcError(e.to_string()))
 }
@@ -97,7 +98,9 @@ pub fn write_relationships(
     request: &WriteRelationshipsRequest,
 ) -> RpcResult<WriteRelationshipsResponse> {
     let mut buf = Vec::new();
-    request.encode(&mut buf).map_err(|e| RpcError(e.to_string()))?;
+    request
+        .encode(&mut buf)
+        .map_err(|e| RpcError(e.to_string()))?;
     let bytes = raw_call(handle, &buf, crate::spicedb_permissions_write_relationships)?;
     WriteRelationshipsResponse::decode(&bytes[..]).map_err(|e| RpcError(e.to_string()))
 }
@@ -108,8 +111,14 @@ pub fn delete_relationships(
     request: &DeleteRelationshipsRequest,
 ) -> RpcResult<DeleteRelationshipsResponse> {
     let mut buf = Vec::new();
-    request.encode(&mut buf).map_err(|e| RpcError(e.to_string()))?;
-    let bytes = raw_call(handle, &buf, crate::spicedb_permissions_delete_relationships)?;
+    request
+        .encode(&mut buf)
+        .map_err(|e| RpcError(e.to_string()))?;
+    let bytes = raw_call(
+        handle,
+        &buf,
+        crate::spicedb_permissions_delete_relationships,
+    )?;
     DeleteRelationshipsResponse::decode(&bytes[..]).map_err(|e| RpcError(e.to_string()))
 }
 
@@ -119,8 +128,14 @@ pub fn check_bulk_permissions(
     request: &CheckBulkPermissionsRequest,
 ) -> RpcResult<CheckBulkPermissionsResponse> {
     let mut buf = Vec::new();
-    request.encode(&mut buf).map_err(|e| RpcError(e.to_string()))?;
-    let bytes = raw_call(handle, &buf, crate::spicedb_permissions_check_bulk_permissions)?;
+    request
+        .encode(&mut buf)
+        .map_err(|e| RpcError(e.to_string()))?;
+    let bytes = raw_call(
+        handle,
+        &buf,
+        crate::spicedb_permissions_check_bulk_permissions,
+    )?;
     CheckBulkPermissionsResponse::decode(&bytes[..]).map_err(|e| RpcError(e.to_string()))
 }
 
@@ -130,8 +145,14 @@ pub fn expand_permission_tree(
     request: &ExpandPermissionTreeRequest,
 ) -> RpcResult<ExpandPermissionTreeResponse> {
     let mut buf = Vec::new();
-    request.encode(&mut buf).map_err(|e| RpcError(e.to_string()))?;
-    let bytes = raw_call(handle, &buf, crate::spicedb_permissions_expand_permission_tree)?;
+    request
+        .encode(&mut buf)
+        .map_err(|e| RpcError(e.to_string()))?;
+    let bytes = raw_call(
+        handle,
+        &buf,
+        crate::spicedb_permissions_expand_permission_tree,
+    )?;
     ExpandPermissionTreeResponse::decode(&bytes[..]).map_err(|e| RpcError(e.to_string()))
 }
 
@@ -140,18 +161,19 @@ pub fn expand_permission_tree(
 /// SchemaService.ReadSchema.
 pub fn read_schema(handle: u64, request: &ReadSchemaRequest) -> RpcResult<ReadSchemaResponse> {
     let mut buf = Vec::new();
-    request.encode(&mut buf).map_err(|e| RpcError(e.to_string()))?;
+    request
+        .encode(&mut buf)
+        .map_err(|e| RpcError(e.to_string()))?;
     let bytes = raw_call(handle, &buf, crate::spicedb_schema_read_schema)?;
     ReadSchemaResponse::decode(&bytes[..]).map_err(|e| RpcError(e.to_string()))
 }
 
 /// SchemaService.WriteSchema.
-pub fn write_schema(
-    handle: u64,
-    request: &WriteSchemaRequest,
-) -> RpcResult<WriteSchemaResponse> {
+pub fn write_schema(handle: u64, request: &WriteSchemaRequest) -> RpcResult<WriteSchemaResponse> {
     let mut buf = Vec::new();
-    request.encode(&mut buf).map_err(|e| RpcError(e.to_string()))?;
+    request
+        .encode(&mut buf)
+        .map_err(|e| RpcError(e.to_string()))?;
     let bytes = raw_call(handle, &buf, crate::spicedb_schema_write_schema)?;
     WriteSchemaResponse::decode(&bytes[..]).map_err(|e| RpcError(e.to_string()))
 }

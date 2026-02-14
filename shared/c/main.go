@@ -5,6 +5,11 @@
 // Callers then use the FFI RPC functions (e.g. spicedb_permissions_check_permission)
 // with marshalled protobuf bytes. Other transports ("unix", "tcp") work as before:
 // spicedb_start returns an address and callers connect via gRPC in their language.
+//
+// Allocation audit: all C-visible allocations are caller-owned and must be freed.
+//   - makeError/makeSuccess return C.CString → caller frees with spicedb_free (spicedb_start, spicedb_dispose).
+//   - RPC FFI: *out_error = C.CString(...) → caller frees with spicedb_free; *out_response_bytes = C.CBytes(...) → caller frees with spicedb_free_bytes.
+//   - Each code path sets at most one of out_error or out_response_bytes per call; no double-set, so no leak on our side.
 package main
 
 /*
@@ -16,6 +21,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -28,6 +35,7 @@ import (
 	"github.com/authzed/spicedb/pkg/cmd/datastore"
 	"github.com/authzed/spicedb/pkg/cmd/server"
 	"github.com/authzed/spicedb/pkg/cmd/util"
+	spicedbdatastore "github.com/authzed/spicedb/pkg/datastore"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -36,12 +44,16 @@ import (
 
 // Instance holds a SpiceDB server instance
 type Instance struct {
-	server     server.RunnableServer
-	transport  string // "unix", "tcp", or "memory"
-	address    string // socket path or host:port (empty for memory)
-	clientConn *grpc.ClientConn // non-nil only when transport == "memory"
-	cancel     context.CancelFunc
-	wg         *errgroup.Group
+	server         server.RunnableServer
+	transport      string // "unix", "tcp", or "memory"
+	address        string // socket path or host:port (empty for memory)
+	clientConn     *grpc.ClientConn // non-nil only when transport == "memory"
+	// Streaming proxy: when memory transport, a second listener that forwards Watch/ReadRelationships etc. to the bufconn.
+	streamingAddr     string
+	streamingListener net.Listener
+	streamingServer   *grpc.Server
+	cancel            context.CancelFunc
+	wg                *errgroup.Group
 }
 
 // Instance management
@@ -74,11 +86,14 @@ func makeSuccess(data interface{}) *C.char {
 	return C.CString(string(respData))
 }
 
-// spicedb_free frees a string returned by other functions.
+// spicedb_free frees a string returned by spicedb_start or spicedb_dispose.
+// Safe to call with NULL (no-op). Caller must call this for every *C.char returned by those functions.
 //
 //export spicedb_free
 func spicedb_free(ptr *C.char) {
-	C.free(unsafe.Pointer(ptr))
+	if ptr != nil {
+		C.free(unsafe.Pointer(ptr))
+	}
 }
 
 // StartOptions configures datastore and transport. Passed as JSON to spicedb_start.
@@ -145,48 +160,58 @@ func spicedb_start(options_json *C.char) *C.char {
 		}
 	}
 
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	instance := &Instance{cancel: cancel}
+	if transport == "memory" {
+		// Memory: create datastore and server (no socket; FFI RPCs + streaming proxy).
 		id = atomic.AddUint64(&nextID, 1)
-		if transport != "memory" {
+		ds, lastErr := newDatastoreFromOpts(ctx, opts)
+		if lastErr != nil {
+			cancel()
+			return makeError(fmt.Sprintf("failed to create memory datastore: %v", lastErr))
+		}
+		srv, lastErr = newSpiceDBServerFromDatastore(ctx, "", "memory", ds)
+		if lastErr != nil {
+			cancel()
+			return makeError(fmt.Sprintf("failed to create memory server: %v", lastErr))
+		}
+		instance.server = srv
+		instance.transport = "memory"
+		instance.address = ""
+	} else {
+		for attempt := 0; attempt < maxRetries; attempt++ {
+			id = atomic.AddUint64(&nextID, 1)
 			addr = listenAddr(id, transport)
 			if transport == "unix" {
 				os.Remove(addr)
 			}
+			srv, lastErr = newSpiceDBServer(ctx, addr, transport, opts)
+			if lastErr == nil {
+				instance.server = srv
+				instance.transport = transport
+				instance.address = addr
+				break
+			}
 		}
-		srv, lastErr = newSpiceDBServer(ctx, addr, transport, opts)
-		if lastErr == nil {
-			break
+		if lastErr != nil {
+			cancel()
+			return makeError(fmt.Sprintf("failed to create server: %v", lastErr))
 		}
-		// Retry with a new address (e.g. different port) on any error
-	}
-
-	if lastErr != nil {
-		cancel()
-		return makeError(fmt.Sprintf("failed to create server: %v", lastErr))
-	}
-
-	instance := &Instance{
-		server:    srv,
-		transport: transport,
-		address:   addr,
-		cancel:    cancel,
 	}
 
 	var wg errgroup.Group
 	wg.Go(func() error {
-		if err := srv.Run(ctx); err != nil && ctx.Err() == nil {
+		if err := instance.server.Run(ctx); err != nil && ctx.Err() == nil {
 			return err
 		}
 		return nil
 	})
 	instance.wg = &wg
 
-	// For memory transport, dial the in-process server and store the client conn for FFI RPCs.
 	if transport == "memory" {
 		dialCtx, dialCancel := context.WithTimeout(ctx, 5*time.Second)
 		defer dialCancel()
 		for i := 0; i < 20; i++ {
-			conn, err := srv.GRPCDialContext(dialCtx, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			conn, err := instance.server.GRPCDialContext(dialCtx, grpc.WithTransportCredentials(insecure.NewCredentials()))
 			if err == nil {
 				instance.clientConn = conn
 				break
@@ -198,6 +223,13 @@ func spicedb_start(options_json *C.char) *C.char {
 			_ = wg.Wait()
 			return makeError("failed to dial in-memory server")
 		}
+		proxyAddr, err := startStreamingProxy(ctx, instance, id, &wg)
+		if err != nil {
+			cancel()
+			_ = wg.Wait()
+			return makeError(fmt.Sprintf("failed to start streaming proxy: %v", err))
+		}
+		instance.streamingAddr = proxyAddr
 	}
 
 	instanceMu.Lock()
@@ -206,7 +238,9 @@ func spicedb_start(options_json *C.char) *C.char {
 
 	data := map[string]interface{}{"handle": id, "grpc_transport": transport}
 	if transport != "memory" {
-		data["address"] = addr
+		data["address"] = instance.address
+	} else if instance.streamingAddr != "" {
+		data["streaming_address"] = instance.streamingAddr
 	}
 	return makeSuccess(data)
 }
@@ -232,13 +266,145 @@ func listenAddr(id uint64, transport string) string {
 	return filepath.Join(os.TempDir(), fmt.Sprintf("spicedb-%d-%d.sock", os.Getpid(), id))
 }
 
-// newSpiceDBServer creates a new SpiceDB server with the given options.
-func newSpiceDBServer(ctx context.Context, addr string, transport string, opts StartOptions) (server.RunnableServer, error) {
+// streamingProxyAddr returns the address for the streaming proxy (Unix or TCP).
+func streamingProxyAddr(id uint64) string {
+	if runtime.GOOS == "windows" {
+		return fmt.Sprintf("127.0.0.1:%d", 50151+int(id%5000))
+	}
+	return filepath.Join(os.TempDir(), fmt.Sprintf("spicedb-streaming-%d-%d.sock", os.Getpid(), id))
+}
+
+// permissionsStreamingProxy forwards only the streaming RPCs to the bufconn backend.
+type permissionsStreamingProxy struct {
+	pb.UnimplementedPermissionsServiceServer
+	client pb.PermissionsServiceClient
+}
+
+func (p *permissionsStreamingProxy) ReadRelationships(req *pb.ReadRelationshipsRequest, srv grpc.ServerStreamingServer[pb.ReadRelationshipsResponse]) error {
+	ctx := srv.Context()
+	stream, err := p.client.ReadRelationships(ctx, req)
+	if err != nil {
+		return err
+	}
+	for {
+		msg, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if err := srv.Send(msg); err != nil {
+			return err
+		}
+	}
+}
+
+func (p *permissionsStreamingProxy) LookupResources(req *pb.LookupResourcesRequest, srv grpc.ServerStreamingServer[pb.LookupResourcesResponse]) error {
+	ctx := srv.Context()
+	stream, err := p.client.LookupResources(ctx, req)
+	if err != nil {
+		return err
+	}
+	for {
+		msg, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if err := srv.Send(msg); err != nil {
+			return err
+		}
+	}
+}
+
+func (p *permissionsStreamingProxy) LookupSubjects(req *pb.LookupSubjectsRequest, srv grpc.ServerStreamingServer[pb.LookupSubjectsResponse]) error {
+	ctx := srv.Context()
+	stream, err := p.client.LookupSubjects(ctx, req)
+	if err != nil {
+		return err
+	}
+	for {
+		msg, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if err := srv.Send(msg); err != nil {
+			return err
+		}
+	}
+}
+
+// watchStreamingProxy forwards Watch to the bufconn backend.
+type watchStreamingProxy struct {
+	pb.UnimplementedWatchServiceServer
+	client pb.WatchServiceClient
+	id     uint64 // instance id (for logging; same instance that owns client)
+}
+
+func (w *watchStreamingProxy) Watch(req *pb.WatchRequest, srv grpc.ServerStreamingServer[pb.WatchResponse]) error {
+	ctx := srv.Context()
+	stream, err := w.client.Watch(ctx, req)
+	if err != nil {
+		return err
+	}
+	for {
+		msg, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if err := srv.Send(msg); err != nil {
+			return err
+		}
+	}
+}
+
+// startStreamingProxy starts a gRPC server on a unix/tcp listener that forwards only streaming RPCs to the bufconn clientConn.
+func startStreamingProxy(ctx context.Context, instance *Instance, id uint64, wg *errgroup.Group) (string, error) {
+	addr := streamingProxyAddr(id)
+	var lis net.Listener
+	var err error
+	if runtime.GOOS == "windows" {
+		lis, err = net.Listen("tcp", addr)
+	} else {
+		_ = os.Remove(addr)
+		lis, err = net.Listen("unix", addr)
+	}
+	if err != nil {
+		return "", err
+	}
+	instance.streamingListener = lis
+
+	permClient := pb.NewPermissionsServiceClient(instance.clientConn)
+	watchClient := pb.NewWatchServiceClient(instance.clientConn)
+
+	srv := grpc.NewServer()
+	pb.RegisterPermissionsServiceServer(srv, &permissionsStreamingProxy{client: permClient})
+	pb.RegisterWatchServiceServer(srv, &watchStreamingProxy{client: watchClient, id: id})
+	instance.streamingServer = srv
+
+	wg.Go(func() error {
+		if err := srv.Serve(lis); err != nil && ctx.Err() == nil {
+			return err
+		}
+		return nil
+	})
+	return addr, nil
+}
+// newDatastoreFromOpts creates a datastore from StartOptions (used for memory transport in spicedb_start).
+func newDatastoreFromOpts(ctx context.Context, opts StartOptions) (spicedbdatastore.Datastore, error) {
 	engine := opts.Datastore
 	if engine == "" {
 		engine = datastore.MemoryEngine
 	}
-
 	dsOpts := []datastore.ConfigOption{
 		datastore.DefaultDatastoreConfig().ToOption(),
 		datastore.WithEngine(engine),
@@ -259,9 +425,47 @@ func newSpiceDBServer(ctx context.Context, addr string, transport string, opts S
 	if engine == "mysql" && opts.MySQLTablePrefix != "" {
 		dsOpts = append(dsOpts, datastore.WithTablePrefix(opts.MySQLTablePrefix))
 	}
+	return datastore.NewDatastore(ctx, dsOpts...)
+}
 
-	ds, err := datastore.NewDatastore(ctx, dsOpts...)
+// newSpiceDBServerFromDatastore creates a server that uses an existing datastore.
+// transport: "memory" (bufconn), "unix", or "tcp". For memory, addr is ignored.
+func newSpiceDBServerFromDatastore(ctx context.Context, addr string, transport string, ds spicedbdatastore.Datastore) (server.RunnableServer, error) {
+	grpcConfig := util.GRPCServerConfig{Enabled: true}
+	if transport == "memory" {
+		grpcConfig.Network = util.BufferedNetwork
+		grpcConfig.Address = ""
+		grpcConfig.BufferSize = 1024 * 1024
+	} else {
+		network := "unix"
+		if transport == "tcp" {
+			network = "tcp"
+		}
+		grpcConfig.Network = network
+		grpcConfig.Address = addr
+	}
+	configOpts := []server.ConfigOption{
+		server.WithGRPCServer(grpcConfig),
+		server.WithGRPCAuthFunc(func(ctx context.Context) (context.Context, error) {
+			return ctx, nil
+		}),
+		server.WithHTTPGateway(util.HTTPServerConfig{HTTPEnabled: false}),
+		server.WithMetricsAPI(util.HTTPServerConfig{HTTPEnabled: false}),
+		server.WithDispatchCacheConfig(server.CacheConfig{Enabled: false, Metrics: false}),
+		server.WithNamespaceCacheConfig(server.CacheConfig{Enabled: false, Metrics: false}),
+		server.WithClusterDispatchCacheConfig(server.CacheConfig{Enabled: false, Metrics: false}),
+		server.WithDatastore(ds),
+	}
+	return server.NewConfigWithOptionsAndDefaults(configOpts...).Complete(ctx)
+}
+
+func newSpiceDBServer(ctx context.Context, addr string, transport string, opts StartOptions) (server.RunnableServer, error) {
+	ds, err := newDatastoreFromOpts(ctx, opts)
 	if err != nil {
+		engine := opts.Datastore
+		if engine == "" {
+			engine = datastore.MemoryEngine
+		}
 		return nil, fmt.Errorf("unable to start %s datastore: %v", engine, err)
 	}
 
@@ -312,22 +516,35 @@ func spicedb_dispose(handle C.ulonglong) *C.char {
 		return makeError(fmt.Sprintf("invalid handle: %d", id))
 	}
 
-	// Cancel context and wait for server to stop
+	// Cancel context so main server Run() exits. Stop streaming proxy before wg.Wait(),
+	// otherwise the proxy's Serve() never exits and wg.Wait() blocks forever.
 	instance.cancel()
-	_ = instance.wg.Wait()
 
 	if instance.clientConn != nil {
 		_ = instance.clientConn.Close()
 	}
-	// Clean up socket file (Unix only; TCP has nothing to remove)
+	if instance.streamingServer != nil {
+		instance.streamingServer.GracefulStop()
+	}
+	if instance.streamingListener != nil {
+		_ = instance.streamingListener.Close()
+	}
+
+	_ = instance.wg.Wait()
+	// Clean up socket file(s)
 	if instance.transport == "unix" {
 		os.Remove(instance.address)
+	}
+	if instance.streamingAddr != "" && runtime.GOOS != "windows" {
+		os.Remove(instance.streamingAddr)
 	}
 
 	return makeSuccess(nil)
 }
 
-// spicedb_free_bytes frees a byte buffer returned by the permissions/schema RPC FFI functions.
+// spicedb_free_bytes frees a byte buffer returned by the permissions/schema RPC FFI functions
+// (out_response_bytes). Safe to call with NULL (no-op). Caller must call this for every buffer
+// returned in *out_response_bytes.
 //
 //export spicedb_free_bytes
 func spicedb_free_bytes(ptr *C.void) {

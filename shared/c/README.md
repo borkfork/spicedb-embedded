@@ -52,7 +52,7 @@ Create a new SpiceDB instance (empty server). Schema and relationships should be
 Returns:
 - Unix: `{"success": true, "data": {"handle": 123, "grpc_transport": "unix", "address": "/tmp/spicedb-xxx.sock"}}`
 - Windows: `{"success": true, "data": {"handle": 123, "grpc_transport": "tcp", "address": "127.0.0.1:50051"}}`
-- Memory: `{"success": true, "data": {"handle": 123, "grpc_transport": "memory"}}` (no `address`; use RPC FFI below)
+- Memory: `{"success": true, "data": {"handle": 123, "grpc_transport": "memory", "streaming_address": "/path/to/sock"}}`. A **streaming proxy** is started on a Unix (or TCP on Windows) listener; use `streaming_address` for Watch, ReadRelationships, LookupResources, LookupSubjects. Use the handle with RPC FFI for unary calls. If the proxy fails to bind, `spicedb_start` returns an error.
 
 All RPC FFI functions use the same ABI: `(handle, request_bytes, request_len, out_response_bytes, out_response_len, out_error)`. **Only valid when the instance was started with `grpc_transport: "memory"`.** On success, caller frees `*out_response_bytes` with `spicedb_free_bytes`. On error, caller frees `*out_error` with `spicedb_free`.
 
@@ -60,7 +60,7 @@ All RPC FFI functions use the same ABI: `(handle, request_bytes, request_len, ou
 
 **SchemaService:** `spicedb_schema_read_schema`, `spicedb_schema_write_schema`
 
-Streaming RPCs (ReadRelationships, LookupResources, LookupSubjects, Watch) are not yet exposed via FFI.
+Streaming RPCs (Watch, ReadRelationships, LookupResources, LookupSubjects) are not exposed via FFI. For memory transport, use the **`streaming_address`** returned by `spicedb_start` to connect a gRPC client for those APIs.
 
 ### `spicedb_free_bytes(ptr)`
 

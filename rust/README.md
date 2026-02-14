@@ -188,7 +188,7 @@ let allowed = response.into_inner().permissionship
 - **`schema()`** — `SchemaServiceClient` for ReadSchema, WriteSchema, ReflectSchema, etc.
 - **`watch()`** — `WatchServiceClient` for watching relationship changes.
 
-All types are re-exported from `spicedb_grpc::authzed::api::v1` as `spicedb_embedded::v1`.
+All types are re-exported from `spicedb_api::v1` (generated from buf.build/authzed/api) as `spicedb_embedded::v1`.
 
 ### StartOptions
 

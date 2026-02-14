@@ -16,4 +16,4 @@ path = "src/lib.rs"
 
 [dependencies]
 prost = "0.13"
-spicedb-grpc = "0.1"
+spicedb-api = { path = "../spicedb-api" }
