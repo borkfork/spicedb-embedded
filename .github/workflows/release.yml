@@ -126,8 +126,37 @@ jobs:
           name: shared-lib-${{ steps.set_rid.outputs.rid }}
           path: out
 
-  publish-rust-sys:
+  # Publish spicedb-api first; spicedb-embedded-sys depends on it (version from crates.io when publishing).
+  publish-rust-api:
     needs: build-shared-libs
+    runs-on: ubuntu-latest
+    env:
+      MISE_ENABLE_TOOLS: "rust,buf,protoc"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
+          fetch-depth: 0
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "rust buf protoc"
+
+      - name: Publish spicedb-api to crates.io
+        run: |
+          cargo publish -p spicedb-api --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty 2>&1 | tee /tmp/publish.log
+          code=${PIPESTATUS[0]}
+          if [ $code -ne 0 ] && grep -q "already been published" /tmp/publish.log; then
+            echo "spicedb-api version already on crates.io, continuing"
+            exit 0
+          fi
+          exit $code
+
+  publish-rust-sys:
+    needs: [build-shared-libs, publish-rust-api]
     runs-on: ubuntu-latest
     env:
       MISE_ENABLE_TOOLS: "rust"
