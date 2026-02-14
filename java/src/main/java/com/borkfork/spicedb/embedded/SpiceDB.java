@@ -19,6 +19,9 @@ import java.nio.file.Paths;
  */
 interface SpiceDB extends Library {
 
+  /** Cached path when loaded from JAR (so we use one library instance; see findLibraryPath). */
+  private static volatile String cachedJarLibPath;
+
   /**
    * Load the native library. Prefers bundled JAR natives, then spicedb.library.path, then
    * "spicedb".
@@ -53,16 +56,26 @@ interface SpiceDB extends Library {
 
     String platformKey = platformKey(os, arch);
     if (platformKey != null) {
+      String cached = cachedJarLibPath;
+      if (cached != null) {
+        return cached;
+      }
       String resource = "natives/" + platformKey + "/" + libName;
-      try (InputStream in = SpiceDB.class.getClassLoader().getResourceAsStream(resource)) {
-        if (in != null) {
-          Path tmp = Files.createTempFile("spicedb", libName);
-          tmp.toFile().deleteOnExit();
-          Files.copy(in, tmp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-          return tmp.toAbsolutePath().toString();
+      synchronized (SpiceDB.class) {
+        if (cachedJarLibPath != null) {
+          return cachedJarLibPath;
         }
-      } catch (Exception ignored) {
-        // fall through
+        try (InputStream in = SpiceDB.class.getClassLoader().getResourceAsStream(resource)) {
+          if (in != null) {
+            Path tmp = Files.createTempFile("spicedb", libName);
+            tmp.toFile().deleteOnExit();
+            Files.copy(in, tmp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            cachedJarLibPath = tmp.toAbsolutePath().toString();
+            return cachedJarLibPath;
+          }
+        } catch (Exception ignored) {
+          // fall through
+        }
       }
     }
 

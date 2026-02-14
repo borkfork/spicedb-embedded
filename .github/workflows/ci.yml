@@ -95,7 +95,7 @@ jobs:
             rid: win-x64
     runs-on: ${{ matrix.runner }}
     env:
-      MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,go,github:authzed/spicedb"
+      MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,go,github:authzed/spicedb,buf"
       # Rust tests use testcontainers (postgres, mysql, cockroach); use Linux/amd64 Docker platform.
       DOCKER_DEFAULT_PLATFORM: linux/amd64
     defaults:
