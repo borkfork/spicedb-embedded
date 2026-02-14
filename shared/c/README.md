@@ -43,7 +43,7 @@ Create a new SpiceDB instance (empty server). Schema and relationships should be
 - `options_json`: Optional pointer to JSON string. Use `NULL` for defaults.
   - **datastore**: `"memory"` (default), `"postgres"`, `"cockroachdb"`, `"spanner"`, `"mysql"`
   - **datastore_uri**: Connection string (required for postgres, cockroachdb, spanner, mysql). E.g. `postgres://user:pass@localhost:5432/spicedb`
-  - **grpc_transport**: `"unix"` (default on Unix), `"tcp"` (default on Windows)
+  - **grpc_transport**: `"unix"` (default on Unix), `"tcp"` (default on Windows), `"memory"` (in-memory buffer; use FFI RPCs only, no address returned)
   - **spanner_credentials_file**: Path to service account JSON (Spanner only; omit for ADC)
   - **spanner_emulator_host**: e.g. `localhost:9010` (Spanner emulator)
   - **mysql_table_prefix**: Prefix for all tables (MySQL only, optional)
@@ -52,6 +52,19 @@ Create a new SpiceDB instance (empty server). Schema and relationships should be
 Returns:
 - Unix: `{"success": true, "data": {"handle": 123, "grpc_transport": "unix", "address": "/tmp/spicedb-xxx.sock"}}`
 - Windows: `{"success": true, "data": {"handle": 123, "grpc_transport": "tcp", "address": "127.0.0.1:50051"}}`
+- Memory: `{"success": true, "data": {"handle": 123, "grpc_transport": "memory"}}` (no `address`; use RPC FFI below)
+
+All RPC FFI functions use the same ABI: `(handle, request_bytes, request_len, out_response_bytes, out_response_len, out_error)`. **Only valid when the instance was started with `grpc_transport: "memory"`.** On success, caller frees `*out_response_bytes` with `spicedb_free_bytes`. On error, caller frees `*out_error` with `spicedb_free`.
+
+**PermissionsService:** `spicedb_permissions_check_permission`, `spicedb_permissions_write_relationships`, `spicedb_permissions_delete_relationships`, `spicedb_permissions_check_bulk_permissions`, `spicedb_permissions_expand_permission_tree`
+
+**SchemaService:** `spicedb_schema_read_schema`, `spicedb_schema_write_schema`
+
+Streaming RPCs (ReadRelationships, LookupResources, LookupSubjects, Watch) are not yet exposed via FFI.
+
+### `spicedb_free_bytes(ptr)`
+
+Free a byte buffer returned by any RPC FFI function above.
 
 ### `spicedb_dispose(handle)`
 

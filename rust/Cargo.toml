@@ -41,6 +41,7 @@ tracing = "0.1"
 spicedb-embedded-sys = { path = "spicedb-embedded-sys" }
 
 [dev-dependencies]
+prost = "0.13"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tokio-stream = "0.1"
 testcontainers-modules = { version = "0.14", features = [

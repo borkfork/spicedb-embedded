@@ -262,6 +262,198 @@ impl Drop for EmbeddedSpiceDB {
     }
 }
 
+// -----------------------------------------------------------------------------
+// Memory transport: idiomatic API using -sys safe layer (no unsafe in this crate)
+// -----------------------------------------------------------------------------
+
+use spicedb_embedded_sys::memory_transport;
+use spicedb_grpc::authzed::api::v1::{
+    CheckBulkPermissionsRequest, CheckBulkPermissionsResponse, CheckPermissionRequest,
+    CheckPermissionResponse, DeleteRelationshipsRequest, DeleteRelationshipsResponse,
+    ExpandPermissionTreeRequest, ExpandPermissionTreeResponse, ReadSchemaRequest,
+    ReadSchemaResponse, WriteRelationshipsResponse, WriteSchemaResponse,
+};
+
+/// Embedded SpiceDB using in-memory transport (no socket). All RPCs go through the FFI.
+/// Use [`permissions`](MemorySpiceDB::permissions) and [`schema`](MemorySpiceDB::schema) for typed APIs.
+pub struct MemorySpiceDB {
+    handle: u64,
+}
+
+unsafe impl Send for MemorySpiceDB {}
+unsafe impl Sync for MemorySpiceDB {}
+
+impl MemorySpiceDB {
+    /// Start a SpiceDB instance with `grpc_transport: "memory"` and optional bootstrap.
+    /// If `schema` is non-empty, writes it via SchemaService. If `relationships` is non-empty, writes them via WriteRelationships.
+    pub fn new(
+        schema: &str,
+        relationships: &[spicedb_grpc::authzed::api::v1::Relationship],
+        options: Option<&StartOptions>,
+    ) -> Result<Self, SpiceDBError> {
+        let opts = options.cloned().unwrap_or_default();
+        let mut opts = opts;
+        opts.grpc_transport = Some("memory".into());
+        let json = serde_json::to_string(&opts)
+            .map_err(|e| SpiceDBError::Protocol(format!("serialize options: {e}")))?;
+        let cstr = std::ffi::CString::new(json)
+            .map_err(|e| SpiceDBError::Protocol(format!("options null byte: {e}")))?;
+        let ptr = unsafe { native::spicedb_start(cstr.as_ptr()) };
+        let data = unsafe { call_and_parse(ptr)? };
+        let handle = data
+            .get("handle")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| SpiceDBError::Protocol("missing handle in start response".into()))?;
+        let grpc_transport = data
+            .get("grpc_transport")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| SpiceDBError::Protocol("missing grpc_transport".into()))?;
+        if grpc_transport != "memory" {
+            return Err(SpiceDBError::Protocol(format!(
+                "expected grpc_transport memory, got {grpc_transport}"
+            )));
+        }
+
+        let db = Self { handle };
+
+        if !schema.is_empty() {
+            memory_transport::write_schema(
+                db.handle,
+                &WriteSchemaRequest {
+                    schema: schema.to_string(),
+                },
+            )
+            .map_err(|e| SpiceDBError::SpiceDB(e.0))?;
+        }
+
+        if !relationships.is_empty() {
+            let updates: Vec<RelationshipUpdate> = relationships
+                .iter()
+                .map(|r| RelationshipUpdate {
+                    operation: Operation::Touch as i32,
+                    relationship: Some(r.clone()),
+                })
+                .collect();
+            memory_transport::write_relationships(
+                db.handle,
+                &WriteRelationshipsRequest {
+                    updates,
+                    optional_preconditions: vec![],
+                },
+            )
+            .map_err(|e| SpiceDBError::SpiceDB(e.0))?;
+        }
+
+        Ok(db)
+    }
+
+    /// Permissions service (CheckPermission, WriteRelationships, DeleteRelationships, etc.).
+    #[must_use]
+    pub fn permissions(&self) -> MemoryPermissionsClient {
+        MemoryPermissionsClient {
+            handle: self.handle,
+        }
+    }
+
+    /// Schema service (ReadSchema, WriteSchema).
+    #[must_use]
+    pub fn schema(&self) -> MemorySchemaClient {
+        MemorySchemaClient {
+            handle: self.handle,
+        }
+    }
+
+    /// Raw handle for advanced use (e.g. with [`spicedb_embedded_sys::memory_transport`]).
+    #[must_use]
+    pub fn handle(&self) -> u64 {
+        self.handle
+    }
+}
+
+impl Drop for MemorySpiceDB {
+    fn drop(&mut self) {
+        debug!("Disposing memory SpiceDB handle {}", self.handle);
+        unsafe {
+            let result = native::spicedb_dispose(self.handle);
+            if !result.is_null() {
+                native::spicedb_free(result);
+            }
+        }
+    }
+}
+
+/// Permissions service client for memory transport. All methods are synchronous and use the -sys safe layer.
+pub struct MemoryPermissionsClient {
+    handle: u64,
+}
+
+impl MemoryPermissionsClient {
+    /// CheckPermission.
+    pub fn check_permission(
+        &self,
+        request: &CheckPermissionRequest,
+    ) -> Result<CheckPermissionResponse, SpiceDBError> {
+        memory_transport::check_permission(self.handle, request).map_err(|e| SpiceDBError::SpiceDB(e.0))
+    }
+
+    /// WriteRelationships.
+    pub fn write_relationships(
+        &self,
+        request: &WriteRelationshipsRequest,
+    ) -> Result<WriteRelationshipsResponse, SpiceDBError> {
+        memory_transport::write_relationships(self.handle, request).map_err(|e| SpiceDBError::SpiceDB(e.0))
+    }
+
+    /// DeleteRelationships.
+    pub fn delete_relationships(
+        &self,
+        request: &DeleteRelationshipsRequest,
+    ) -> Result<DeleteRelationshipsResponse, SpiceDBError> {
+        memory_transport::delete_relationships(self.handle, request).map_err(|e| SpiceDBError::SpiceDB(e.0))
+    }
+
+    /// CheckBulkPermissions.
+    pub fn check_bulk_permissions(
+        &self,
+        request: &CheckBulkPermissionsRequest,
+    ) -> Result<CheckBulkPermissionsResponse, SpiceDBError> {
+        memory_transport::check_bulk_permissions(self.handle, request)
+            .map_err(|e| SpiceDBError::SpiceDB(e.0))
+    }
+
+    /// ExpandPermissionTree.
+    pub fn expand_permission_tree(
+        &self,
+        request: &ExpandPermissionTreeRequest,
+    ) -> Result<ExpandPermissionTreeResponse, SpiceDBError> {
+        memory_transport::expand_permission_tree(self.handle, request)
+            .map_err(|e| SpiceDBError::SpiceDB(e.0))
+    }
+}
+
+/// Schema service client for memory transport.
+pub struct MemorySchemaClient {
+    handle: u64,
+}
+
+impl MemorySchemaClient {
+    /// ReadSchema.
+    pub fn read_schema(
+        &self,
+        request: &ReadSchemaRequest,
+    ) -> Result<ReadSchemaResponse, SpiceDBError> {
+        memory_transport::read_schema(self.handle, request).map_err(|e| SpiceDBError::SpiceDB(e.0))
+    }
+
+    /// WriteSchema.
+    pub fn write_schema(
+        &self,
+        request: &WriteSchemaRequest,
+    ) -> Result<WriteSchemaResponse, SpiceDBError> {
+        memory_transport::write_schema(self.handle, request).map_err(|e| SpiceDBError::SpiceDB(e.0))
+    }
+}
+
 async fn connect_to_spicedb(
     transport: &str,
     address: &str,
@@ -308,10 +500,15 @@ fn connect_unix_socket(
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::CString;
+    use std::os::raw::{c_char, c_int, c_uchar, c_ulonglong};
+
+    use prost::Message;
     use spicedb_grpc::authzed::api::v1::{
-        CheckPermissionRequest, Consistency, ObjectReference, ReadRelationshipsRequest,
-        Relationship, RelationshipFilter, RelationshipUpdate, SubjectReference,
-        WriteRelationshipsRequest, relationship_update::Operation,
+        CheckPermissionRequest, CheckPermissionResponse, Consistency, ObjectReference,
+        ReadRelationshipsRequest, Relationship, RelationshipFilter, RelationshipUpdate,
+        SubjectReference, WriteRelationshipsRequest, WriteSchemaRequest,
+        relationship_update::Operation,
     };
     use tokio_stream::StreamExt;
 
@@ -376,6 +573,96 @@ definition document {
             context: None,
             with_tracing: false,
         }
+    }
+
+    /// Calls an RPC FFI (check_permission, write_schema, write_relationships). Returns response bytes or error string.
+    unsafe fn call_memory_rpc(
+        handle: u64,
+        request_bytes: &[u8],
+        rpc_fn: unsafe extern "C" fn(
+            c_ulonglong,
+            *const c_uchar,
+            c_int,
+            *mut *mut c_uchar,
+            *mut c_int,
+            *mut *mut c_char,
+        ),
+    ) -> Result<Vec<u8>, String> {
+        let mut out_response_bytes: *mut c_uchar = std::ptr::null_mut();
+        let mut out_response_len: c_int = 0;
+        let mut out_error: *mut c_char = std::ptr::null_mut();
+        unsafe {
+            rpc_fn(
+                handle as c_ulonglong,
+                request_bytes.as_ptr(),
+                request_bytes.len() as c_int,
+                &mut out_response_bytes,
+                &mut out_response_len,
+                &mut out_error,
+            );
+        }
+        if !out_error.is_null() {
+            let s = unsafe { std::ffi::CStr::from_ptr(out_error) }
+                .to_string_lossy()
+                .into_owned();
+            unsafe { native::spicedb_free(out_error) };
+            return Err(s);
+        }
+        let len = out_response_len as usize;
+        let bytes = if len == 0 {
+            vec![]
+        } else {
+            unsafe { std::slice::from_raw_parts(out_response_bytes, len).to_vec() }
+        };
+        if !out_response_bytes.is_null() {
+            unsafe { native::spicedb_free_bytes(out_response_bytes as *mut std::ffi::c_void) };
+        }
+        Ok(bytes)
+    }
+
+    /// Starts a SpiceDB instance with grpc_transport "memory" via raw FFI; returns (handle, _guard to free start result).
+    fn start_memory_server() -> Result<(u64, CString), SpiceDBError> {
+        let opts = StartOptions {
+            grpc_transport: Some("memory".into()),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&opts).map_err(|e| SpiceDBError::Protocol(format!("serialize options: {e}")))?;
+        let cstr = CString::new(json).map_err(|e| SpiceDBError::Protocol(format!("options null byte: {e}")))?;
+        let ptr = unsafe { native::spicedb_start(cstr.as_ptr()) };
+        let data = unsafe { call_and_parse(ptr)? };
+        let handle = data
+            .get("handle")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| SpiceDBError::Protocol("missing handle in start response".into()))?;
+        let grpc_transport = data
+            .get("grpc_transport")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| SpiceDBError::Protocol("missing grpc_transport in start response".into()))?;
+        if grpc_transport != "memory" {
+            return Err(SpiceDBError::Protocol(format!("expected grpc_transport memory, got {grpc_transport}")));
+        }
+        Ok((handle, cstr))
+    }
+
+    /// Idiomatic memory transport: MemorySpiceDB::new + .permissions().check_permission() (uses -sys safe layer).
+    #[tokio::test]
+    async fn test_memory_transport_check_permission() {
+        let relationships = vec![
+            rel("document:readme", "reader", "user:alice"),
+            rel("document:readme", "writer", "user:bob"),
+        ];
+
+        let spicedb = MemorySpiceDB::new(TEST_SCHEMA, &relationships, None).unwrap();
+
+        let response = spicedb
+            .permissions()
+            .check_permission(&check_req("document:readme", "read", "user:alice"))
+            .unwrap();
+        assert_eq!(
+            response.permissionship,
+            Permissionship::HasPermission as i32,
+            "alice should have read on document:readme"
+        );
     }
 
     #[tokio::test]
@@ -915,6 +1202,405 @@ definition document {
         let elapsed = start.elapsed();
         println!("\nNegative checks (user not found):");
         println!("Average per check: {:?}", elapsed / num_checks_u32);
+    }
+
+    // -------------------------------------------------------------------------
+    // Memory-transport performance tests (same scenarios as above, via FFI)
+    // Run with: cargo test perf_memory_ -- --nocapture --ignored
+    // -------------------------------------------------------------------------
+
+    /// Performance test (memory transport): Check with 1000 relationships.
+    #[tokio::test]
+    #[ignore = "performance test - run manually with --ignored flag"]
+    async fn perf_memory_check_with_1000_relationships() {
+        const NUM_CHECKS: usize = 100;
+        use std::time::Instant;
+
+        let (handle, _guard) = start_memory_server().unwrap();
+
+        // Bootstrap schema
+        let mut schema_bytes = Vec::new();
+        WriteSchemaRequest {
+            schema: TEST_SCHEMA.to_string(),
+        }
+        .encode(&mut schema_bytes)
+        .unwrap();
+        unsafe {
+            call_memory_rpc(handle, &schema_bytes, native::spicedb_schema_write_schema)
+        }
+        .unwrap();
+
+        // Create 1000 relationships
+        let relationships: Vec<Relationship> = (0..1000)
+            .map(|i| {
+                rel(
+                    &format!("document:doc{i}"),
+                    "reader",
+                    &format!("user:user{}", i % 100),
+                )
+            })
+            .collect();
+        let updates: Vec<RelationshipUpdate> = relationships
+            .iter()
+            .map(|r| RelationshipUpdate {
+                operation: Operation::Touch as i32,
+                relationship: Some(r.clone()),
+            })
+            .collect();
+        let mut rel_bytes = Vec::new();
+        WriteRelationshipsRequest {
+            updates,
+            optional_preconditions: vec![],
+        }
+        .encode(&mut rel_bytes)
+        .unwrap();
+
+        println!("\n=== Performance (memory transport): Check with 1000 relationships ===");
+
+        let start = Instant::now();
+        unsafe {
+            call_memory_rpc(handle, &rel_bytes, native::spicedb_permissions_write_relationships)
+        }
+        .unwrap();
+        println!("Write 1000 relationships: {:?}", start.elapsed());
+
+        // Warm up
+        let warm = check_req("document:doc0", "read", "user:user0");
+        let mut warm_bytes = Vec::new();
+        warm.encode(&mut warm_bytes).unwrap();
+        for _ in 0..10 {
+            let _ = unsafe {
+                call_memory_rpc(handle, &warm_bytes, native::spicedb_permissions_check_permission)
+            };
+        }
+
+        // Benchmark permission checks
+        let start = Instant::now();
+        for i in 0..NUM_CHECKS {
+            let req = check_req(
+                &format!("document:doc{}", i % 1000),
+                "read",
+                &format!("user:user{}", i % 100),
+            );
+            let mut buf = Vec::new();
+            req.encode(&mut buf).unwrap();
+            let resp = unsafe {
+                call_memory_rpc(handle, &buf, native::spicedb_permissions_check_permission)
+            }
+            .unwrap();
+            let _ = CheckPermissionResponse::decode(&resp[..]).unwrap();
+        }
+        let elapsed = start.elapsed();
+
+        let num_checks_u32 = u32::try_from(NUM_CHECKS).unwrap();
+        println!("Total time for {NUM_CHECKS} checks: {elapsed:?}");
+        println!("Average per check: {:?}", elapsed / num_checks_u32);
+        println!(
+            "Checks per second: {:.0}",
+            f64::from(num_checks_u32) / elapsed.as_secs_f64()
+        );
+
+        let result = unsafe { native::spicedb_dispose(handle) };
+        if !result.is_null() {
+            unsafe { native::spicedb_free(result) };
+        }
+    }
+
+    /// Performance test (memory transport): Add individual relationships.
+    #[tokio::test]
+    #[ignore = "performance test - run manually with --ignored flag"]
+    async fn perf_memory_add_individual_relationships() {
+        const NUM_ADDS: usize = 50;
+        use std::time::Instant;
+
+        let (handle, _guard) = start_memory_server().unwrap();
+        let mut schema_bytes = Vec::new();
+        WriteSchemaRequest {
+            schema: TEST_SCHEMA.to_string(),
+        }
+        .encode(&mut schema_bytes)
+        .unwrap();
+        unsafe {
+            call_memory_rpc(handle, &schema_bytes, native::spicedb_schema_write_schema)
+        }
+        .unwrap();
+
+        println!("\n=== Performance (memory transport): Add individual relationships ===");
+
+        let start = Instant::now();
+        for i in 0..NUM_ADDS {
+            let req = WriteRelationshipsRequest {
+                updates: vec![RelationshipUpdate {
+                    operation: Operation::Touch as i32,
+                    relationship: Some(rel(
+                        &format!("document:perf{i}"),
+                        "reader",
+                        "user:alice",
+                    )),
+                }],
+                optional_preconditions: vec![],
+            };
+            let mut buf = Vec::new();
+            req.encode(&mut buf).unwrap();
+            unsafe {
+                call_memory_rpc(handle, &buf, native::spicedb_permissions_write_relationships)
+            }
+            .unwrap();
+        }
+        let elapsed = start.elapsed();
+
+        let num_adds_u32 = u32::try_from(NUM_ADDS).unwrap();
+        println!("Total time for {NUM_ADDS} individual adds: {elapsed:?}");
+        println!("Average per add: {:?}", elapsed / num_adds_u32);
+        println!(
+            "Adds per second: {:.0}",
+            f64::from(num_adds_u32) / elapsed.as_secs_f64()
+        );
+
+        let result = unsafe { native::spicedb_dispose(handle) };
+        if !result.is_null() {
+            unsafe { native::spicedb_free(result) };
+        }
+    }
+
+    /// Performance test (memory transport): Bulk write relationships.
+    #[tokio::test]
+    #[ignore = "performance test - run manually with --ignored flag"]
+    async fn perf_memory_bulk_write_relationships() {
+        use std::time::Instant;
+
+        let (handle, _guard) = start_memory_server().unwrap();
+        let mut schema_bytes = Vec::new();
+        WriteSchemaRequest {
+            schema: TEST_SCHEMA.to_string(),
+        }
+        .encode(&mut schema_bytes)
+        .unwrap();
+        unsafe {
+            call_memory_rpc(handle, &schema_bytes, native::spicedb_schema_write_schema)
+        }
+        .unwrap();
+
+        println!("\n=== Performance (memory transport): Bulk write relationships ===");
+
+        for batch_size in [5_i32, 10, 20, 50] {
+            let batch_size_u32 = u32::try_from(batch_size).unwrap();
+            let relationships: Vec<Relationship> = (0..batch_size)
+                .map(|i| {
+                    rel(
+                        &format!("document:bulk{batch_size}_{i}"),
+                        "reader",
+                        "user:alice",
+                    )
+                })
+                .collect();
+            let updates: Vec<RelationshipUpdate> = relationships
+                .iter()
+                .map(|r| RelationshipUpdate {
+                    operation: Operation::Touch as i32,
+                    relationship: Some(r.clone()),
+                })
+                .collect();
+            let mut buf = Vec::new();
+            WriteRelationshipsRequest {
+                updates,
+                optional_preconditions: vec![],
+            }
+            .encode(&mut buf)
+            .unwrap();
+
+            let start = Instant::now();
+            unsafe {
+                call_memory_rpc(handle, &buf, native::spicedb_permissions_write_relationships)
+            }
+            .unwrap();
+            let elapsed = start.elapsed();
+
+            println!(
+                "Batch of {} relationships: {:?} ({:?} per relationship)",
+                batch_size,
+                elapsed,
+                elapsed / batch_size_u32
+            );
+        }
+
+        println!("\n--- Comparison: 10 individual vs 10 bulk ---");
+
+        let start = Instant::now();
+        for i in 0..10 {
+            let req = WriteRelationshipsRequest {
+                updates: vec![RelationshipUpdate {
+                    operation: Operation::Touch as i32,
+                    relationship: Some(rel(
+                        &format!("document:cmp_ind{i}"),
+                        "reader",
+                        "user:bob",
+                    )),
+                }],
+                optional_preconditions: vec![],
+            };
+            let mut buf = Vec::new();
+            req.encode(&mut buf).unwrap();
+            unsafe {
+                call_memory_rpc(handle, &buf, native::spicedb_permissions_write_relationships)
+            }
+            .unwrap();
+        }
+        let individual_time = start.elapsed();
+        println!("10 individual adds: {individual_time:?}");
+
+        let relationships: Vec<Relationship> = (0..10)
+            .map(|i| rel(&format!("document:cmp_bulk{i}"), "reader", "user:bob"))
+            .collect();
+        let updates: Vec<RelationshipUpdate> = relationships
+            .iter()
+            .map(|r| RelationshipUpdate {
+                operation: Operation::Touch as i32,
+                relationship: Some(r.clone()),
+            })
+            .collect();
+        let mut buf = Vec::new();
+        WriteRelationshipsRequest {
+            updates,
+            optional_preconditions: vec![],
+        }
+        .encode(&mut buf)
+        .unwrap();
+        let start = Instant::now();
+        unsafe {
+            call_memory_rpc(handle, &buf, native::spicedb_permissions_write_relationships)
+        }
+        .unwrap();
+        let bulk_time = start.elapsed();
+        println!("10 bulk add: {bulk_time:?}");
+        println!(
+            "Speedup: {:.1}x",
+            individual_time.as_secs_f64() / bulk_time.as_secs_f64()
+        );
+
+        let result = unsafe { native::spicedb_dispose(handle) };
+        if !result.is_null() {
+            unsafe { native::spicedb_free(result) };
+        }
+    }
+
+    /// Performance test (memory transport): 50,000 relationships.
+    #[tokio::test]
+    #[ignore = "performance test - run manually with --ignored flag"]
+    async fn perf_memory_embedded_50k_relationships() {
+        const TOTAL_RELS: usize = 50_000;
+        const BATCH_SIZE: usize = 1000;
+        const NUM_CHECKS: usize = 500;
+        use std::time::Instant;
+
+        let (handle, _guard) = start_memory_server().unwrap();
+        let mut schema_bytes = Vec::new();
+        WriteSchemaRequest {
+            schema: TEST_SCHEMA.to_string(),
+        }
+        .encode(&mut schema_bytes)
+        .unwrap();
+        unsafe {
+            call_memory_rpc(handle, &schema_bytes, native::spicedb_schema_write_schema)
+        }
+        .unwrap();
+
+        println!("\n=== Performance (memory transport): 50,000 relationships ===");
+
+        println!("Creating instance (memory) done.");
+        println!("Adding {TOTAL_RELS} relationships in batches of {BATCH_SIZE}...");
+        let start = Instant::now();
+        for batch_num in 0..(TOTAL_RELS / BATCH_SIZE) {
+            let batch_start = batch_num * BATCH_SIZE;
+            let relationships: Vec<Relationship> = (batch_start..batch_start + BATCH_SIZE)
+                .map(|i| {
+                    rel(
+                        &format!("document:doc{i}"),
+                        "reader",
+                        &format!("user:user{}", i % 1000),
+                    )
+                })
+                .collect();
+            let updates: Vec<RelationshipUpdate> = relationships
+                .iter()
+                .map(|r| RelationshipUpdate {
+                    operation: Operation::Touch as i32,
+                    relationship: Some(r.clone()),
+                })
+                .collect();
+            let mut buf = Vec::new();
+            WriteRelationshipsRequest {
+                updates,
+                optional_preconditions: vec![],
+            }
+            .encode(&mut buf)
+            .unwrap();
+            unsafe {
+                call_memory_rpc(handle, &buf, native::spicedb_permissions_write_relationships)
+            }
+            .unwrap();
+        }
+        println!(
+            "Total time to add {} relationships: {:?}",
+            TOTAL_RELS,
+            start.elapsed()
+        );
+
+        let warm = check_req("document:doc0", "read", "user:user0");
+        let mut warm_bytes = Vec::new();
+        warm.encode(&mut warm_bytes).unwrap();
+        for _ in 0..20 {
+            let _ = unsafe {
+                call_memory_rpc(handle, &warm_bytes, native::spicedb_permissions_check_permission)
+            };
+        }
+
+        let num_checks_u32 = u32::try_from(NUM_CHECKS).unwrap();
+        let start = Instant::now();
+        for i in 0..NUM_CHECKS {
+            let req = check_req(
+                &format!("document:doc{}", i % TOTAL_RELS),
+                "read",
+                &format!("user:user{}", i % 1000),
+            );
+            let mut buf = Vec::new();
+            req.encode(&mut buf).unwrap();
+            let resp = unsafe {
+                call_memory_rpc(handle, &buf, native::spicedb_permissions_check_permission)
+            }
+            .unwrap();
+            let _ = CheckPermissionResponse::decode(&resp[..]).unwrap();
+        }
+        let elapsed = start.elapsed();
+
+        println!("Total time for {NUM_CHECKS} checks: {elapsed:?}");
+        println!("Average per check: {:?}", elapsed / num_checks_u32);
+        println!(
+            "Checks per second: {:.0}",
+            f64::from(num_checks_u32) / elapsed.as_secs_f64()
+        );
+
+        let start = Instant::now();
+        for i in 0..NUM_CHECKS {
+            let req = check_req(
+                &format!("document:doc{}", i % TOTAL_RELS),
+                "read",
+                "user:nonexistent",
+            );
+            let mut buf = Vec::new();
+            req.encode(&mut buf).unwrap();
+            let _ = unsafe {
+                call_memory_rpc(handle, &buf, native::spicedb_permissions_check_permission)
+            };
+        }
+        let elapsed = start.elapsed();
+        println!("\nNegative checks (user not found):");
+        println!("Average per check: {:?}", elapsed / num_checks_u32);
+
+        let result = unsafe { native::spicedb_dispose(handle) };
+        if !result.is_null() {
+            unsafe { native::spicedb_free(result) };
+        }
     }
 
     /// Shared-datastore tests: two embedded servers using the same remote datastore.
