@@ -50,9 +50,7 @@
 
 mod spicedb;
 
-pub use spicedb::{
-    EmbeddedSpiceDB, MemoryPermissionsClient, MemorySchemaClient, StartOptions,
-};
+pub use spicedb::{EmbeddedSpiceDB, MemoryPermissionsClient, MemorySchemaClient, StartOptions};
 // Re-export spicedb-grpc so users have direct access to all generated types
 pub use spicedb_api::v1;
 

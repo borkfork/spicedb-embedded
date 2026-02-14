@@ -120,7 +120,9 @@ impl EmbeddedSpiceDB {
             .get("streaming_address")
             .and_then(serde_json::Value::as_str)
             .map(String::from)
-            .ok_or_else(|| SpiceDBError::Protocol("missing streaming_address in start response".into()))?;
+            .ok_or_else(|| {
+                SpiceDBError::Protocol("missing streaming_address in start response".into())
+            })?;
 
         let db = Self {
             handle,
@@ -302,15 +304,16 @@ impl MemorySchemaClient {
 mod tests {
 
     use std::time::Duration;
-    use tonic::transport::{Channel, Endpoint};
+
     use spicedb_api::v1::{
-        CheckPermissionRequest, Consistency, ObjectReference,
-        ReadRelationshipsRequest, Relationship, RelationshipFilter, RelationshipUpdate,
-        SubjectReference, WatchKind, WatchRequest, WriteRelationshipsRequest,
-        relationship_update::Operation, watch_service_client::WatchServiceClient,
+        CheckPermissionRequest, Consistency, ObjectReference, ReadRelationshipsRequest,
+        Relationship, RelationshipFilter, RelationshipUpdate, SubjectReference, WatchKind,
+        WatchRequest, WriteRelationshipsRequest, relationship_update::Operation,
+        watch_service_client::WatchServiceClient,
     };
     use tokio::time::timeout;
     use tokio_stream::StreamExt;
+    use tonic::transport::{Channel, Endpoint};
 
     use super::*;
     use crate::v1::check_permission_response::Permissionship;
@@ -410,7 +413,7 @@ definition document {
         }
     }
 
-    /// EmbeddedSpiceDB::new + `.permissions().check_permission()`. Skipped on bind/streaming proxy errors.
+    /// `EmbeddedSpiceDB::new` + `.permissions().check_permission()`. Skipped on bind/streaming proxy errors.
     #[test]
     fn test_check_permission() {
         let relationships = vec![
@@ -463,7 +466,7 @@ definition document {
 
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            let channel = connect_streaming(&streaming_addr).await.unwrap();
+            let channel = connect_streaming(streaming_addr).await.unwrap();
             let mut watch_client = WatchServiceClient::new(channel);
             // Request checkpoints so the server sends an initial response and keeps the stream alive.
             let watch_req = WatchRequest {
@@ -627,7 +630,8 @@ definition document {
         let channel = connect_streaming(spicedb.streaming_address())
             .await
             .unwrap();
-        let mut client = spicedb_api::v1::permissions_service_client::PermissionsServiceClient::new(channel);
+        let mut client =
+            spicedb_api::v1::permissions_service_client::PermissionsServiceClient::new(channel);
         let mut stream = client
             .read_relationships(ReadRelationshipsRequest {
                 consistency: Some(fully_consistent()),
@@ -681,13 +685,11 @@ definition document {
 
         // Warm up
         for _ in 0..10 {
-            let _ = spicedb
-                .permissions()
-                .check_permission(&check_req(
-                    "document:doc0",
-                    "read",
-                    "user:user0",
-                ));
+            let _ = spicedb.permissions().check_permission(&check_req(
+                "document:doc0",
+                "read",
+                "user:user0",
+            ));
         }
 
         // Benchmark permission checks
@@ -904,13 +906,11 @@ definition document {
 
         // Warm up
         for _ in 0..20 {
-            let _ = spicedb
-                .permissions()
-                .check_permission(&check_req(
-                    "document:doc0",
-                    "read",
-                    "user:user0",
-                ));
+            let _ = spicedb.permissions().check_permission(&check_req(
+                "document:doc0",
+                "read",
+                "user:user0",
+            ));
         }
 
         // Benchmark permission checks
@@ -1030,10 +1030,7 @@ definition document {
                 .permissions()
                 .check_permission(&check_req("document:shared", "read", "user:alice"))
                 .unwrap();
-            assert_eq!(
-                r.permissionship,
-                Permissionship::HasPermission as i32
-            );
+            assert_eq!(r.permissionship, Permissionship::HasPermission as i32);
         }
 
         #[tokio::test]
@@ -1131,10 +1128,7 @@ definition document {
                 .permissions()
                 .check_permission(&check_req("document:shared", "read", "user:alice"))
                 .unwrap();
-            assert_eq!(
-                r.permissionship,
-                Permissionship::HasPermission as i32
-            );
+            assert_eq!(r.permissionship, Permissionship::HasPermission as i32);
         }
     }
 }
