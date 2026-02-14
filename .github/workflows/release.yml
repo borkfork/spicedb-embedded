@@ -54,12 +54,13 @@ jobs:
           fetch-depth: 0
 
       - name: Set GOCACHE (absolute path required by Go)
-        run: echo "GOCACHE=$HOME/.cache/go-build" >> $GITHUB_ENV
+        run: echo "GOCACHE=$HOME/.cache/go-build" >> "$GITHUB_ENV"
 
       - name: "Set RID from runner (macOS: we only publish osx-arm64; Intel Mac not supported)"
         id: set_rid
         run: |
-          if [[ "${{ matrix.runner }}" == macos* ]]; then
+          runner="${{ matrix.runner }}"
+          if [[ "$runner" == macos* ]]; then
             case "$(uname -m)" in
               x86_64) echo "::error::osx-x64 is no longer supported; use an arm64 Mac runner" ; exit 1 ;;
               *)      rid="osx-arm64" ;;
@@ -67,7 +68,7 @@ jobs:
           else
             rid="${{ matrix.rid }}"
           fi
-          echo "rid=$rid" >> $GITHUB_OUTPUT
+          echo "rid=$rid" >> "$GITHUB_OUTPUT"
 
       - uses: jdx/mise-action@v3
         with:
@@ -92,7 +93,9 @@ jobs:
             macos*)  cp shared/c/libspicedb.dylib "out/${{ steps.set_rid.outputs.rid }}/native/" ;;
             windows*)
               cp shared/c/spicedb.dll "out/${{ steps.set_rid.outputs.rid }}/native/"
-              [ -f shared/c/spicedb.def ] && cp shared/c/spicedb.def "out/${{ steps.set_rid.outputs.rid }}/native/" || true
+              if [ -f shared/c/spicedb.def ]; then
+                cp shared/c/spicedb.def "out/${{ steps.set_rid.outputs.rid }}/native/"
+              fi
               ;;
           esac
 
@@ -125,7 +128,9 @@ jobs:
         run: |
           mkdir -p "rust/spicedb-embedded-sys/prebuilds/linux-x64"
           cp -r linux-x64/native/* "rust/spicedb-embedded-sys/prebuilds/linux-x64/"
-          [ -f shared/c/spicedb.def ] && cp shared/c/spicedb.def "rust/spicedb-embedded-sys/prebuilds/linux-x64/" || true
+          if [ -f shared/c/spicedb.def ]; then
+            cp shared/c/spicedb.def "rust/spicedb-embedded-sys/prebuilds/linux-x64/"
+          fi
 
       - name: Package Go source into -sys crate and git add -f for publish
         run: |
@@ -159,7 +164,7 @@ jobs:
         id: version
         run: |
           TAG="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}"
-          echo "version=${TAG#v}" >> $GITHUB_OUTPUT
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
       - name: Update main crate to depend on published spicedb-embedded-sys by version
         run: |
@@ -291,7 +296,7 @@ jobs:
           mvn -B -ntp versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
           # No clean: natives are in target/natives-layout for classifier JARs
           mvn -B -ntp -P release package deploy
-          echo "Published Java $VERSION to Maven Central (main + linux-x86_64, linux-aarch_64, osx-aarch_64, windows-x86_64 classifier JARs)" >> $GITHUB_STEP_SUMMARY
+          echo "Published Java $VERSION to Maven Central (main + linux-x86_64, linux-aarch_64, osx-aarch_64, windows-x86_64 classifier JARs)" >> "$GITHUB_STEP_SUMMARY"
 
   publish-npm:
     needs: [publish-npm-platforms]
@@ -386,7 +391,7 @@ jobs:
         id: version
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Prepare platform package
         run: |
@@ -587,8 +592,8 @@ jobs:
         id: tag
         run: |
           TAG="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}"
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "version=${TAG#v}" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
       - name: Download shared libs for Rust release tarballs
         uses: actions/download-artifact@v4
@@ -626,17 +631,19 @@ jobs:
           npx conventional-changelog-cli@5 -p angular -i CHANGELOG.md -s -r 1 > changelog.md || true
           # clean_changelog: strip first "## version" line so release body doesn't duplicate the release title
           first=$(head -1 changelog.md 2>/dev/null || true)
-          if [[ "$first" == ##* ]]; then
+          if [[ "$first" == "##"* ]]; then
             tail -n +2 changelog.md > clean_changelog.md
           else
             cp changelog.md clean_changelog.md
           fi
-          echo "changelog<<CHANGELOG_EOF" >> $GITHUB_OUTPUT
-          cat changelog.md >> $GITHUB_OUTPUT
-          echo "CHANGELOG_EOF" >> $GITHUB_OUTPUT
-          echo "clean_changelog<<CLEAN_CHANGELOG_EOF" >> $GITHUB_OUTPUT
-          cat clean_changelog.md >> $GITHUB_OUTPUT
-          echo "CLEAN_CHANGELOG_EOF" >> $GITHUB_OUTPUT
+          {
+            echo "changelog<<CHANGELOG_EOF"
+            cat changelog.md
+            echo "CHANGELOG_EOF"
+            echo "clean_changelog<<CLEAN_CHANGELOG_EOF"
+            cat clean_changelog.md
+            echo "CLEAN_CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
