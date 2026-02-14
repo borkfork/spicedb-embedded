@@ -121,7 +121,7 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "rust github:EmbarkStudios/cargo-deny go github:authzed/spicedb"
+          install_args: "rust github:EmbarkStudios/cargo-deny go github:authzed/spicedb buf"
 
       - uses: actions/cache@v4
         with:

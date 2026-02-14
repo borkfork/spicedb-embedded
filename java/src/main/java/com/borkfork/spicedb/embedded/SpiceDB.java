@@ -48,7 +48,7 @@ interface SpiceDB extends Library {
       if (Files.isRegularFile(lib)) {
         return lib.toString();
       }
-      return dir.resolve(libName).toString();
+      // Explicit path set but file missing (e.g. CI uses prebuilds from JAR); fall through to JAR
     }
 
     String platformKey = platformKey(os, arch);
