@@ -106,7 +106,7 @@ public class EmbeddedSpiceDbTests
     {
         using var spicedb = EmbeddedSpiceDb.Create(TestSchema, []);
 
-        spicedb.Permissions().WriteRelationships(new WriteRelationshipsRequest
+        _ = spicedb.Permissions().WriteRelationships(new WriteRelationshipsRequest
         {
             Updates =
             {
