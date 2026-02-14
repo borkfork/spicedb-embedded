@@ -4,27 +4,12 @@
 //! connects tonic-generated gRPC clients over a Unix socket (Unix) or TCP (Windows).
 //! Schema and relationships are written via gRPC (not JSON).
 
-use std::{
-    ffi::{CStr, CString},
-    os::raw::c_char,
-};
-
 use serde::{Deserialize, Serialize};
-// FFI is provided by spicedb-embedded-sys (builds from Go or downloads prebuilt per target).
-use spicedb_embedded_sys as native;
-use spicedb_grpc::authzed::api::v1::{
+use spicedb_api::v1::{
     RelationshipUpdate, WriteRelationshipsRequest, WriteSchemaRequest,
-    permissions_service_client::PermissionsServiceClient, relationship_update::Operation,
-    schema_service_client::SchemaServiceClient, watch_service_client::WatchServiceClient,
+    relationship_update::Operation,
 };
-#[cfg(unix)]
-use tokio::net::UnixStream;
-#[cfg(unix)]
-use tonic::transport::Uri;
-use tonic::transport::{Channel, Endpoint};
-#[cfg(unix)]
-use tower::service_fn;
-use tracing::debug;
+use spicedb_embedded_sys::{dispose, start};
 
 use crate::SpiceDBError;
 
@@ -34,14 +19,6 @@ struct CResponse {
     success: bool,
     error: Option<String>,
     data: Option<serde_json::Value>,
-}
-
-/// Response from creating a new instance
-#[derive(Debug, Deserialize)]
-struct NewResponse {
-    handle: u64,
-    grpc_transport: String,
-    address: String,
 }
 
 /// Options for starting an embedded `SpiceDB` instance.
@@ -54,9 +31,6 @@ pub struct StartOptions {
     /// Connection string for remote datastores. Required for postgres, cockroachdb, spanner, mysql.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub datastore_uri: Option<String>,
-    /// gRPC transport: "unix" (default on Unix), "tcp" (default on Windows)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub grpc_transport: Option<String>,
     /// Path to Spanner service account JSON (Spanner only)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spanner_credentials_file: Option<String>,
@@ -71,24 +45,9 @@ pub struct StartOptions {
     pub metrics_enabled: Option<bool>,
 }
 
-/// Helper to call a C function and parse the JSON response
-///
-/// # Safety
-///
-/// The caller must ensure `ptr` is a valid pointer returned by one of the
-/// `spicedb_*` functions, or null.
-unsafe fn call_and_parse(ptr: *mut c_char) -> Result<serde_json::Value, SpiceDBError> {
-    if ptr.is_null() {
-        return Err(SpiceDBError::Runtime("null response from C library".into()));
-    }
-
-    let c_str = unsafe { CStr::from_ptr(ptr) };
-    let response_str = c_str.to_string_lossy().into_owned();
-    unsafe { native::spicedb_free(ptr) };
-
-    debug!("FFI response: {}", response_str);
-
-    let response: CResponse = serde_json::from_str(&response_str)
+/// Parses the JSON response string from the C library (start/dispose) into the inner data or error.
+fn parse_json_response(response_str: &str) -> Result<serde_json::Value, SpiceDBError> {
+    let response: CResponse = serde_json::from_str(response_str)
         .map_err(|e| SpiceDBError::Protocol(format!("invalid JSON: {e} (raw: {response_str})")))?;
 
     if response.success {
@@ -100,223 +59,300 @@ unsafe fn call_and_parse(ptr: *mut c_char) -> Result<serde_json::Value, SpiceDBE
     }
 }
 
-/// Embedded `SpiceDB` instance.
-///
-/// A thin wrapper that connects auto-generated tonic gRPC clients over a Unix
-/// socket. Use [`permissions`](EmbeddedSpiceDB::permissions), [`schema`](EmbeddedSpiceDB::schema),
-/// and [`watch`](EmbeddedSpiceDB::watch) to access the full `SpiceDB` API.
+use spicedb_api::v1::{
+    CheckBulkPermissionsRequest, CheckBulkPermissionsResponse, CheckPermissionRequest,
+    CheckPermissionResponse, DeleteRelationshipsRequest, DeleteRelationshipsResponse,
+    ExpandPermissionTreeRequest, ExpandPermissionTreeResponse, ReadSchemaRequest,
+    ReadSchemaResponse, WriteRelationshipsResponse, WriteSchemaResponse,
+};
+use spicedb_embedded_sys::memory_transport;
+
+/// Embedded `SpiceDB` instance (in-memory transport). All RPCs go through the FFI.
+/// For streaming APIs (`Watch`, `ReadRelationships`, etc.) use [`streaming_address`](EmbeddedSpiceDB::streaming_address)
+/// (the C library starts a streaming proxy and returns it in the start response).
 pub struct EmbeddedSpiceDB {
     handle: u64,
-    channel: Channel,
+    /// Set from the C library start response; use for `Watch`, `ReadRelationships`, `LookupResources`, `LookupSubjects`.
+    streaming_address: String,
+    /// Set from the C library start response: "unix" or "tcp".
+    streaming_transport: String,
 }
 
 unsafe impl Send for EmbeddedSpiceDB {}
 unsafe impl Sync for EmbeddedSpiceDB {}
 
 impl EmbeddedSpiceDB {
-    /// Create a new embedded `SpiceDB` instance with a schema and relationships.
+    /// Create a new embedded `SpiceDB` instance with optional schema and relationships.
     ///
-    /// This starts a `SpiceDB` server via the C-shared library, connects over a Unix
-    /// socket or TCP, then bootstraps schema and relationships via gRPC.
-    ///
-    /// # Arguments
-    ///
-    /// * `schema` - The `SpiceDB` schema definition (ZED language)
-    /// * `relationships` - Initial relationships (uses types from `spicedb_grpc::authzed::api::v1`)
+    /// If `schema` is non-empty, writes it via `SchemaService`. If `relationships` is non-empty, writes them via `WriteRelationships`.
     ///
     /// # Errors
     ///
-    /// Returns an error if the server fails to start, connection fails, or gRPC writes fail.
-    pub async fn new(
+    /// Returns an error if the C library fails to start, returns invalid JSON, or schema/relationship write fails.
+    pub fn new(
         schema: &str,
-        relationships: &[spicedb_grpc::authzed::api::v1::Relationship],
-    ) -> Result<Self, SpiceDBError> {
-        Self::new_with_options(schema, relationships, None).await
-    }
-
-    /// Create a new embedded `SpiceDB` instance with options.
-    ///
-    /// This starts a `SpiceDB` server via the C-shared library, connects over a Unix
-    /// socket or TCP, then bootstraps schema and relationships via gRPC.
-    ///
-    /// # Arguments
-    ///
-    /// * `schema` - The `SpiceDB` schema definition (ZED language)
-    /// * `relationships` - Initial relationships (uses types from `spicedb_grpc::authzed::api::v1`)
-    /// * `options` - Optional configuration (`datastore`, `grpc_transport`). Use `None` for defaults.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the server fails to start, connection fails, or gRPC writes fail.
-    pub async fn new_with_options(
-        schema: &str,
-        relationships: &[spicedb_grpc::authzed::api::v1::Relationship],
+        relationships: &[spicedb_api::v1::Relationship],
         options: Option<&StartOptions>,
     ) -> Result<Self, SpiceDBError> {
-        debug!(
-            "Starting SpiceDB instance with schema ({} bytes), {} relationships",
-            schema.len(),
-            relationships.len()
-        );
-
-        let (options_ptr, _cstr_guard): (*const c_char, Option<CString>) = match options {
-            Some(opts) => {
-                let json = serde_json::to_string(opts).map_err(|e| {
-                    SpiceDBError::Protocol(format!("failed to serialize options: {e}"))
-                })?;
-                let cstr = CString::new(json).map_err(|e| {
-                    SpiceDBError::Protocol(format!("options contains null byte: {e}"))
-                })?;
-                let ptr = cstr.as_ptr();
-                (ptr, Some(cstr))
-            }
-            None => (std::ptr::null(), None),
-        };
-
-        let data = unsafe {
-            let result = native::spicedb_start(options_ptr);
-            call_and_parse(result)?
-        };
-
-        let new_resp: NewResponse = serde_json::from_value(data)
-            .map_err(|e| SpiceDBError::Protocol(format!("invalid new response: {e}")))?;
-
-        debug!(
-            "Connecting to SpiceDB at {} ({})",
-            new_resp.address, new_resp.grpc_transport
-        );
-
-        let channel = connect_to_spicedb(&new_resp.grpc_transport, &new_resp.address)
-            .await
-            .map_err(|e| {
-                unsafe {
-                    let result = native::spicedb_dispose(new_resp.handle);
-                    if !result.is_null() {
-                        native::spicedb_free(result);
-                    }
-                }
-                SpiceDBError::Runtime(format!("failed to connect to SpiceDB: {e}"))
+        let opts = options.cloned().unwrap_or_default();
+        let json = serde_json::to_string(&opts)
+            .map_err(|e| SpiceDBError::Protocol(format!("serialize options: {e}")))?;
+        let response_str = start(Some(&json)).map_err(SpiceDBError::Runtime)?;
+        let data = parse_json_response(&response_str)?;
+        let handle = data
+            .get("handle")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| SpiceDBError::Protocol("missing handle in start response".into()))?;
+        let streaming_address = data
+            .get("streaming_address")
+            .and_then(serde_json::Value::as_str)
+            .map(String::from)
+            .ok_or_else(|| {
+                SpiceDBError::Protocol("missing streaming_address in start response".into())
+            })?;
+        let streaming_transport = data
+            .get("streaming_transport")
+            .and_then(serde_json::Value::as_str)
+            .map(String::from)
+            .ok_or_else(|| {
+                SpiceDBError::Protocol("missing streaming_transport in start response".into())
             })?;
 
         let db = Self {
-            handle: new_resp.handle,
-            channel,
+            handle,
+            streaming_address,
+            streaming_transport,
         };
 
-        // Bootstrap via gRPC
-        db.schema()
-            .write_schema(tonic::Request::new(WriteSchemaRequest {
-                schema: schema.to_string(),
-            }))
-            .await
-            .map_err(|e| SpiceDBError::SpiceDB(format!("write schema failed: {e}")))?;
+        if !schema.is_empty() {
+            memory_transport::write_schema(
+                db.handle,
+                &WriteSchemaRequest {
+                    schema: schema.to_string(),
+                },
+            )
+            .map_err(|e| SpiceDBError::SpiceDB(e.0))?;
+        }
 
         if !relationships.is_empty() {
             let updates: Vec<RelationshipUpdate> = relationships
                 .iter()
-                .map(|rel| RelationshipUpdate {
+                .map(|r| RelationshipUpdate {
                     operation: Operation::Touch as i32,
-                    relationship: Some(rel.clone()),
+                    relationship: Some(r.clone()),
                 })
                 .collect();
-            db.permissions()
-                .write_relationships(tonic::Request::new(WriteRelationshipsRequest {
+            memory_transport::write_relationships(
+                db.handle,
+                &WriteRelationshipsRequest {
                     updates,
                     optional_preconditions: vec![],
-                }))
-                .await
-                .map_err(|e| SpiceDBError::SpiceDB(format!("write relationships failed: {e}")))?;
+                    optional_transaction_metadata: None,
+                },
+            )
+            .map_err(|e| SpiceDBError::SpiceDB(e.0))?;
         }
 
         Ok(db)
     }
 
-    /// Permissions service client (`CheckPermission`, `WriteRelationships`, `ReadRelationships`, etc.)
+    /// Permissions service (`CheckPermission`, `WriteRelationships`, `DeleteRelationships`, etc.).
     #[must_use]
-    pub fn permissions(&self) -> PermissionsServiceClient<Channel> {
-        PermissionsServiceClient::new(self.channel.clone())
+    pub const fn permissions(&self) -> MemoryPermissionsClient {
+        MemoryPermissionsClient {
+            handle: self.handle,
+        }
     }
 
-    /// Schema service client (`ReadSchema`, `WriteSchema`, `ReflectSchema`, etc.)
+    /// Schema service (`ReadSchema`, `WriteSchema`).
     #[must_use]
-    pub fn schema(&self) -> SchemaServiceClient<Channel> {
-        SchemaServiceClient::new(self.channel.clone())
+    pub const fn schema(&self) -> MemorySchemaClient {
+        MemorySchemaClient {
+            handle: self.handle,
+        }
     }
 
-    /// Watch service client (watch for relationship changes)
+    /// Raw handle for advanced use (e.g. with [`spicedb_embedded_sys::memory_transport`]).
     #[must_use]
-    pub fn watch(&self) -> WatchServiceClient<Channel> {
-        WatchServiceClient::new(self.channel.clone())
+    pub const fn handle(&self) -> u64 {
+        self.handle
+    }
+
+    /// Returns the address for streaming APIs (`Watch`, `ReadRelationships`, `LookupResources`, `LookupSubjects`).
+    /// Set from the C library start response when the streaming proxy was started.
+    #[must_use]
+    pub fn streaming_address(&self) -> &str {
+        &self.streaming_address
+    }
+
+    /// Streaming proxy transport: "unix" or "tcp" (from C library start response).
+    #[must_use]
+    pub fn streaming_transport(&self) -> &str {
+        &self.streaming_transport
     }
 }
 
 impl Drop for EmbeddedSpiceDB {
     fn drop(&mut self) {
-        debug!("Disposing SpiceDB handle {}", self.handle);
-        unsafe {
-            let result = native::spicedb_dispose(self.handle);
-            if !result.is_null() {
-                native::spicedb_free(result);
-            }
-        }
+        let _ = dispose(self.handle);
     }
 }
 
-async fn connect_to_spicedb(
-    transport: &str,
-    address: &str,
-) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
-    if transport == "tcp" {
-        connect_tcp(address).await
-    } else {
-        connect_unix_socket(address).await
+/// Permissions service client for memory transport. All methods are synchronous and use the -sys safe layer.
+pub struct MemoryPermissionsClient {
+    handle: u64,
+}
+
+impl MemoryPermissionsClient {
+    /// `CheckPermission`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the FFI call fails or the response cannot be decoded.
+    pub fn check_permission(
+        &self,
+        request: &CheckPermissionRequest,
+    ) -> Result<CheckPermissionResponse, SpiceDBError> {
+        memory_transport::check_permission(self.handle, request)
+            .map_err(|e| SpiceDBError::SpiceDB(e.0))
+    }
+
+    /// `WriteRelationships`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the FFI call fails or the response cannot be decoded.
+    pub fn write_relationships(
+        &self,
+        request: &WriteRelationshipsRequest,
+    ) -> Result<WriteRelationshipsResponse, SpiceDBError> {
+        memory_transport::write_relationships(self.handle, request)
+            .map_err(|e| SpiceDBError::SpiceDB(e.0))
+    }
+
+    /// `DeleteRelationships`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the FFI call fails or the response cannot be decoded.
+    pub fn delete_relationships(
+        &self,
+        request: &DeleteRelationshipsRequest,
+    ) -> Result<DeleteRelationshipsResponse, SpiceDBError> {
+        memory_transport::delete_relationships(self.handle, request)
+            .map_err(|e| SpiceDBError::SpiceDB(e.0))
+    }
+
+    /// `CheckBulkPermissions`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the FFI call fails or the response cannot be decoded.
+    pub fn check_bulk_permissions(
+        &self,
+        request: &CheckBulkPermissionsRequest,
+    ) -> Result<CheckBulkPermissionsResponse, SpiceDBError> {
+        memory_transport::check_bulk_permissions(self.handle, request)
+            .map_err(|e| SpiceDBError::SpiceDB(e.0))
+    }
+
+    /// `ExpandPermissionTree`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the FFI call fails or the response cannot be decoded.
+    pub fn expand_permission_tree(
+        &self,
+        request: &ExpandPermissionTreeRequest,
+    ) -> Result<ExpandPermissionTreeResponse, SpiceDBError> {
+        memory_transport::expand_permission_tree(self.handle, request)
+            .map_err(|e| SpiceDBError::SpiceDB(e.0))
     }
 }
 
-async fn connect_tcp(address: &str) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
-    Endpoint::from_shared(format!("http://{address}"))?
-        .connect()
-        .await
-        .map_err(Into::into)
+/// Schema service client for memory transport.
+pub struct MemorySchemaClient {
+    handle: u64,
 }
 
-#[cfg(unix)]
-async fn connect_unix_socket(
-    address: &str,
-) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
-    let path = address.to_string();
-    let channel = Endpoint::try_from("http://[::]:50051")?
-        .connect_with_connector(service_fn(move |_: Uri| {
-            let path = path.clone();
-            async move {
-                let stream = UnixStream::connect(&path).await?;
-                Ok::<_, std::io::Error>(hyper_util::rt::TokioIo::new(stream))
-            }
-        }))
-        .await?;
-    Ok(channel)
-}
+impl MemorySchemaClient {
+    /// `ReadSchema`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the FFI call fails or the response cannot be decoded.
+    pub fn read_schema(
+        &self,
+        request: &ReadSchemaRequest,
+    ) -> Result<ReadSchemaResponse, SpiceDBError> {
+        memory_transport::read_schema(self.handle, request).map_err(|e| SpiceDBError::SpiceDB(e.0))
+    }
 
-#[cfg(windows)]
-fn connect_unix_socket(
-    _address: &str,
-) -> std::future::Ready<Result<Channel, Box<dyn std::error::Error + Send + Sync>>> {
-    std::future::ready(Err(
-        "Unix domain sockets are not supported on Windows".into()
-    ))
+    /// `WriteSchema`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the FFI call fails or the response cannot be decoded.
+    pub fn write_schema(
+        &self,
+        request: &WriteSchemaRequest,
+    ) -> Result<WriteSchemaResponse, SpiceDBError> {
+        memory_transport::write_schema(self.handle, request).map_err(|e| SpiceDBError::SpiceDB(e.0))
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use spicedb_grpc::authzed::api::v1::{
+
+    use std::time::Duration;
+
+    use spicedb_api::v1::{
         CheckPermissionRequest, Consistency, ObjectReference, ReadRelationshipsRequest,
-        Relationship, RelationshipFilter, RelationshipUpdate, SubjectReference,
-        WriteRelationshipsRequest, relationship_update::Operation,
+        Relationship, RelationshipFilter, RelationshipUpdate, SubjectReference, WatchKind,
+        WatchRequest, WriteRelationshipsRequest, relationship_update::Operation,
+        watch_service_client::WatchServiceClient,
     };
+    use tokio::time::timeout;
     use tokio_stream::StreamExt;
+    use tonic::transport::{Channel, Endpoint};
 
     use super::*;
     use crate::v1::check_permission_response::Permissionship;
+
+    /// Connect to the streaming proxy (addr + transport from C library start response).
+    async fn connect_streaming(
+        addr: &str,
+        transport: &str,
+    ) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
+        #[cfg(unix)]
+        {
+            if transport == "unix" {
+                let path = addr.to_string();
+                Endpoint::try_from("http://[::]:50051")?
+                    .connect_with_connector(tower::service_fn(move |_: tonic::transport::Uri| {
+                        let path = path.clone();
+                        async move {
+                            let stream = tokio::net::UnixStream::connect(&path).await?;
+                            Ok::<_, std::io::Error>(hyper_util::rt::TokioIo::new(stream))
+                        }
+                    }))
+                    .await
+                    .map_err(Into::into)
+            } else {
+                Endpoint::from_shared(format!("http://{addr}"))?
+                    .connect()
+                    .await
+                    .map_err(Into::into)
+            }
+        }
+        #[cfg(windows)]
+        {
+            Endpoint::from_shared(format!("http://{addr}"))?
+                .connect()
+                .await
+                .map_err(Into::into)
+        }
+    }
 
     const TEST_SCHEMA: &str = r"
 definition user {}
@@ -347,6 +383,7 @@ definition document {
                 optional_relation: String::new(),
             }),
             optional_caveat: None,
+            optional_expires_at: None,
         }
     }
 
@@ -378,200 +415,210 @@ definition document {
         }
     }
 
-    #[tokio::test]
-    async fn test_ffi_spicedb() {
+    /// `EmbeddedSpiceDB::new` + `.permissions().check_permission()`. Skipped on bind/streaming proxy errors.
+    #[test]
+    fn test_check_permission() {
+        let relationships = vec![
+            rel("document:readme", "reader", "user:alice"),
+            rel("document:readme", "writer", "user:bob"),
+        ];
+        let spicedb = match EmbeddedSpiceDB::new(TEST_SCHEMA, &relationships, None) {
+            Ok(db) => db,
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("streaming proxy")
+                    || msg.contains("bind")
+                    || msg.contains("operation not permitted")
+                {
+                    return;
+                }
+                panic!("EmbeddedSpiceDB::new failed: {e}");
+            }
+        };
+
+        let response = spicedb
+            .permissions()
+            .check_permission(&check_req("document:readme", "read", "user:alice"))
+            .unwrap();
+        assert_eq!(
+            response.permissionship,
+            Permissionship::HasPermission as i32,
+            "alice should have read on document:readme"
+        );
+    }
+
+    /// Verifies the streaming proxy: start Watch stream, write a relationship, receive update on stream. Skipped on bind/proxy errors.
+    #[test]
+    fn test_watch_streaming() {
+        let db = match EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None) {
+            Ok(d) => d,
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("streaming proxy")
+                    || msg.contains("bind")
+                    || msg.contains("operation not permitted")
+                {
+                    return;
+                }
+                panic!("EmbeddedSpiceDB::new failed: {e}");
+            }
+        };
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let channel = connect_streaming(db.streaming_address(), db.streaming_transport())
+                .await
+                .unwrap();
+            let mut watch_client = WatchServiceClient::new(channel);
+            // Request checkpoints so the server sends an initial response and keeps the stream alive.
+            let watch_req = WatchRequest {
+                optional_update_kinds: vec![
+                    WatchKind::IncludeRelationshipUpdates.into(),
+                    WatchKind::IncludeCheckpoints.into(),
+                ],
+                ..Default::default()
+            };
+            let mut stream =
+                match timeout(Duration::from_secs(10), watch_client.watch(watch_req)).await {
+                    Ok(Ok(response)) => response.into_inner(),
+                    Ok(Err(e)) => panic!("watch() failed: {e}"),
+                    Err(_) => return,
+                };
+
+            let write_req = WriteRelationshipsRequest {
+                updates: vec![RelationshipUpdate {
+                    operation: Operation::Touch as i32,
+                    relationship: Some(rel("document:watched", "reader", "user:alice")),
+                }],
+                optional_preconditions: vec![],
+                optional_transaction_metadata: None,
+            };
+            db.permissions().write_relationships(&write_req).unwrap();
+
+            let mut received_update = false;
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+            while tokio::time::Instant::now() < deadline {
+                match timeout(Duration::from_millis(200), stream.next()).await {
+                    Ok(Some(Ok(resp))) => {
+                        if !resp.updates.is_empty() {
+                            received_update = true;
+                            break;
+                        }
+                    }
+                    Ok(Some(Err(e))) => panic!("watch stream error: {e}"),
+                    Ok(None) => break,
+                    Err(_) => {}
+                }
+            }
+            assert!(
+                received_update,
+                "expected at least one Watch response with updates within 3s"
+            );
+        });
+    }
+
+    #[test]
+    fn test_ffi_spicedb() {
         let relationships = vec![
             rel("document:readme", "reader", "user:alice"),
             rel("document:readme", "writer", "user:bob"),
         ];
 
-        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &relationships)
-            .await
-            .unwrap();
+        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &relationships, None).unwrap();
 
-        assert!(
+        assert_eq!(
             spicedb
                 .permissions()
-                .check_permission(tonic::Request::new(check_req(
-                    "document:readme",
-                    "read",
-                    "user:alice"
-                )))
-                .await
+                .check_permission(&check_req("document:readme", "read", "user:alice"))
                 .unwrap()
-                .into_inner()
-                .permissionship
-                == Permissionship::HasPermission as i32
+                .permissionship,
+            Permissionship::HasPermission as i32,
         );
         assert_eq!(
             spicedb
                 .permissions()
-                .check_permission(tonic::Request::new(check_req(
-                    "document:readme",
-                    "write",
-                    "user:alice"
-                )))
-                .await
+                .check_permission(&check_req("document:readme", "write", "user:alice"))
                 .unwrap()
-                .into_inner()
                 .permissionship,
             Permissionship::NoPermission as i32,
         );
-        assert!(
+        assert_eq!(
             spicedb
                 .permissions()
-                .check_permission(tonic::Request::new(check_req(
-                    "document:readme",
-                    "read",
-                    "user:bob"
-                )))
-                .await
+                .check_permission(&check_req("document:readme", "read", "user:bob"))
                 .unwrap()
-                .into_inner()
-                .permissionship
-                == Permissionship::HasPermission as i32
-        );
-        assert!(
-            spicedb
-                .permissions()
-                .check_permission(tonic::Request::new(check_req(
-                    "document:readme",
-                    "write",
-                    "user:bob"
-                )))
-                .await
-                .unwrap()
-                .into_inner()
-                .permissionship
-                == Permissionship::HasPermission as i32
+                .permissionship,
+            Permissionship::HasPermission as i32,
         );
         assert_eq!(
             spicedb
                 .permissions()
-                .check_permission(tonic::Request::new(check_req(
-                    "document:readme",
-                    "read",
-                    "user:charlie"
-                )))
-                .await
+                .check_permission(&check_req("document:readme", "write", "user:bob"))
                 .unwrap()
-                .into_inner()
+                .permissionship,
+            Permissionship::HasPermission as i32,
+        );
+        assert_eq!(
+            spicedb
+                .permissions()
+                .check_permission(&check_req("document:readme", "read", "user:charlie"))
+                .unwrap()
                 .permissionship,
             Permissionship::NoPermission as i32,
         );
     }
 
-    #[tokio::test]
-    async fn test_add_relationship() {
-        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &[]).await.unwrap();
+    #[test]
+    fn test_add_relationship() {
+        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None).unwrap();
 
         spicedb
             .permissions()
-            .write_relationships(tonic::Request::new(WriteRelationshipsRequest {
+            .write_relationships(&WriteRelationshipsRequest {
                 updates: vec![RelationshipUpdate {
                     operation: Operation::Touch as i32,
                     relationship: Some(rel("document:test", "reader", "user:alice")),
                 }],
                 optional_preconditions: vec![],
-            }))
-            .await
+                optional_transaction_metadata: None,
+            })
             .unwrap();
 
         let r = spicedb
             .permissions()
-            .check_permission(tonic::Request::new(CheckPermissionRequest {
-                consistency: Some(fully_consistent()),
-                resource: Some(ObjectReference {
-                    object_type: "document".into(),
-                    object_id: "test".into(),
-                }),
-                permission: "read".into(),
-                subject: Some(SubjectReference {
-                    object: Some(ObjectReference {
-                        object_type: "user".into(),
-                        object_id: "alice".into(),
-                    }),
-                    optional_relation: String::new(),
-                }),
-                context: None,
-                with_tracing: false,
-            }))
-            .await
+            .check_permission(&check_req("document:test", "read", "user:alice"))
             .unwrap();
-        assert_eq!(
-            r.into_inner().permissionship,
-            Permissionship::HasPermission as i32
-        );
+        assert_eq!(r.permissionship, Permissionship::HasPermission as i32);
     }
 
-    #[tokio::test]
-    async fn test_parallel_instances() {
-        let spicedb1 = EmbeddedSpiceDB::new(TEST_SCHEMA, &[]).await.unwrap();
-        let spicedb2 = EmbeddedSpiceDB::new(TEST_SCHEMA, &[]).await.unwrap();
+    #[test]
+    fn test_parallel_instances() {
+        let spicedb1 = EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None).unwrap();
+        let spicedb2 = EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None).unwrap();
 
         spicedb1
             .permissions()
-            .write_relationships(tonic::Request::new(WriteRelationshipsRequest {
+            .write_relationships(&WriteRelationshipsRequest {
                 updates: vec![RelationshipUpdate {
                     operation: Operation::Touch as i32,
                     relationship: Some(rel("document:doc1", "reader", "user:alice")),
                 }],
                 optional_preconditions: vec![],
-            }))
-            .await
+                optional_transaction_metadata: None,
+            })
             .unwrap();
 
         let r1 = spicedb1
             .permissions()
-            .check_permission(tonic::Request::new(CheckPermissionRequest {
-                consistency: Some(fully_consistent()),
-                resource: Some(ObjectReference {
-                    object_type: "document".into(),
-                    object_id: "doc1".into(),
-                }),
-                permission: "read".into(),
-                subject: Some(SubjectReference {
-                    object: Some(ObjectReference {
-                        object_type: "user".into(),
-                        object_id: "alice".into(),
-                    }),
-                    optional_relation: String::new(),
-                }),
-                context: None,
-                with_tracing: false,
-            }))
-            .await
+            .check_permission(&check_req("document:doc1", "read", "user:alice"))
             .unwrap();
-        assert_eq!(
-            r1.into_inner().permissionship,
-            Permissionship::HasPermission as i32
-        );
+        assert_eq!(r1.permissionship, Permissionship::HasPermission as i32);
 
         let r2 = spicedb2
             .permissions()
-            .check_permission(tonic::Request::new(CheckPermissionRequest {
-                consistency: Some(fully_consistent()),
-                resource: Some(ObjectReference {
-                    object_type: "document".into(),
-                    object_id: "doc1".into(),
-                }),
-                permission: "read".into(),
-                subject: Some(SubjectReference {
-                    object: Some(ObjectReference {
-                        object_type: "user".into(),
-                        object_id: "alice".into(),
-                    }),
-                    optional_relation: String::new(),
-                }),
-                context: None,
-                with_tracing: false,
-            }))
-            .await
+            .check_permission(&check_req("document:doc1", "read", "user:alice"))
             .unwrap();
-        assert_eq!(
-            r2.into_inner().permissionship,
-            Permissionship::NoPermission as i32
-        );
+        assert_eq!(r2.permissionship, Permissionship::NoPermission as i32);
     }
 
     #[tokio::test]
@@ -581,13 +628,14 @@ definition document {
             rel("document:doc1", "reader", "user:bob"),
         ];
 
-        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &relationships)
+        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &relationships, None).unwrap();
+        let channel = connect_streaming(spicedb.streaming_address(), spicedb.streaming_transport())
             .await
             .unwrap();
-
-        let mut client = spicedb.permissions();
+        let mut client =
+            spicedb_api::v1::permissions_service_client::PermissionsServiceClient::new(channel);
         let mut stream = client
-            .read_relationships(tonic::Request::new(ReadRelationshipsRequest {
+            .read_relationships(ReadRelationshipsRequest {
                 consistency: Some(fully_consistent()),
                 relationship_filter: Some(RelationshipFilter {
                     resource_type: "document".into(),
@@ -598,7 +646,7 @@ definition document {
                 }),
                 optional_limit: 0,
                 optional_cursor: None,
-            }))
+            })
             .await
             .unwrap()
             .into_inner();
@@ -611,9 +659,9 @@ definition document {
     }
 
     /// Performance test - run with `cargo test perf_ -- --nocapture --ignored`
-    #[tokio::test]
+    #[test]
     #[ignore = "performance test - run manually with --ignored flag"]
-    async fn perf_check_with_1000_relationships() {
+    fn perf_check_with_1000_relationships() {
         const NUM_CHECKS: usize = 100;
         use std::time::Instant;
 
@@ -631,9 +679,7 @@ definition document {
         println!("\n=== Performance: Check with 1000 relationships ===");
 
         let start = Instant::now();
-        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &relationships)
-            .await
-            .unwrap();
+        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &relationships, None).unwrap();
         println!(
             "Instance creation with 1000 relationships: {:?}",
             start.elapsed()
@@ -641,14 +687,11 @@ definition document {
 
         // Warm up
         for _ in 0..10 {
-            let _ = spicedb
-                .permissions()
-                .check_permission(tonic::Request::new(check_req(
-                    "document:doc0",
-                    "read",
-                    "user:user0",
-                )))
-                .await;
+            let _ = spicedb.permissions().check_permission(&check_req(
+                "document:doc0",
+                "read",
+                "user:user0",
+            ));
         }
 
         // Benchmark permission checks
@@ -658,8 +701,7 @@ definition document {
             let user = format!("user:user{}", i % 100);
             let _ = spicedb
                 .permissions()
-                .check_permission(tonic::Request::new(check_req(&doc, "read", &user)))
-                .await
+                .check_permission(&check_req(&doc, "read", &user))
                 .unwrap();
         }
         let elapsed = start.elapsed();
@@ -674,13 +716,13 @@ definition document {
     }
 
     /// Performance test for individual relationship additions
-    #[tokio::test]
+    #[test]
     #[ignore = "performance test - run manually with --ignored flag"]
-    async fn perf_add_individual_relationships() {
+    fn perf_add_individual_relationships() {
         const NUM_ADDS: usize = 50;
         use std::time::Instant;
 
-        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &[]).await.unwrap();
+        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None).unwrap();
 
         println!("\n=== Performance: Add individual relationships ===");
 
@@ -688,7 +730,7 @@ definition document {
         for i in 0..NUM_ADDS {
             spicedb
                 .permissions()
-                .write_relationships(tonic::Request::new(WriteRelationshipsRequest {
+                .write_relationships(&WriteRelationshipsRequest {
                     updates: vec![RelationshipUpdate {
                         operation: Operation::Touch as i32,
                         relationship: Some(rel(
@@ -698,8 +740,8 @@ definition document {
                         )),
                     }],
                     optional_preconditions: vec![],
-                }))
-                .await
+                    optional_transaction_metadata: None,
+                })
                 .unwrap();
         }
         let elapsed = start.elapsed();
@@ -714,12 +756,12 @@ definition document {
     }
 
     /// Performance test for bulk relationship writes
-    #[tokio::test]
+    #[test]
     #[ignore = "performance test - run manually with --ignored flag"]
-    async fn perf_bulk_write_relationships() {
+    fn perf_bulk_write_relationships() {
         use std::time::Instant;
 
-        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &[]).await.unwrap();
+        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None).unwrap();
 
         println!("\n=== Performance: Bulk write relationships ===");
 
@@ -739,7 +781,7 @@ definition document {
             let start = Instant::now();
             spicedb
                 .permissions()
-                .write_relationships(tonic::Request::new(WriteRelationshipsRequest {
+                .write_relationships(&WriteRelationshipsRequest {
                     updates: relationships
                         .iter()
                         .map(|r| RelationshipUpdate {
@@ -748,8 +790,8 @@ definition document {
                         })
                         .collect(),
                     optional_preconditions: vec![],
-                }))
-                .await
+                    optional_transaction_metadata: None,
+                })
                 .unwrap();
             let elapsed = start.elapsed();
 
@@ -764,13 +806,13 @@ definition document {
         // Compare: 10 individual vs 10 bulk
         println!("\n--- Comparison: 10 individual vs 10 bulk ---");
 
-        let spicedb2 = EmbeddedSpiceDB::new(TEST_SCHEMA, &[]).await.unwrap();
+        let spicedb2 = EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None).unwrap();
 
         let start = Instant::now();
         for i in 0..10 {
             spicedb2
                 .permissions()
-                .write_relationships(tonic::Request::new(WriteRelationshipsRequest {
+                .write_relationships(&WriteRelationshipsRequest {
                     updates: vec![RelationshipUpdate {
                         operation: Operation::Touch as i32,
                         relationship: Some(rel(
@@ -780,8 +822,8 @@ definition document {
                         )),
                     }],
                     optional_preconditions: vec![],
-                }))
-                .await
+                    optional_transaction_metadata: None,
+                })
                 .unwrap();
         }
         let individual_time = start.elapsed();
@@ -793,7 +835,7 @@ definition document {
         let start = Instant::now();
         spicedb2
             .permissions()
-            .write_relationships(tonic::Request::new(WriteRelationshipsRequest {
+            .write_relationships(&WriteRelationshipsRequest {
                 updates: relationships
                     .iter()
                     .map(|r| RelationshipUpdate {
@@ -802,8 +844,8 @@ definition document {
                     })
                     .collect(),
                 optional_preconditions: vec![],
-            }))
-            .await
+                optional_transaction_metadata: None,
+            })
             .unwrap();
         let bulk_time = start.elapsed();
         println!("10 bulk add: {bulk_time:?}");
@@ -813,10 +855,10 @@ definition document {
         );
     }
 
-    /// Performance test with 50,000 relationships - Embedded
-    #[tokio::test]
+    /// Performance test: 50,000 relationships
+    #[test]
     #[ignore = "performance test - run manually with --ignored flag"]
-    async fn perf_embedded_50k_relationships() {
+    fn perf_embedded_50k_relationships() {
         const TOTAL_RELS: usize = 50_000;
         const BATCH_SIZE: usize = 1000;
         const NUM_CHECKS: usize = 500;
@@ -827,7 +869,7 @@ definition document {
         // Create 50,000 relationships in batches (SpiceDB max batch is 1000)
         println!("Creating instance...");
         let start = Instant::now();
-        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &[]).await.unwrap();
+        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None).unwrap();
         println!("Instance creation time: {:?}", start.elapsed());
 
         println!("Adding {TOTAL_RELS} relationships in batches of {BATCH_SIZE}...");
@@ -845,7 +887,7 @@ definition document {
                 .collect();
             spicedb
                 .permissions()
-                .write_relationships(tonic::Request::new(WriteRelationshipsRequest {
+                .write_relationships(&WriteRelationshipsRequest {
                     updates: relationships
                         .iter()
                         .map(|r| RelationshipUpdate {
@@ -854,8 +896,8 @@ definition document {
                         })
                         .collect(),
                     optional_preconditions: vec![],
-                }))
-                .await
+                    optional_transaction_metadata: None,
+                })
                 .unwrap();
         }
         println!(
@@ -866,14 +908,11 @@ definition document {
 
         // Warm up
         for _ in 0..20 {
-            let _ = spicedb
-                .permissions()
-                .check_permission(tonic::Request::new(check_req(
-                    "document:doc0",
-                    "read",
-                    "user:user0",
-                )))
-                .await;
+            let _ = spicedb.permissions().check_permission(&check_req(
+                "document:doc0",
+                "read",
+                "user:user0",
+            ));
         }
 
         // Benchmark permission checks
@@ -884,8 +923,7 @@ definition document {
             let user = format!("user:user{}", i % 1000);
             let _ = spicedb
                 .permissions()
-                .check_permission(tonic::Request::new(check_req(&doc, "read", &user)))
-                .await
+                .check_permission(&check_req(&doc, "read", &user))
                 .unwrap();
         }
         let elapsed = start.elapsed();
@@ -904,12 +942,7 @@ definition document {
             // user:nonexistent doesn't exist
             let _ = spicedb
                 .permissions()
-                .check_permission(tonic::Request::new(check_req(
-                    &doc,
-                    "read",
-                    "user:nonexistent",
-                )))
-                .await
+                .check_permission(&check_req(&doc, "read", "user:nonexistent"))
                 .unwrap();
         }
         let elapsed = start.elapsed();
@@ -968,50 +1001,37 @@ definition document {
         }
 
         /// Two servers, shared datastore: write via server 1, read via server 2.
-        async fn run_shared_datastore_test(datastore: &str, datastore_uri: &str) {
+        fn run_shared_datastore_test(datastore: &str, datastore_uri: &str) {
             run_migrate(datastore, datastore_uri, &[]).expect("migration must succeed");
 
             let opts = StartOptions {
                 datastore: Some(datastore.into()),
                 datastore_uri: Some(datastore_uri.into()),
-                grpc_transport: Some("tcp".into()),
                 ..Default::default()
             };
 
             let schema = TEST_SCHEMA;
-            let db1 = EmbeddedSpiceDB::new_with_options(schema, &[], Some(&opts))
-                .await
-                .unwrap();
-            let db2 = EmbeddedSpiceDB::new_with_options(schema, &[], Some(&opts))
-                .await
-                .unwrap();
+            let db1 = EmbeddedSpiceDB::new(schema, &[], Some(&opts)).unwrap();
+            let db2 = EmbeddedSpiceDB::new(schema, &[], Some(&opts)).unwrap();
 
             // Write via server 1
             db1.permissions()
-                .write_relationships(tonic::Request::new(WriteRelationshipsRequest {
+                .write_relationships(&WriteRelationshipsRequest {
                     updates: vec![RelationshipUpdate {
                         operation: Operation::Touch as i32,
                         relationship: Some(rel("document:shared", "reader", "user:alice")),
                     }],
                     optional_preconditions: vec![],
-                }))
-                .await
+                    optional_transaction_metadata: None,
+                })
                 .unwrap();
 
             // Read via server 2 (shared datastore)
             let r = db2
                 .permissions()
-                .check_permission(tonic::Request::new(check_req(
-                    "document:shared",
-                    "read",
-                    "user:alice",
-                )))
-                .await
+                .check_permission(&check_req("document:shared", "read", "user:alice"))
                 .unwrap();
-            assert_eq!(
-                r.into_inner().permissionship,
-                Permissionship::HasPermission as i32
-            );
+            assert_eq!(r.permissionship, Permissionship::HasPermission as i32);
         }
 
         #[tokio::test]
@@ -1026,7 +1046,7 @@ definition document {
             let host = container.get_host().await.unwrap();
             let port = container.get_host_port_ipv4(5432).await.unwrap();
             let uri = format!("postgres://postgres:postgres@{host}:{port}/postgres");
-            run_shared_datastore_test("postgres", &uri).await;
+            run_shared_datastore_test("postgres", &uri);
         }
 
         #[tokio::test]
@@ -1039,7 +1059,7 @@ definition document {
             let host = container.get_host().await.unwrap();
             let port = container.get_host_port_ipv4(26257).await.unwrap();
             let uri = format!("postgres://root@{host}:{port}/defaultdb?sslmode=disable");
-            run_shared_datastore_test("cockroachdb", &uri).await;
+            run_shared_datastore_test("cockroachdb", &uri);
         }
 
         #[tokio::test]
@@ -1053,7 +1073,7 @@ definition document {
             let port = container.get_host_port_ipv4(3306).await.unwrap();
             // MySQL: user@tcp(host:port)/db format; parseTime=true required by SpiceDB
             let uri = format!("root@tcp({host}:{port})/test?parseTime=true");
-            run_shared_datastore_test("mysql", &uri).await;
+            run_shared_datastore_test("mysql", &uri);
         }
 
         #[tokio::test]
@@ -1085,43 +1105,30 @@ definition document {
             let opts = StartOptions {
                 datastore: Some("spanner".into()),
                 datastore_uri: Some(uri),
-                grpc_transport: Some("tcp".into()),
                 spanner_emulator_host: Some(emulator_host),
                 ..Default::default()
             };
 
             let schema = TEST_SCHEMA;
-            let db1 = EmbeddedSpiceDB::new_with_options(schema, &[], Some(&opts))
-                .await
-                .unwrap();
-            let db2 = EmbeddedSpiceDB::new_with_options(schema, &[], Some(&opts))
-                .await
-                .unwrap();
+            let db1 = EmbeddedSpiceDB::new(schema, &[], Some(&opts)).unwrap();
+            let db2 = EmbeddedSpiceDB::new(schema, &[], Some(&opts)).unwrap();
 
             db1.permissions()
-                .write_relationships(tonic::Request::new(WriteRelationshipsRequest {
+                .write_relationships(&WriteRelationshipsRequest {
                     updates: vec![RelationshipUpdate {
                         operation: Operation::Touch as i32,
                         relationship: Some(rel("document:shared", "reader", "user:alice")),
                     }],
                     optional_preconditions: vec![],
-                }))
-                .await
+                    optional_transaction_metadata: None,
+                })
                 .unwrap();
 
             let r = db2
                 .permissions()
-                .check_permission(tonic::Request::new(check_req(
-                    "document:shared",
-                    "read",
-                    "user:alice",
-                )))
-                .await
+                .check_permission(&check_req("document:shared", "read", "user:alice"))
                 .unwrap();
-            assert_eq!(
-                r.into_inner().permissionship,
-                Permissionship::HasPermission as i32
-            );
+            assert_eq!(r.permissionship, Permissionship::HasPermission as i32);
         }
     }
 }

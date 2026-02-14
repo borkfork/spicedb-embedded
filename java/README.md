@@ -97,9 +97,7 @@ try (var spicedb = EmbeddedSpiceDB.create(schema, List.of(), options)) {
 
 It is scary! Using a C-shared library via FFI bindings introduces memory management in languages that don't typically have to worry about it.
 
-However, this library purposely limits the FFI layer. The only thing it is used for is to spawn the SpiceDB server (and to dispose of it when you shut down the embedded server). Once the SpiceDB server is running, it exposes a gRPC interface that listens over Unix Sockets (default on Linux/macOS) or TCP (default on Windows).
-
-So you get the benefits of (1) using the same generated gRPC code to communicate with SpiceDB that would in a non-embedded world, and (2) communication happens out-of-band so that no memory allocations happen in the FFI layer once the embedded server is running.
+That being said, the SpiceDB code still runs in a Go runtime with garbage collection, which is where the vast majority of time is spent. To help mitigate some of the risk, the FFI layer is kept as straightforward as possible. protobuf is marshalled and unmarshalled at the FFI <--> language runtime boundary in a standardized way. After unmarshalling, requests are sent directly to the SpiceDB server, and responses are returned directly back to the language runtime (after marshalling).
 
 ## Installation
 
@@ -184,7 +182,7 @@ try (var spicedb = EmbeddedSpiceDB.create(schema, List.of(rel))) {
 ## API
 
 - **`EmbeddedSpiceDB.create(schema, relationships)`** — Create an instance. Pass `List.of()` for no initial relationships.
-- **`EmbeddedSpiceDB.create(schema, relationships, options)`** — Create with options (datastore, `grpc_transport`, etc.). Pass `null` for defaults.
+- **`EmbeddedSpiceDB.create(schema, relationships, options)`** — Create with options (datastore, etc.). Pass `null` for defaults.
 - **`permissions()`** — Blocking stub for CheckPermission, WriteRelationships, ReadRelationships, etc.
 - **`schema()`** — Blocking stub for ReadSchema, WriteSchema, ReflectSchema, etc.
 - **`watch()`** — Blocking stub for watching relationship changes.
@@ -195,12 +193,11 @@ Use types from `com.authzed.api.v1` (ObjectReference, SubjectReference, Relation
 
 ### StartOptions
 
-Configure datastore and transport via `StartOptions`:
+Configure datastore via `StartOptions`:
 
 ```java
 var options = StartOptions.builder()
     .datastore("memory")           // default; or "postgres", "cockroachdb", "spanner", "mysql"
-    .grpcTransport("unix")          // or "tcp"; default by platform
     .datastoreUri("postgres://...")  // required for postgres, cockroachdb, spanner, mysql
     .build();
 
@@ -211,7 +208,6 @@ try (var spicedb = EmbeddedSpiceDB.create(schema, List.of(), options)) {
 
 - **datastore**: `"memory"` (default), `"postgres"`, `"cockroachdb"`, `"spanner"`, `"mysql"`
 - **datastore_uri**: Connection string (required for remote datastores)
-- **grpc_transport**: `"unix"` (default on Unix), `"tcp"` (default on Windows)
 - **spanner_credentials_file**, **spanner_emulator_host**: Spanner-only
 - **mysql_table_prefix**: MySQL-only (optional)
 - **metrics_enabled**: Enable datastore Prometheus metrics (default: false)

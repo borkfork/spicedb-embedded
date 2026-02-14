@@ -6,8 +6,12 @@ import com.authzed.api.v1.CheckPermissionRequest;
 import com.authzed.api.v1.CheckPermissionResponse;
 import com.authzed.api.v1.Consistency;
 import com.authzed.api.v1.ObjectReference;
+import com.authzed.api.v1.ReadRelationshipsRequest;
+import com.authzed.api.v1.ReadRelationshipsResponse;
 import com.authzed.api.v1.Relationship;
+import com.authzed.api.v1.RelationshipFilter;
 import com.authzed.api.v1.SubjectReference;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -145,6 +149,32 @@ class EmbeddedSpiceDBTest {
       assertEquals(
           CheckPermissionResponse.Permissionship.PERMISSIONSHIP_HAS_PERMISSION,
           response.getPermissionship());
+    }
+  }
+
+  @Test
+  void readRelationshipsStreaming() {
+    var relationships =
+        List.of(
+            rel("document:doc1", "reader", "user:alice"),
+            rel("document:doc1", "writer", "user:bob"),
+            rel("document:doc2", "reader", "user:alice"));
+
+    try (var spicedb = EmbeddedSpiceDB.create(TEST_SCHEMA, relationships)) {
+      var req =
+          ReadRelationshipsRequest.newBuilder()
+              .setConsistency(Consistency.newBuilder().setFullyConsistent(true).build())
+              .setRelationshipFilter(
+                  RelationshipFilter.newBuilder()
+                      .setResourceType("document")
+                      .setOptionalResourceId("doc1")
+                      .build())
+              .build();
+
+      var results = new ArrayList<ReadRelationshipsResponse>();
+      spicedb.permissions().readRelationships(req).forEachRemaining(results::add);
+
+      assertEquals(2, results.size());
     }
   }
 }

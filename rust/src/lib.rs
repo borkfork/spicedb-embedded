@@ -2,8 +2,8 @@
 //!
 //! This crate provides an in-process `SpiceDB` instance for authorization checks.
 //! It uses a C-shared library to start `SpiceDB` servers, then connects via Unix
-//! socket. All API access is through the auto-generated tonic clients from
-//! [spicedb-grpc](https://docs.rs/spicedb-grpc).
+//! socket. All API access is through tonic clients generated from
+//! [buf.build/authzed/api](https://buf.build/authzed/api) (see the `spicedb-api` crate).
 //!
 //! # Example
 //!
@@ -30,10 +30,10 @@
 //!         optional_caveat: None,
 //!     }];
 //!
-//!     let spicedb = EmbeddedSpiceDB::new(schema, &relationships).await?;
+//!     let spicedb = EmbeddedSpiceDB::new(schema, &relationships, None)?;
 //!     let mut permissions = spicedb.permissions();
 //!     // Use the full SpiceDB API via the generated client
-//!     let response = permissions.check_permission(tonic::Request::new(v1::CheckPermissionRequest {
+//!     let response = permissions.check_permission(&v1::CheckPermissionRequest {
 //!         consistency: None,
 //!         resource: Some(v1::ObjectReference { object_type: "document".into(), object_id: "readme".into() }),
 //!         permission: "read".into(),
@@ -43,16 +43,16 @@
 //!         }),
 //!         context: None,
 //!         with_tracing: false,
-//!     })).await?;
+//!     })?;
 //!     Ok(())
 //! }
 //! ```
 
-mod ffi;
+mod spicedb;
 
-pub use ffi::{EmbeddedSpiceDB, StartOptions};
+pub use spicedb::{EmbeddedSpiceDB, MemoryPermissionsClient, MemorySchemaClient, StartOptions};
 // Re-export spicedb-grpc so users have direct access to all generated types
-pub use spicedb_grpc::authzed::api::v1;
+pub use spicedb_api::v1;
 
 /// Errors from embedded `SpiceDB` operations
 #[derive(Debug, thiserror::Error)]

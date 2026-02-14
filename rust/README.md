@@ -29,11 +29,11 @@ let relationships = vec![v1::Relationship {
     optional_caveat: None,
 }];
 
-let spicedb = EmbeddedSpiceDB::new(schema, &relationships).await?;
+let spicedb = EmbeddedSpiceDB::new(schema, &relationships, None)?;
 
 let response = spicedb
     .permissions()
-    .check_permission(tonic::Request::new(v1::CheckPermissionRequest {
+    .check_permission(&v1::CheckPermissionRequest {
         consistency: Some(v1::Consistency {
             requirement: Some(v1::consistency::Requirement::FullyConsistent(true)),
         }),
@@ -51,10 +51,9 @@ let response = spicedb
         }),
         context: None,
         with_tracing: false,
-    }))
-    .await?;
+    })?;
 
-let allowed = response.into_inner().permissionship
+let allowed = response.permissionship
     == v1::check_permission_response::Permissionship::HasPermission as i32;
 ```
 
@@ -96,7 +95,7 @@ let options = StartOptions {
     ..Default::default()
 };
 
-let spicedb = EmbeddedSpiceDB::new_with_options(schema, &[], Some(&options)).await?;
+let spicedb = EmbeddedSpiceDB::new(schema, &[], Some(&options))?;
 // Use full Permissions API (write_relationships, check_permission, etc.)
 ```
 
@@ -104,9 +103,9 @@ let spicedb = EmbeddedSpiceDB::new_with_options(schema, &[], Some(&options)).awa
 
 It is scary! Using a C-shared library via FFI bindings introduces memory management in languages that don't typically have to worry about it.
 
-However, this library purposely limits the FFI layer. The only thing it is used for is to spawn the SpiceDB server (and to dispose of it when you shut down the embedded server). Once the SpiceDB server is running, it exposes a gRPC interface that listens over Unix Sockets (default on Linux/macOS) or TCP (default on Windows).
+That being said, the SpiceDB code still runs in a Go runtime with garbage collection, which is where the vast majority of time is spent. To help mitigate some of the risk, the FFI layer is kept as straightforward as possible. protobuf is marshalled and unmarshalled at the FFI <--> language runtime boundary in a standardized way. After unmarshalling, requests are sent directly to the SpiceDB server, and responses are returned directly back to the language runtime (after marshalling).
 
-So you get the benefits of (1) using the same generated gRPC code to communicate with SpiceDB that would in a non-embedded world, and (2) communication happens out-of-band so that no memory allocations happen in the FFI layer once the embedded server is running.
+The embedded server uses in-memory transport: unary RPCs (CheckPermission, WriteRelationships, etc.) go through the FFI layer; streaming RPCs (Watch, ReadRelationships) use a small proxy and `streaming_address()` to connect over a socket.
 
 ## Installation
 
@@ -150,12 +149,12 @@ let relationships = vec![v1::Relationship {
     optional_caveat: None,
 }];
 
-let spicedb = EmbeddedSpiceDB::new(schema, &relationships).await?;
+let spicedb = EmbeddedSpiceDB::new(schema, &relationships, None)?;
 
-// Check permission
+// Check permission (sync API)
 let response = spicedb
     .permissions()
-    .check_permission(tonic::Request::new(v1::CheckPermissionRequest {
+    .check_permission(&v1::CheckPermissionRequest {
         consistency: Some(v1::Consistency {
             requirement: Some(v1::consistency::Requirement::FullyConsistent(true)),
         }),
@@ -173,22 +172,20 @@ let response = spicedb
         }),
         context: None,
         with_tracing: false,
-    }))
-    .await?;
+    })?;
 
-let allowed = response.into_inner().permissionship
+let allowed = response.permissionship
     == v1::check_permission_response::Permissionship::HasPermission as i32;
 ```
 
 ## API
 
-- **`EmbeddedSpiceDB::new(schema, relationships)`** — Create an instance with schema and optional initial relationships.
-- **`EmbeddedSpiceDB::new_with_options(schema, relationships, options)`** — Create with `StartOptions` (datastore, `grpc_transport`, etc.). Pass `None` for defaults.
-- **`permissions()`** — `PermissionsServiceClient` for CheckPermission, WriteRelationships, ReadRelationships, etc.
-- **`schema()`** — `SchemaServiceClient` for ReadSchema, WriteSchema, ReflectSchema, etc.
-- **`watch()`** — `WatchServiceClient` for watching relationship changes.
+- **`EmbeddedSpiceDB::new(schema, relationships, options)`** — Create an instance (sync). Pass `None` for options to use defaults; use `Some(&StartOptions { ... })` for datastore, etc.
+- **`permissions()`** — Sync client for CheckPermission, WriteRelationships, DeleteRelationships, etc.
+- **`schema()`** — Sync client for ReadSchema, WriteSchema.
+- **`streaming_address()`** — Address for streaming RPCs (Watch, ReadRelationships); connect a gRPC client to this address.
 
-All types are re-exported from `spicedb_grpc::authzed::api::v1` as `spicedb_embedded::v1`.
+All types are re-exported from `spicedb_api::v1` (generated from buf.build/authzed/api) as `spicedb_embedded::v1`.
 
 ### StartOptions
 
@@ -197,15 +194,15 @@ use spicedb_embedded::{v1, EmbeddedSpiceDB, StartOptions};
 
 let options = StartOptions {
     datastore: Some("memory".into()),           // or "postgres", "cockroachdb", "spanner", "mysql"
-    grpc_transport: Some("unix".into()),        // or "tcp"; default by platform
     datastore_uri: Some("postgres://...".into()), // required for remote
     spanner_credentials_file: None,
     spanner_emulator_host: None,
     mysql_table_prefix: None,
     metrics_enabled: None, // default false; set Some(true) to enable Prometheus metrics
+    ..Default::default()
 };
 
-let spicedb = EmbeddedSpiceDB::new_with_options(schema, &relationships, Some(&options)).await?;
+let spicedb = EmbeddedSpiceDB::new(schema, &relationships, Some(&options))?;
 ```
 
 ## Building & Testing

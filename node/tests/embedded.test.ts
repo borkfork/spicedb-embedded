@@ -6,7 +6,9 @@ const {
   CheckPermissionResponse_Permissionship,
   Consistency,
   ObjectReference,
+  ReadRelationshipsRequest,
   Relationship,
+  RelationshipFilter,
   RelationshipUpdate,
   RelationshipUpdate_Operation,
   SubjectReference,
@@ -118,6 +120,33 @@ describe("EmbeddedSpiceDB", () => {
         .promises.checkPermission(checkReq);
 
       expect(response.permissionship).toBe(HAS_PERMISSION);
+    } finally {
+      spicedb.close();
+    }
+  });
+
+  it("streams ReadRelationships via streaming proxy", async () => {
+    const relationships = [
+      rel("document:doc1", "reader", "user:alice"),
+      rel("document:doc1", "writer", "user:bob"),
+    ];
+    const spicedb = await EmbeddedSpiceDB.create(TEST_SCHEMA, relationships);
+
+    try {
+      const req = ReadRelationshipsRequest.create({
+        relationshipFilter: RelationshipFilter.create({
+          resourceType: "document",
+          optionalResourceId: "doc1",
+        }),
+      });
+      const results = await spicedb
+        .permissions()
+        .promises.readRelationships(req);
+      expect(results.length).toBeGreaterThanOrEqual(2);
+      const resourceTypes = results
+        .map((r) => r.relationship?.resource?.objectType)
+        .filter(Boolean);
+      expect(resourceTypes.every((t) => t === "document")).toBe(true);
     } finally {
       spicedb.close();
     }

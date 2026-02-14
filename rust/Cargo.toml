@@ -31,7 +31,7 @@ path = "src/lib.rs"
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"                                                                 # for C library JSON response parsing
-spicedb-grpc = "0.1"
+spicedb-api = { path = "spicedb-api" }
 thiserror = "2"
 tokio = { version = "1", features = ["net", "sync", "rt-multi-thread"] }
 tonic = "0.12"
@@ -41,6 +41,8 @@ tracing = "0.1"
 spicedb-embedded-sys = { path = "spicedb-embedded-sys" }
 
 [dev-dependencies]
+prost = "0.13"
+serial_test = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tokio-stream = "0.1"
 testcontainers-modules = { version = "0.14", features = [

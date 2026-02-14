@@ -82,10 +82,31 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
           restore-keys: ${{ runner.os }}-go-
 
+      # Reuse staged prebuilds when go.mod/go.sum unchanged (same key as CI; shared across branches/runs).
+      - uses: actions/cache@v4
+        id: prebuild-cache
+        with:
+          path: |
+            node/prebuilds
+            csharp/runtimes
+            java/src/main/resources/natives
+            python/src/spicedb_embedded/natives
+            rust/spicedb-embedded-sys/prebuilds
+          key: shared-c-prebuilds-${{ matrix.rid }}-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
+
+      - name: Copy cached prebuilds to out
+        if: steps.prebuild-cache.outputs.cache-hit == 'true'
+        run: |
+          rid="${{ steps.set_rid.outputs.rid }}"
+          mkdir -p "out/$rid/native"
+          cp -r "rust/spicedb-embedded-sys/prebuilds/$rid/"* "out/$rid/native/"
+
       - name: Build shared C library
+        if: steps.prebuild-cache.outputs.cache-hit != 'true'
         run: mise run shared-c-build
 
       - name: Stage and upload shared lib
+        if: steps.prebuild-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p "out/${{ steps.set_rid.outputs.rid }}/native"
           case "${{ matrix.runner }}" in
@@ -150,7 +171,7 @@ jobs:
     needs: publish-rust-sys
     runs-on: ubuntu-latest
     env:
-      MISE_ENABLE_TOOLS: "rust"
+      MISE_ENABLE_TOOLS: "rust,buf,protoc"
     defaults:
       run:
         shell: bash
@@ -179,7 +200,7 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "rust"
+          install_args: "rust buf protoc"
 
       - name: Publish main crate to crates.io
         run: cargo publish -p spicedb-embedded --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty

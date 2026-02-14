@@ -5,8 +5,8 @@ import com.google.gson.annotations.SerializedName;
 /**
  * Options for starting an embedded SpiceDB instance.
  *
- * <p>Pass to {@link EmbeddedSpiceDB#create(String, List, StartOptions)} to configure datastore and
- * transport. Use {@code null} for defaults (memory datastore, unix/tcp by platform).
+ * <p>Pass to {@link EmbeddedSpiceDB#create(String, List, StartOptions)} to configure datastore. Use
+ * {@code null} for defaults (memory datastore).
  */
 public final class StartOptions {
 
@@ -22,10 +22,6 @@ public final class StartOptions {
    */
   @SerializedName("datastore_uri")
   public String datastoreUri;
-
-  /** gRPC transport: "unix" (default on Unix), "tcp" (default on Windows). */
-  @SerializedName("grpc_transport")
-  public String grpcTransport;
 
   /**
    * Path to Spanner service account JSON (Spanner only). Omit for Application Default Credentials.
@@ -66,11 +62,6 @@ public final class StartOptions {
 
     public Builder datastoreUri(String uri) {
       opts.datastoreUri = uri;
-      return this;
-    }
-
-    public Builder grpcTransport(String transport) {
-      opts.grpcTransport = transport;
       return this;
     }
 

@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 # Only the main crate is a member; platform crates are target-cfg dependencies and built on demand.
-members = ["rust"]
+members = ["rust", "rust/spicedb-api"]
 
 [workspace.lints.clippy]
 all = "deny"

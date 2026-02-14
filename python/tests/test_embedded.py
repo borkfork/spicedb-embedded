@@ -5,7 +5,9 @@ from authzed.api.v1 import (
     CheckPermissionResponse,
     Consistency,
     ObjectReference,
+    ReadRelationshipsRequest,
     Relationship,
+    RelationshipFilter,
     RelationshipUpdate,
     SubjectReference,
     WriteRelationshipsRequest,
@@ -93,6 +95,24 @@ def test_check_permission():
             bob_read_resp.permissionship
             == CheckPermissionResponse.PERMISSIONSHIP_HAS_PERMISSION
         )
+
+
+def test_read_relationships_streaming():
+    """Test ReadRelationships streaming via proxy."""
+    relationships = [
+        rel("document:doc1", "reader", "user:alice"),
+        rel("document:doc1", "writer", "user:bob"),
+    ]
+    with EmbeddedSpiceDB(TEST_SCHEMA, relationships) as spicedb:
+        req = ReadRelationshipsRequest(
+            relationship_filter=RelationshipFilter(
+                resource_type="document",
+                optional_resource_id="doc1",
+            )
+        )
+        results = list(spicedb.permissions().ReadRelationships(req))
+        assert len(results) >= 2
+        assert all(r.relationship.resource.object_type == "document" for r in results)
 
 
 def test_add_relationship():

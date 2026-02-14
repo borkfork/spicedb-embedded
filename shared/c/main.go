@@ -1,8 +1,14 @@
 // Package main provides a C-shared library for embedding SpiceDB.
 // Build with: go build -buildmode=c-shared -o libspicedb.so .
 //
-// This implementation creates a SpiceDB gRPC server on a Unix socket,
-// allowing Rust to use native tonic/protobuf clients.
+// The server uses an in-memory buffer (no main socket). Callers use FFI RPC functions
+// (e.g. spicedb_permissions_check_permission) with marshalled protobuf bytes.
+// spicedb_start returns a handle and streaming_address for Watch/ReadRelationships etc.
+//
+// Allocation audit: all C-visible allocations are caller-owned and must be freed.
+//   - makeError/makeSuccess return C.CString → caller frees with spicedb_free (spicedb_start, spicedb_dispose).
+//   - RPC FFI: *out_error = C.CString(...) → caller frees with spicedb_free; *out_response_bytes = C.CBytes(...) → caller frees with spicedb_free_bytes.
+//   - Each code path sets at most one of out_error or out_response_bytes per call; no double-set, so no leak on our side.
 package main
 
 /*
@@ -14,26 +20,33 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
-	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/authzed/spicedb/pkg/cmd/datastore"
 	"github.com/authzed/spicedb/pkg/cmd/server"
 	"github.com/authzed/spicedb/pkg/cmd/util"
+	spicedbdatastore "github.com/authzed/spicedb/pkg/datastore"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
-// Instance holds a SpiceDB server instance
+// Instance holds a SpiceDB server instance (in-memory + streaming proxy).
 type Instance struct {
-	server    server.RunnableServer
-	transport string // "unix" or "tcp"
-	address   string // socket path or host:port
-	cancel    context.CancelFunc
-	wg        *errgroup.Group
+	server            server.RunnableServer
+	transport         string // always "memory"
+	clientConn        *grpc.ClientConn
+	streamingAddr     string
+	streamingListener net.Listener
+	streamingServer   *grpc.Server
+	cancel            context.CancelFunc
+	wg                *errgroup.Group
 }
 
 // Instance management
@@ -66,18 +79,20 @@ func makeSuccess(data interface{}) *C.char {
 	return C.CString(string(respData))
 }
 
-// spicedb_free frees a string returned by other functions.
+// spicedb_free frees a string returned by spicedb_start or spicedb_dispose.
+// Safe to call with NULL (no-op). Caller must call this for every *C.char returned by those functions.
 //
 //export spicedb_free
 func spicedb_free(ptr *C.char) {
-	C.free(unsafe.Pointer(ptr))
+	if ptr != nil {
+		C.free(unsafe.Pointer(ptr))
+	}
 }
 
-// StartOptions configures datastore and transport. Passed as JSON to spicedb_start.
+// StartOptions configures the datastore. Passed as JSON to spicedb_start.
 // Supported fields:
 //   - datastore: "memory" (default), "postgres", "cockroachdb", "spanner", "mysql"
 //   - datastore_uri: connection string for remote datastores (required for postgres, cockroachdb, spanner, mysql)
-//   - grpc_transport: "unix" (default on Unix), "tcp" (default on Windows)
 //
 // Spanner-specific (when datastore=spanner):
 //   - spanner_credentials_file: path to service account JSON key (omit for Application Default Credentials)
@@ -89,7 +104,6 @@ func spicedb_free(ptr *C.char) {
 type StartOptions struct {
 	Datastore              string `json:"datastore"`
 	DatastoreURI           string `json:"datastore_uri"`
-	GrpcTransport          string `json:"grpc_transport"`
 	SpannerCredentialsFile string `json:"spanner_credentials_file"`
 	SpannerEmulatorHost    string `json:"spanner_emulator_host"`
 	MySQLTablePrefix       string `json:"mysql_table_prefix"`
@@ -100,13 +114,12 @@ type StartOptions struct {
 // Schema and relationships should be written by the caller via gRPC.
 //
 // options_json: optional JSON string. Use NULL for defaults.
-// Returns JSON: {"success": true, "data": {"handle": N, "grpc_transport": "unix"|"tcp", "address": "..."}}
-// Unix:   {"success": true, "data": {"handle": 123, "grpc_transport": "unix", "address": "/tmp/spicedb-xxx.sock"}}
-// Windows: {"success": true, "data": {"handle": 123, "grpc_transport": "tcp", "address": "127.0.0.1:50051"}}
+// Returns JSON: {"success": true, "data": {"handle": N, "grpc_transport": "memory", "streaming_address": "...", "streaming_transport": "unix"|"tcp"}}
+// streaming_address: Unix path (when streaming_transport is "unix") or "127.0.0.1:port" (when "tcp").
 //
 //export spicedb_start
-func spicedb_start(options_json *C.char) *C.char {
-	opts := parseStartOptions(options_json)
+func spicedb_start(optionsJSON *C.char) *C.char {
+	opts := parseStartOptions(optionsJSON)
 
 	// Validate: remote datastores require datastore_uri
 	engine := opts.Datastore
@@ -121,73 +134,77 @@ func spicedb_start(options_json *C.char) *C.char {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	instance := &Instance{cancel: cancel}
 
-	const maxRetries = 3
-	var srv server.RunnableServer
-	var addr string
-	var id uint64
-	var lastErr error
-
-	transport := opts.GrpcTransport
-	if transport == "" {
-		if runtime.GOOS == "windows" {
-			transport = "tcp"
-		} else {
-			transport = "unix"
-		}
-	}
-
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		id = atomic.AddUint64(&nextID, 1)
-		addr = listenAddr(id, transport)
-		if transport == "unix" {
-			os.Remove(addr)
-		}
-		srv, lastErr = newSpiceDBServer(ctx, addr, opts)
-		if lastErr == nil {
-			break
-		}
-		// Retry with a new address (e.g. different port) on any error
-	}
-
-	if lastErr != nil {
+	id := atomic.AddUint64(&nextID, 1)
+	ds, err := newDatastoreFromOpts(ctx, opts)
+	if err != nil {
 		cancel()
-		return makeError(fmt.Sprintf("failed to create server: %v", lastErr))
+		return makeError(fmt.Sprintf("failed to create datastore: %v", err))
 	}
-
-	instance := &Instance{
-		server:    srv,
-		transport: transport,
-		address:   addr,
-		cancel:    cancel,
+	srv, err := newSpiceDBServerFromDatastore(ctx, "", "memory", ds)
+	if err != nil {
+		cancel()
+		return makeError(fmt.Sprintf("failed to create server: %v", err))
 	}
+	instance.server = srv
+	instance.transport = "memory"
 
 	var wg errgroup.Group
 	wg.Go(func() error {
-		if err := srv.Run(ctx); err != nil && ctx.Err() == nil {
+		if err := instance.server.Run(ctx); err != nil && ctx.Err() == nil {
 			return err
 		}
 		return nil
 	})
 	instance.wg = &wg
 
+	dialCtx, dialCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer dialCancel()
+	for i := 0; i < 20; i++ {
+		conn, err := instance.server.GRPCDialContext(dialCtx, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err == nil {
+			instance.clientConn = conn
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if instance.clientConn == nil {
+		cancel()
+		_ = wg.Wait()
+		return makeError("failed to dial in-memory server")
+	}
+	proxyAddr, err := startStreamingProxy(ctx, instance, id, &wg)
+	if err != nil {
+		cancel()
+		_ = wg.Wait()
+		return makeError(fmt.Sprintf("failed to start streaming proxy: %v", err))
+	}
+	instance.streamingAddr = proxyAddr
+
 	instanceMu.Lock()
 	instances[id] = instance
 	instanceMu.Unlock()
 
-	return makeSuccess(map[string]interface{}{
-		"handle":         id,
-		"grpc_transport": transport,
-		"address":        addr,
-	})
+	streamingTransport := "unix"
+	if runtime.GOOS == "windows" {
+		streamingTransport = "tcp"
+	}
+	data := map[string]interface{}{
+		"handle":              id,
+		"grpc_transport":      "memory",
+		"streaming_address":   instance.streamingAddr,
+		"streaming_transport": streamingTransport,
+	}
+	return makeSuccess(data)
 }
 
-func parseStartOptions(options_json *C.char) StartOptions {
+func parseStartOptions(optionsJSON *C.char) StartOptions {
 	opts := StartOptions{}
-	if options_json == nil {
+	if optionsJSON == nil {
 		return opts
 	}
-	s := C.GoString(options_json)
+	s := C.GoString(optionsJSON)
 	if s == "" {
 		return opts
 	}
@@ -195,21 +212,12 @@ func parseStartOptions(options_json *C.char) StartOptions {
 	return opts
 }
 
-// listenAddr returns the address for a new instance (Unix socket path or TCP host:port).
-func listenAddr(id uint64, transport string) string {
-	if transport == "tcp" || runtime.GOOS == "windows" {
-		return fmt.Sprintf("127.0.0.1:%d", 50051+(id%5000))
-	}
-	return filepath.Join(os.TempDir(), fmt.Sprintf("spicedb-%d-%d.sock", os.Getpid(), id))
-}
-
-// newSpiceDBServer creates a new SpiceDB server with the given options.
-func newSpiceDBServer(ctx context.Context, addr string, opts StartOptions) (server.RunnableServer, error) {
+// newDatastoreFromOpts creates a datastore from StartOptions (used for memory transport in spicedb_start).
+func newDatastoreFromOpts(ctx context.Context, opts StartOptions) (spicedbdatastore.Datastore, error) {
 	engine := opts.Datastore
 	if engine == "" {
 		engine = datastore.MemoryEngine
 	}
-
 	dsOpts := []datastore.ConfigOption{
 		datastore.DefaultDatastoreConfig().ToOption(),
 		datastore.WithEngine(engine),
@@ -230,31 +238,27 @@ func newSpiceDBServer(ctx context.Context, addr string, opts StartOptions) (serv
 	if engine == "mysql" && opts.MySQLTablePrefix != "" {
 		dsOpts = append(dsOpts, datastore.WithTablePrefix(opts.MySQLTablePrefix))
 	}
+	return datastore.NewDatastore(ctx, dsOpts...)
+}
 
-	ds, err := datastore.NewDatastore(ctx, dsOpts...)
-	if err != nil {
-		return nil, fmt.Errorf("unable to start %s datastore: %v", engine, err)
-	}
-
-	transport := opts.GrpcTransport
-	if transport == "" {
-		if runtime.GOOS == "windows" {
-			transport = "tcp"
-		} else {
-			transport = "unix"
+// newSpiceDBServerFromDatastore creates a server that uses an existing datastore.
+// transport: "memory" (bufconn), "unix", or "tcp". For memory, addr is ignored.
+func newSpiceDBServerFromDatastore(ctx context.Context, addr string, transport string, ds spicedbdatastore.Datastore) (server.RunnableServer, error) {
+	grpcConfig := util.GRPCServerConfig{Enabled: true}
+	if transport == "memory" {
+		grpcConfig.Network = util.BufferedNetwork
+		grpcConfig.Address = ""
+		grpcConfig.BufferSize = 1024 * 1024
+	} else {
+		network := "unix"
+		if transport == "tcp" {
+			network = "tcp"
 		}
+		grpcConfig.Network = network
+		grpcConfig.Address = addr
 	}
-	network := "unix"
-	if transport == "tcp" {
-		network = "tcp"
-	}
-
 	configOpts := []server.ConfigOption{
-		server.WithGRPCServer(util.GRPCServerConfig{
-			Network: network,
-			Address: addr,
-			Enabled: true,
-		}),
+		server.WithGRPCServer(grpcConfig),
 		server.WithGRPCAuthFunc(func(ctx context.Context) (context.Context, error) {
 			return ctx, nil
 		}),
@@ -265,7 +269,6 @@ func newSpiceDBServer(ctx context.Context, addr string, opts StartOptions) (serv
 		server.WithClusterDispatchCacheConfig(server.CacheConfig{Enabled: false, Metrics: false}),
 		server.WithDatastore(ds),
 	}
-
 	return server.NewConfigWithOptionsAndDefaults(configOpts...).Complete(ctx)
 }
 
@@ -286,13 +289,24 @@ func spicedb_dispose(handle C.ulonglong) *C.char {
 		return makeError(fmt.Sprintf("invalid handle: %d", id))
 	}
 
-	// Cancel context and wait for server to stop
+	// Cancel context so main server Run() exits. Stop streaming proxy before wg.Wait(),
+	// otherwise the proxy's Serve() never exits and wg.Wait() blocks forever.
 	instance.cancel()
-	_ = instance.wg.Wait()
 
-	// Clean up socket file (Unix only; TCP has nothing to remove)
-	if instance.transport == "unix" {
-		os.Remove(instance.address)
+	if instance.clientConn != nil {
+		_ = instance.clientConn.Close()
+	}
+	if instance.streamingServer != nil {
+		instance.streamingServer.GracefulStop()
+	}
+	if instance.streamingListener != nil {
+		_ = instance.streamingListener.Close()
+	}
+
+	_ = instance.wg.Wait()
+	// Clean up streaming proxy socket file (Unix only)
+	if instance.streamingAddr != "" && runtime.GOOS != "windows" {
+		os.Remove(instance.streamingAddr)
 	}
 
 	return makeSuccess(nil)

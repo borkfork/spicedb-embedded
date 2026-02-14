@@ -3,5 +3,13 @@
 LIBRARY spicedb
 EXPORTS
     spicedb_free
+    spicedb_free_bytes
     spicedb_start
     spicedb_dispose
+    spicedb_permissions_check_permission
+    spicedb_permissions_write_relationships
+    spicedb_permissions_delete_relationships
+    spicedb_permissions_check_bulk_permissions
+    spicedb_permissions_expand_permission_tree
+    spicedb_schema_read_schema
+    spicedb_schema_write_schema
