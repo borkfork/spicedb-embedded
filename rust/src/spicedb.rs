@@ -1001,7 +1001,7 @@ definition document {
         }
 
         /// Two servers, shared datastore: write via server 1, read via server 2.
-        async fn run_shared_datastore_test(datastore: &str, datastore_uri: &str) {
+        fn run_shared_datastore_test(datastore: &str, datastore_uri: &str) {
             run_migrate(datastore, datastore_uri, &[]).expect("migration must succeed");
 
             let opts = StartOptions {
@@ -1046,7 +1046,7 @@ definition document {
             let host = container.get_host().await.unwrap();
             let port = container.get_host_port_ipv4(5432).await.unwrap();
             let uri = format!("postgres://postgres:postgres@{host}:{port}/postgres");
-            run_shared_datastore_test("postgres", &uri).await;
+            run_shared_datastore_test("postgres", &uri);
         }
 
         #[tokio::test]
@@ -1059,7 +1059,7 @@ definition document {
             let host = container.get_host().await.unwrap();
             let port = container.get_host_port_ipv4(26257).await.unwrap();
             let uri = format!("postgres://root@{host}:{port}/defaultdb?sslmode=disable");
-            run_shared_datastore_test("cockroachdb", &uri).await;
+            run_shared_datastore_test("cockroachdb", &uri);
         }
 
         #[tokio::test]
@@ -1073,7 +1073,7 @@ definition document {
             let port = container.get_host_port_ipv4(3306).await.unwrap();
             // MySQL: user@tcp(host:port)/db format; parseTime=true required by SpiceDB
             let uri = format!("root@tcp({host}:{port})/test?parseTime=true");
-            run_shared_datastore_test("mysql", &uri).await;
+            run_shared_datastore_test("mysql", &uri);
         }
 
         #[tokio::test]
