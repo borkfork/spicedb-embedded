@@ -7,17 +7,9 @@
 use serde::{Deserialize, Serialize};
 use spicedb_api::v1::{
     RelationshipUpdate, WriteRelationshipsRequest, WriteSchemaRequest,
-    permissions_service_client::PermissionsServiceClient, relationship_update::Operation,
-    schema_service_client::SchemaServiceClient, watch_service_client::WatchServiceClient,
+    relationship_update::Operation,
 };
 use spicedb_embedded_sys::{dispose, start};
-#[cfg(unix)]
-use tokio::net::UnixStream;
-#[cfg(unix)]
-use tonic::transport::Uri;
-use tonic::transport::{Channel, Endpoint};
-#[cfg(unix)]
-use tower::service_fn;
 
 use crate::SpiceDBError;
 
@@ -27,14 +19,6 @@ struct CResponse {
     success: bool,
     error: Option<String>,
     data: Option<serde_json::Value>,
-}
-
-/// Response from creating a new instance
-#[derive(Debug, Deserialize)]
-struct NewResponse {
-    handle: u64,
-    grpc_transport: String,
-    address: String,
 }
 
 /// Options for starting an embedded `SpiceDB` instance.
@@ -78,143 +62,6 @@ fn parse_json_response(response_str: &str) -> Result<serde_json::Value, SpiceDBE
     }
 }
 
-/// Embedded `SpiceDB` instance.
-///
-/// A thin wrapper that connects auto-generated tonic gRPC clients over a Unix
-/// socket. Use [`permissions`](EmbeddedSpiceDB::permissions), [`schema`](EmbeddedSpiceDB::schema),
-/// and [`watch`](EmbeddedSpiceDB::watch) to access the full `SpiceDB` API.
-pub struct EmbeddedSpiceDB {
-    handle: u64,
-    channel: Channel,
-}
-
-unsafe impl Send for EmbeddedSpiceDB {}
-unsafe impl Sync for EmbeddedSpiceDB {}
-
-impl EmbeddedSpiceDB {
-    /// Create a new embedded `SpiceDB` instance with a schema and relationships.
-    ///
-    /// This starts a `SpiceDB` server via the C-shared library, connects over a Unix
-    /// socket or TCP, then bootstraps schema and relationships via gRPC.
-    ///
-    /// # Arguments
-    ///
-    /// * `schema` - The `SpiceDB` schema definition (ZED language)
-    /// * `relationships` - Initial relationships (uses types from `spicedb_api::v1`)
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the server fails to start, connection fails, or gRPC writes fail.
-    pub async fn new(
-        schema: &str,
-        relationships: &[spicedb_api::v1::Relationship],
-    ) -> Result<Self, SpiceDBError> {
-        Self::new_with_options(schema, relationships, None).await
-    }
-
-    /// Create a new embedded `SpiceDB` instance with options.
-    ///
-    /// This starts a `SpiceDB` server via the C-shared library, connects over a Unix
-    /// socket or TCP, then bootstraps schema and relationships via gRPC.
-    ///
-    /// # Arguments
-    ///
-    /// * `schema` - The `SpiceDB` schema definition (ZED language)
-    /// * `relationships` - Initial relationships (uses types from `spicedb_api::v1`)
-    /// * `options` - Optional configuration (`datastore`, `grpc_transport`). Use `None` for defaults.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the server fails to start, connection fails, or gRPC writes fail.
-    pub async fn new_with_options(
-        schema: &str,
-        relationships: &[spicedb_api::v1::Relationship],
-        options: Option<&StartOptions>,
-    ) -> Result<Self, SpiceDBError> {
-        let options_json = options
-            .map(|opts| {
-                serde_json::to_string(opts).map_err(|e| {
-                    SpiceDBError::Protocol(format!("failed to serialize options: {e}"))
-                })
-            })
-            .transpose()?;
-
-        let response_str = start(options_json.as_deref()).map_err(SpiceDBError::Runtime)?;
-        let data = parse_json_response(&response_str)?;
-
-        let new_resp: NewResponse = serde_json::from_value(data)
-            .map_err(|e| SpiceDBError::Protocol(format!("invalid new response: {e}")))?;
-
-        let channel = connect_to_spicedb(&new_resp.grpc_transport, &new_resp.address)
-            .await
-            .map_err(|e| {
-                let _ = dispose(new_resp.handle);
-                SpiceDBError::Runtime(format!("failed to connect to SpiceDB: {e}"))
-            })?;
-
-        let db = Self {
-            handle: new_resp.handle,
-            channel,
-        };
-
-        // Bootstrap via gRPC
-        db.schema()
-            .write_schema(tonic::Request::new(WriteSchemaRequest {
-                schema: schema.to_string(),
-            }))
-            .await
-            .map_err(|e| SpiceDBError::SpiceDB(format!("write schema failed: {e}")))?;
-
-        if !relationships.is_empty() {
-            let updates: Vec<RelationshipUpdate> = relationships
-                .iter()
-                .map(|rel| RelationshipUpdate {
-                    operation: Operation::Touch as i32,
-                    relationship: Some(rel.clone()),
-                })
-                .collect();
-            db.permissions()
-                .write_relationships(tonic::Request::new(WriteRelationshipsRequest {
-                    updates,
-                    optional_preconditions: vec![],
-                    optional_transaction_metadata: None,
-                }))
-                .await
-                .map_err(|e| SpiceDBError::SpiceDB(format!("write relationships failed: {e}")))?;
-        }
-
-        Ok(db)
-    }
-
-    /// Permissions service client (`CheckPermission`, `WriteRelationships`, `ReadRelationships`, etc.)
-    #[must_use]
-    pub fn permissions(&self) -> PermissionsServiceClient<Channel> {
-        PermissionsServiceClient::new(self.channel.clone())
-    }
-
-    /// Schema service client (`ReadSchema`, `WriteSchema`, `ReflectSchema`, etc.)
-    #[must_use]
-    pub fn schema(&self) -> SchemaServiceClient<Channel> {
-        SchemaServiceClient::new(self.channel.clone())
-    }
-
-    /// Watch service client (watch for relationship changes)
-    #[must_use]
-    pub fn watch(&self) -> WatchServiceClient<Channel> {
-        WatchServiceClient::new(self.channel.clone())
-    }
-}
-
-impl Drop for EmbeddedSpiceDB {
-    fn drop(&mut self) {
-        let _ = dispose(self.handle);
-    }
-}
-
-// -----------------------------------------------------------------------------
-// Memory transport: idiomatic API using -sys safe layer (no unsafe in this crate)
-// -----------------------------------------------------------------------------
-
 use spicedb_api::v1::{
     CheckBulkPermissionsRequest, CheckBulkPermissionsResponse, CheckPermissionRequest,
     CheckPermissionResponse, DeleteRelationshipsRequest, DeleteRelationshipsResponse,
@@ -223,20 +70,20 @@ use spicedb_api::v1::{
 };
 use spicedb_embedded_sys::memory_transport;
 
-/// Embedded `SpiceDB` using in-memory transport (no socket). All RPCs go through the FFI.
-/// For streaming APIs (Watch, `ReadRelationships`, etc.) use [`streaming_address`](MemorySpiceDB::streaming_address)
+/// Embedded `SpiceDB` instance (in-memory transport). All RPCs go through the FFI.
+/// For streaming APIs (`Watch`, `ReadRelationships`, etc.) use [`streaming_address`](EmbeddedSpiceDB::streaming_address)
 /// (the C library starts a streaming proxy and returns it in the start response).
-pub struct MemorySpiceDB {
+pub struct EmbeddedSpiceDB {
     handle: u64,
     /// Set from the C library start response; use for `Watch`, `ReadRelationships`, `LookupResources`, `LookupSubjects`.
-    streaming_address_from_start: Option<String>,
+    streaming_address: String,
 }
 
-unsafe impl Send for MemorySpiceDB {}
-unsafe impl Sync for MemorySpiceDB {}
+unsafe impl Send for EmbeddedSpiceDB {}
+unsafe impl Sync for EmbeddedSpiceDB {}
 
-impl MemorySpiceDB {
-    /// Start a `SpiceDB` instance with `grpc_transport: "memory"` and optional bootstrap.
+impl EmbeddedSpiceDB {
+    /// Create a new embedded `SpiceDB` instance with optional schema and relationships.
     ///
     /// If `schema` is non-empty, writes it via `SchemaService`. If `relationships` is non-empty, writes them via `WriteRelationships`.
     ///
@@ -269,14 +116,15 @@ impl MemorySpiceDB {
             )));
         }
 
-        let streaming_address_from_start = data
+        let streaming_address = data
             .get("streaming_address")
             .and_then(serde_json::Value::as_str)
-            .map(String::from);
+            .map(String::from)
+            .ok_or_else(|| SpiceDBError::Protocol("missing streaming_address in start response".into()))?;
 
         let db = Self {
             handle,
-            streaming_address_from_start,
+            streaming_address,
         };
 
         if !schema.is_empty() {
@@ -333,15 +181,15 @@ impl MemorySpiceDB {
         self.handle
     }
 
-    /// Returns the address for streaming APIs (Watch, `ReadRelationships`, `LookupResources`, `LookupSubjects`).
+    /// Returns the address for streaming APIs (`Watch`, `ReadRelationships`, `LookupResources`, `LookupSubjects`).
     /// Set from the C library start response when the streaming proxy was started.
     #[must_use]
-    pub fn streaming_address(&self) -> Option<String> {
-        self.streaming_address_from_start.clone()
+    pub fn streaming_address(&self) -> &str {
+        &self.streaming_address
     }
 }
 
-impl Drop for MemorySpiceDB {
+impl Drop for EmbeddedSpiceDB {
     fn drop(&mut self) {
         let _ = dispose(self.handle);
     }
@@ -450,63 +298,15 @@ impl MemorySchemaClient {
     }
 }
 
-async fn connect_to_spicedb(
-    transport: &str,
-    address: &str,
-) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
-    if transport == "tcp" {
-        connect_tcp(address).await
-    } else {
-        connect_unix_socket(address).await
-    }
-}
-
-async fn connect_tcp(address: &str) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
-    Endpoint::from_shared(format!("http://{address}"))?
-        .connect()
-        .await
-        .map_err(Into::into)
-}
-
-#[cfg(unix)]
-async fn connect_unix_socket(
-    address: &str,
-) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
-    let path = address.to_string();
-    let channel = Endpoint::try_from("http://[::]:50051")?
-        .connect_with_connector(service_fn(move |_: Uri| {
-            let path = path.clone();
-            async move {
-                let stream = UnixStream::connect(&path).await?;
-                Ok::<_, std::io::Error>(hyper_util::rt::TokioIo::new(stream))
-            }
-        }))
-        .await?;
-    Ok(channel)
-}
-
-#[cfg(windows)]
-fn connect_unix_socket(
-    _address: &str,
-) -> std::future::Ready<Result<Channel, Box<dyn std::error::Error + Send + Sync>>> {
-    std::future::ready(Err(
-        "Unix domain sockets are not supported on Windows".into()
-    ))
-}
-
 #[cfg(test)]
 mod tests {
-    // Memory transport tests (test_memory_transport_*) call into the C/Go library and may hang if the
-    // library blocks (e.g. streaming proxy bind). They run serially. If they hang, run:
-    //   cargo test test_memory_transport -- --test-threads=1
-    // or: timeout 60 cargo test test_memory_transport
 
     use std::time::Duration;
-    use serial_test::serial;
+    use tonic::transport::{Channel, Endpoint};
     use spicedb_api::v1::{
         CheckPermissionRequest, Consistency, ObjectReference,
         ReadRelationshipsRequest, Relationship, RelationshipFilter, RelationshipUpdate,
-        SubjectReference, WatchKind, WatchRequest, WriteRelationshipsRequest, WriteSchemaRequest,
+        SubjectReference, WatchKind, WatchRequest, WriteRelationshipsRequest,
         relationship_update::Operation, watch_service_client::WatchServiceClient,
     };
     use tokio::time::timeout;
@@ -610,44 +410,14 @@ definition document {
         }
     }
 
-    /// Starts a `SpiceDB` instance with `grpc_transport` "memory"; returns (handle, ()).
-    fn start_memory_server() -> Result<(u64, ()), SpiceDBError> {
-        let opts = StartOptions {
-            grpc_transport: Some("memory".into()),
-            ..Default::default()
-        };
-        let json = serde_json::to_string(&opts)
-            .map_err(|e| SpiceDBError::Protocol(format!("serialize options: {e}")))?;
-        let response_str = start(Some(&json)).map_err(SpiceDBError::Runtime)?;
-        let data = parse_json_response(&response_str)?;
-        let handle = data
-            .get("handle")
-            .and_then(serde_json::Value::as_u64)
-            .ok_or_else(|| SpiceDBError::Protocol("missing handle in start response".into()))?;
-        let grpc_transport = data
-            .get("grpc_transport")
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| {
-                SpiceDBError::Protocol("missing grpc_transport in start response".into())
-            })?;
-        if grpc_transport != "memory" {
-            return Err(SpiceDBError::Protocol(format!(
-                "expected grpc_transport memory, got {grpc_transport}"
-            )));
-        }
-        Ok((handle, ()))
-    }
-
-    /// Idiomatic memory transport: `MemorySpiceDB::new` + `.permissions().check_permission()` (uses -sys safe layer).
-    /// Skipped when the C library was built without memory transport.
-    #[serial]
+    /// EmbeddedSpiceDB::new + `.permissions().check_permission()`. Skipped on bind/streaming proxy errors.
     #[test]
-    fn test_memory_transport_check_permission() {
+    fn test_check_permission() {
         let relationships = vec![
             rel("document:readme", "reader", "user:alice"),
             rel("document:readme", "writer", "user:bob"),
         ];
-        let spicedb = match MemorySpiceDB::new(TEST_SCHEMA, &relationships, None) {
+        let spicedb = match EmbeddedSpiceDB::new(TEST_SCHEMA, &relationships, None) {
             Ok(db) => db,
             Err(e) => {
                 let msg = e.to_string();
@@ -657,7 +427,7 @@ definition document {
                 {
                     return;
                 }
-                panic!("MemorySpiceDB::new failed: {e}");
+                panic!("EmbeddedSpiceDB::new failed: {e}");
             }
         };
 
@@ -672,12 +442,10 @@ definition document {
         );
     }
 
-    /// Verifies that the streaming server receives updates: start Watch stream, write a relationship via FFI, receive update on stream.
-    /// Skipped when the C library was built without memory transport or `streaming_address` is unavailable.
-    #[serial]
+    /// Verifies the streaming proxy: start Watch stream, write a relationship, receive update on stream. Skipped on bind/proxy errors.
     #[test]
-    fn test_memory_transport_watch_streaming() {
-        let db = match MemorySpiceDB::new(TEST_SCHEMA, &[], None) {
+    fn test_watch_streaming() {
+        let db = match EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None) {
             Ok(d) => d,
             Err(e) => {
                 let msg = e.to_string();
@@ -687,13 +455,11 @@ definition document {
                 {
                     return;
                 }
-                panic!("MemorySpiceDB::new failed: {e}");
+                panic!("EmbeddedSpiceDB::new failed: {e}");
             }
         };
 
-        let Some(streaming_addr) = db.streaming_address() else {
-            return;
-        };
+        let streaming_addr = db.streaming_address();
 
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
@@ -746,202 +512,108 @@ definition document {
         });
     }
 
-    #[tokio::test]
-    async fn test_ffi_spicedb() {
+    #[test]
+    fn test_ffi_spicedb() {
         let relationships = vec![
             rel("document:readme", "reader", "user:alice"),
             rel("document:readme", "writer", "user:bob"),
         ];
 
-        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &relationships)
-            .await
-            .unwrap();
+        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &relationships, None).unwrap();
 
-        assert!(
+        assert_eq!(
             spicedb
                 .permissions()
-                .check_permission(tonic::Request::new(check_req(
-                    "document:readme",
-                    "read",
-                    "user:alice"
-                )))
-                .await
+                .check_permission(&check_req("document:readme", "read", "user:alice"))
                 .unwrap()
-                .into_inner()
-                .permissionship
-                == Permissionship::HasPermission as i32
+                .permissionship,
+            Permissionship::HasPermission as i32,
         );
         assert_eq!(
             spicedb
                 .permissions()
-                .check_permission(tonic::Request::new(check_req(
-                    "document:readme",
-                    "write",
-                    "user:alice"
-                )))
-                .await
+                .check_permission(&check_req("document:readme", "write", "user:alice"))
                 .unwrap()
-                .into_inner()
                 .permissionship,
             Permissionship::NoPermission as i32,
         );
-        assert!(
+        assert_eq!(
             spicedb
                 .permissions()
-                .check_permission(tonic::Request::new(check_req(
-                    "document:readme",
-                    "read",
-                    "user:bob"
-                )))
-                .await
+                .check_permission(&check_req("document:readme", "read", "user:bob"))
                 .unwrap()
-                .into_inner()
-                .permissionship
-                == Permissionship::HasPermission as i32
-        );
-        assert!(
-            spicedb
-                .permissions()
-                .check_permission(tonic::Request::new(check_req(
-                    "document:readme",
-                    "write",
-                    "user:bob"
-                )))
-                .await
-                .unwrap()
-                .into_inner()
-                .permissionship
-                == Permissionship::HasPermission as i32
+                .permissionship,
+            Permissionship::HasPermission as i32,
         );
         assert_eq!(
             spicedb
                 .permissions()
-                .check_permission(tonic::Request::new(check_req(
-                    "document:readme",
-                    "read",
-                    "user:charlie"
-                )))
-                .await
+                .check_permission(&check_req("document:readme", "write", "user:bob"))
                 .unwrap()
-                .into_inner()
+                .permissionship,
+            Permissionship::HasPermission as i32,
+        );
+        assert_eq!(
+            spicedb
+                .permissions()
+                .check_permission(&check_req("document:readme", "read", "user:charlie"))
+                .unwrap()
                 .permissionship,
             Permissionship::NoPermission as i32,
         );
     }
 
-    #[tokio::test]
-    async fn test_add_relationship() {
-        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &[]).await.unwrap();
+    #[test]
+    fn test_add_relationship() {
+        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None).unwrap();
 
         spicedb
             .permissions()
-            .write_relationships(tonic::Request::new(WriteRelationshipsRequest {
+            .write_relationships(&WriteRelationshipsRequest {
                 updates: vec![RelationshipUpdate {
                     operation: Operation::Touch as i32,
                     relationship: Some(rel("document:test", "reader", "user:alice")),
                 }],
                 optional_preconditions: vec![],
                 optional_transaction_metadata: None,
-            }))
-            .await
+            })
             .unwrap();
 
         let r = spicedb
             .permissions()
-            .check_permission(tonic::Request::new(CheckPermissionRequest {
-                consistency: Some(fully_consistent()),
-                resource: Some(ObjectReference {
-                    object_type: "document".into(),
-                    object_id: "test".into(),
-                }),
-                permission: "read".into(),
-                subject: Some(SubjectReference {
-                    object: Some(ObjectReference {
-                        object_type: "user".into(),
-                        object_id: "alice".into(),
-                    }),
-                    optional_relation: String::new(),
-                }),
-                context: None,
-                with_tracing: false,
-            }))
-            .await
+            .check_permission(&check_req("document:test", "read", "user:alice"))
             .unwrap();
-        assert_eq!(
-            r.into_inner().permissionship,
-            Permissionship::HasPermission as i32
-        );
+        assert_eq!(r.permissionship, Permissionship::HasPermission as i32);
     }
 
-    #[tokio::test]
-    async fn test_parallel_instances() {
-        let spicedb1 = EmbeddedSpiceDB::new(TEST_SCHEMA, &[]).await.unwrap();
-        let spicedb2 = EmbeddedSpiceDB::new(TEST_SCHEMA, &[]).await.unwrap();
+    #[test]
+    fn test_parallel_instances() {
+        let spicedb1 = EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None).unwrap();
+        let spicedb2 = EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None).unwrap();
 
         spicedb1
             .permissions()
-            .write_relationships(tonic::Request::new(WriteRelationshipsRequest {
+            .write_relationships(&WriteRelationshipsRequest {
                 updates: vec![RelationshipUpdate {
                     operation: Operation::Touch as i32,
                     relationship: Some(rel("document:doc1", "reader", "user:alice")),
                 }],
                 optional_preconditions: vec![],
                 optional_transaction_metadata: None,
-            }))
-            .await
+            })
             .unwrap();
 
         let r1 = spicedb1
             .permissions()
-            .check_permission(tonic::Request::new(CheckPermissionRequest {
-                consistency: Some(fully_consistent()),
-                resource: Some(ObjectReference {
-                    object_type: "document".into(),
-                    object_id: "doc1".into(),
-                }),
-                permission: "read".into(),
-                subject: Some(SubjectReference {
-                    object: Some(ObjectReference {
-                        object_type: "user".into(),
-                        object_id: "alice".into(),
-                    }),
-                    optional_relation: String::new(),
-                }),
-                context: None,
-                with_tracing: false,
-            }))
-            .await
+            .check_permission(&check_req("document:doc1", "read", "user:alice"))
             .unwrap();
-        assert_eq!(
-            r1.into_inner().permissionship,
-            Permissionship::HasPermission as i32
-        );
+        assert_eq!(r1.permissionship, Permissionship::HasPermission as i32);
 
         let r2 = spicedb2
             .permissions()
-            .check_permission(tonic::Request::new(CheckPermissionRequest {
-                consistency: Some(fully_consistent()),
-                resource: Some(ObjectReference {
-                    object_type: "document".into(),
-                    object_id: "doc1".into(),
-                }),
-                permission: "read".into(),
-                subject: Some(SubjectReference {
-                    object: Some(ObjectReference {
-                        object_type: "user".into(),
-                        object_id: "alice".into(),
-                    }),
-                    optional_relation: String::new(),
-                }),
-                context: None,
-                with_tracing: false,
-            }))
-            .await
+            .check_permission(&check_req("document:doc1", "read", "user:alice"))
             .unwrap();
-        assert_eq!(
-            r2.into_inner().permissionship,
-            Permissionship::NoPermission as i32
-        );
+        assert_eq!(r2.permissionship, Permissionship::NoPermission as i32);
     }
 
     #[tokio::test]
@@ -951,13 +623,13 @@ definition document {
             rel("document:doc1", "reader", "user:bob"),
         ];
 
-        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &relationships)
+        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &relationships, None).unwrap();
+        let channel = connect_streaming(spicedb.streaming_address())
             .await
             .unwrap();
-
-        let mut client = spicedb.permissions();
+        let mut client = spicedb_api::v1::permissions_service_client::PermissionsServiceClient::new(channel);
         let mut stream = client
-            .read_relationships(tonic::Request::new(ReadRelationshipsRequest {
+            .read_relationships(ReadRelationshipsRequest {
                 consistency: Some(fully_consistent()),
                 relationship_filter: Some(RelationshipFilter {
                     resource_type: "document".into(),
@@ -968,7 +640,7 @@ definition document {
                 }),
                 optional_limit: 0,
                 optional_cursor: None,
-            }))
+            })
             .await
             .unwrap()
             .into_inner();
@@ -981,9 +653,9 @@ definition document {
     }
 
     /// Performance test - run with `cargo test perf_ -- --nocapture --ignored`
-    #[tokio::test]
+    #[test]
     #[ignore = "performance test - run manually with --ignored flag"]
-    async fn perf_check_with_1000_relationships() {
+    fn perf_check_with_1000_relationships() {
         const NUM_CHECKS: usize = 100;
         use std::time::Instant;
 
@@ -1001,9 +673,7 @@ definition document {
         println!("\n=== Performance: Check with 1000 relationships ===");
 
         let start = Instant::now();
-        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &relationships)
-            .await
-            .unwrap();
+        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &relationships, None).unwrap();
         println!(
             "Instance creation with 1000 relationships: {:?}",
             start.elapsed()
@@ -1013,12 +683,11 @@ definition document {
         for _ in 0..10 {
             let _ = spicedb
                 .permissions()
-                .check_permission(tonic::Request::new(check_req(
+                .check_permission(&check_req(
                     "document:doc0",
                     "read",
                     "user:user0",
-                )))
-                .await;
+                ));
         }
 
         // Benchmark permission checks
@@ -1028,8 +697,7 @@ definition document {
             let user = format!("user:user{}", i % 100);
             let _ = spicedb
                 .permissions()
-                .check_permission(tonic::Request::new(check_req(&doc, "read", &user)))
-                .await
+                .check_permission(&check_req(&doc, "read", &user))
                 .unwrap();
         }
         let elapsed = start.elapsed();
@@ -1044,13 +712,13 @@ definition document {
     }
 
     /// Performance test for individual relationship additions
-    #[tokio::test]
+    #[test]
     #[ignore = "performance test - run manually with --ignored flag"]
-    async fn perf_add_individual_relationships() {
+    fn perf_add_individual_relationships() {
         const NUM_ADDS: usize = 50;
         use std::time::Instant;
 
-        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &[]).await.unwrap();
+        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None).unwrap();
 
         println!("\n=== Performance: Add individual relationships ===");
 
@@ -1058,7 +726,7 @@ definition document {
         for i in 0..NUM_ADDS {
             spicedb
                 .permissions()
-                .write_relationships(tonic::Request::new(WriteRelationshipsRequest {
+                .write_relationships(&WriteRelationshipsRequest {
                     updates: vec![RelationshipUpdate {
                         operation: Operation::Touch as i32,
                         relationship: Some(rel(
@@ -1069,8 +737,7 @@ definition document {
                     }],
                     optional_preconditions: vec![],
                     optional_transaction_metadata: None,
-                }))
-                .await
+                })
                 .unwrap();
         }
         let elapsed = start.elapsed();
@@ -1085,12 +752,12 @@ definition document {
     }
 
     /// Performance test for bulk relationship writes
-    #[tokio::test]
+    #[test]
     #[ignore = "performance test - run manually with --ignored flag"]
-    async fn perf_bulk_write_relationships() {
+    fn perf_bulk_write_relationships() {
         use std::time::Instant;
 
-        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &[]).await.unwrap();
+        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None).unwrap();
 
         println!("\n=== Performance: Bulk write relationships ===");
 
@@ -1110,7 +777,7 @@ definition document {
             let start = Instant::now();
             spicedb
                 .permissions()
-                .write_relationships(tonic::Request::new(WriteRelationshipsRequest {
+                .write_relationships(&WriteRelationshipsRequest {
                     updates: relationships
                         .iter()
                         .map(|r| RelationshipUpdate {
@@ -1120,8 +787,7 @@ definition document {
                         .collect(),
                     optional_preconditions: vec![],
                     optional_transaction_metadata: None,
-                }))
-                .await
+                })
                 .unwrap();
             let elapsed = start.elapsed();
 
@@ -1136,13 +802,13 @@ definition document {
         // Compare: 10 individual vs 10 bulk
         println!("\n--- Comparison: 10 individual vs 10 bulk ---");
 
-        let spicedb2 = EmbeddedSpiceDB::new(TEST_SCHEMA, &[]).await.unwrap();
+        let spicedb2 = EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None).unwrap();
 
         let start = Instant::now();
         for i in 0..10 {
             spicedb2
                 .permissions()
-                .write_relationships(tonic::Request::new(WriteRelationshipsRequest {
+                .write_relationships(&WriteRelationshipsRequest {
                     updates: vec![RelationshipUpdate {
                         operation: Operation::Touch as i32,
                         relationship: Some(rel(
@@ -1153,8 +819,7 @@ definition document {
                     }],
                     optional_preconditions: vec![],
                     optional_transaction_metadata: None,
-                }))
-                .await
+                })
                 .unwrap();
         }
         let individual_time = start.elapsed();
@@ -1166,7 +831,7 @@ definition document {
         let start = Instant::now();
         spicedb2
             .permissions()
-            .write_relationships(tonic::Request::new(WriteRelationshipsRequest {
+            .write_relationships(&WriteRelationshipsRequest {
                 updates: relationships
                     .iter()
                     .map(|r| RelationshipUpdate {
@@ -1176,8 +841,7 @@ definition document {
                     .collect(),
                 optional_preconditions: vec![],
                 optional_transaction_metadata: None,
-            }))
-            .await
+            })
             .unwrap();
         let bulk_time = start.elapsed();
         println!("10 bulk add: {bulk_time:?}");
@@ -1187,10 +851,10 @@ definition document {
         );
     }
 
-    /// Performance test with 50,000 relationships - Embedded
-    #[tokio::test]
+    /// Performance test: 50,000 relationships
+    #[test]
     #[ignore = "performance test - run manually with --ignored flag"]
-    async fn perf_embedded_50k_relationships() {
+    fn perf_embedded_50k_relationships() {
         const TOTAL_RELS: usize = 50_000;
         const BATCH_SIZE: usize = 1000;
         const NUM_CHECKS: usize = 500;
@@ -1201,7 +865,7 @@ definition document {
         // Create 50,000 relationships in batches (SpiceDB max batch is 1000)
         println!("Creating instance...");
         let start = Instant::now();
-        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &[]).await.unwrap();
+        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None).unwrap();
         println!("Instance creation time: {:?}", start.elapsed());
 
         println!("Adding {TOTAL_RELS} relationships in batches of {BATCH_SIZE}...");
@@ -1219,7 +883,7 @@ definition document {
                 .collect();
             spicedb
                 .permissions()
-                .write_relationships(tonic::Request::new(WriteRelationshipsRequest {
+                .write_relationships(&WriteRelationshipsRequest {
                     updates: relationships
                         .iter()
                         .map(|r| RelationshipUpdate {
@@ -1229,8 +893,7 @@ definition document {
                         .collect(),
                     optional_preconditions: vec![],
                     optional_transaction_metadata: None,
-                }))
-                .await
+                })
                 .unwrap();
         }
         println!(
@@ -1243,12 +906,11 @@ definition document {
         for _ in 0..20 {
             let _ = spicedb
                 .permissions()
-                .check_permission(tonic::Request::new(check_req(
+                .check_permission(&check_req(
                     "document:doc0",
                     "read",
                     "user:user0",
-                )))
-                .await;
+                ));
         }
 
         // Benchmark permission checks
@@ -1259,8 +921,7 @@ definition document {
             let user = format!("user:user{}", i % 1000);
             let _ = spicedb
                 .permissions()
-                .check_permission(tonic::Request::new(check_req(&doc, "read", &user)))
-                .await
+                .check_permission(&check_req(&doc, "read", &user))
                 .unwrap();
         }
         let elapsed = start.elapsed();
@@ -1279,336 +940,12 @@ definition document {
             // user:nonexistent doesn't exist
             let _ = spicedb
                 .permissions()
-                .check_permission(tonic::Request::new(check_req(
-                    &doc,
-                    "read",
-                    "user:nonexistent",
-                )))
-                .await
+                .check_permission(&check_req(&doc, "read", "user:nonexistent"))
                 .unwrap();
         }
         let elapsed = start.elapsed();
         println!("\nNegative checks (user not found):");
         println!("Average per check: {:?}", elapsed / num_checks_u32);
-    }
-
-    // -------------------------------------------------------------------------
-    // Memory-transport performance tests (same scenarios as above, via FFI)
-    // Run with: cargo test perf_memory_ -- --nocapture --ignored
-    // -------------------------------------------------------------------------
-
-    /// Performance test (memory transport): Check with 1000 relationships.
-    #[tokio::test]
-    #[ignore = "performance test - run manually with --ignored flag"]
-    async fn perf_memory_check_with_1000_relationships() {
-        const NUM_CHECKS: usize = 100;
-        use std::time::Instant;
-
-        let (handle, _guard) = start_memory_server().unwrap();
-
-        memory_transport::write_schema(
-            handle,
-            &WriteSchemaRequest {
-                schema: TEST_SCHEMA.to_string(),
-            },
-        )
-        .unwrap();
-
-        // Create 1000 relationships
-        let relationships: Vec<Relationship> = (0..1000)
-            .map(|i| {
-                rel(
-                    &format!("document:doc{i}"),
-                    "reader",
-                    &format!("user:user{}", i % 100),
-                )
-            })
-            .collect();
-        let updates: Vec<RelationshipUpdate> = relationships
-            .iter()
-            .map(|r| RelationshipUpdate {
-                operation: Operation::Touch as i32,
-                relationship: Some(r.clone()),
-            })
-            .collect();
-
-        println!("\n=== Performance (memory transport): Check with 1000 relationships ===");
-
-        let start = Instant::now();
-        memory_transport::write_relationships(
-            handle,
-            &WriteRelationshipsRequest {
-                updates,
-                optional_preconditions: vec![],
-                optional_transaction_metadata: None,
-            },
-        )
-        .unwrap();
-        println!("Write 1000 relationships: {:?}", start.elapsed());
-
-        // Warm up
-        let warm = check_req("document:doc0", "read", "user:user0");
-        for _ in 0..10 {
-            let _ = memory_transport::check_permission(handle, &warm);
-        }
-
-        // Benchmark permission checks
-        let start = Instant::now();
-        for i in 0..NUM_CHECKS {
-            let req = check_req(
-                &format!("document:doc{}", i % 1000),
-                "read",
-                &format!("user:user{}", i % 100),
-            );
-            let _ = memory_transport::check_permission(handle, &req).unwrap();
-        }
-        let elapsed = start.elapsed();
-
-        let num_checks_u32 = u32::try_from(NUM_CHECKS).unwrap();
-        println!("Total time for {NUM_CHECKS} checks: {elapsed:?}");
-        println!("Average per check: {:?}", elapsed / num_checks_u32);
-        println!(
-            "Checks per second: {:.0}",
-            f64::from(num_checks_u32) / elapsed.as_secs_f64()
-        );
-
-        let _ = dispose(handle);
-    }
-
-    /// Performance test (memory transport): Add individual relationships.
-    #[tokio::test]
-    #[ignore = "performance test - run manually with --ignored flag"]
-    async fn perf_memory_add_individual_relationships() {
-        const NUM_ADDS: usize = 50;
-        use std::time::Instant;
-
-        let (handle, _guard) = start_memory_server().unwrap();
-        memory_transport::write_schema(
-            handle,
-            &WriteSchemaRequest {
-                schema: TEST_SCHEMA.to_string(),
-            },
-        )
-        .unwrap();
-
-        println!("\n=== Performance (memory transport): Add individual relationships ===");
-
-        let start = Instant::now();
-        for i in 0..NUM_ADDS {
-            let req = WriteRelationshipsRequest {
-                updates: vec![RelationshipUpdate {
-                    operation: Operation::Touch as i32,
-                    relationship: Some(rel(&format!("document:perf{i}"), "reader", "user:alice")),
-                }],
-                optional_preconditions: vec![],
-                optional_transaction_metadata: None,
-            };
-            memory_transport::write_relationships(handle, &req).unwrap();
-        }
-        let elapsed = start.elapsed();
-
-        let num_adds_u32 = u32::try_from(NUM_ADDS).unwrap();
-        println!("Total time for {NUM_ADDS} individual adds: {elapsed:?}");
-        println!("Average per add: {:?}", elapsed / num_adds_u32);
-        println!(
-            "Adds per second: {:.0}",
-            f64::from(num_adds_u32) / elapsed.as_secs_f64()
-        );
-
-        let _ = dispose(handle);
-    }
-
-    /// Performance test (memory transport): Bulk write relationships.
-    #[tokio::test]
-    #[ignore = "performance test - run manually with --ignored flag"]
-    #[allow(clippy::too_many_lines)]
-    async fn perf_memory_bulk_write_relationships() {
-        use std::time::Instant;
-
-        let (handle, _guard) = start_memory_server().unwrap();
-        memory_transport::write_schema(
-            handle,
-            &WriteSchemaRequest {
-                schema: TEST_SCHEMA.to_string(),
-            },
-        )
-        .unwrap();
-
-        println!("\n=== Performance (memory transport): Bulk write relationships ===");
-
-        for batch_size in [5_i32, 10, 20, 50] {
-            let batch_size_u32 = u32::try_from(batch_size).unwrap();
-            let relationships: Vec<Relationship> = (0..batch_size)
-                .map(|i| {
-                    rel(
-                        &format!("document:bulk{batch_size}_{i}"),
-                        "reader",
-                        "user:alice",
-                    )
-                })
-                .collect();
-            let updates: Vec<RelationshipUpdate> = relationships
-                .iter()
-                .map(|r| RelationshipUpdate {
-                    operation: Operation::Touch as i32,
-                    relationship: Some(r.clone()),
-                })
-                .collect();
-            let req = WriteRelationshipsRequest {
-                updates,
-                optional_preconditions: vec![],
-                optional_transaction_metadata: None,
-            };
-
-            let start = Instant::now();
-            memory_transport::write_relationships(handle, &req).unwrap();
-            let elapsed = start.elapsed();
-
-            println!(
-                "Batch of {} relationships: {:?} ({:?} per relationship)",
-                batch_size,
-                elapsed,
-                elapsed / batch_size_u32
-            );
-        }
-
-        println!("\n--- Comparison: 10 individual vs 10 bulk ---");
-
-        let start = Instant::now();
-        for i in 0..10 {
-            let req = WriteRelationshipsRequest {
-                updates: vec![RelationshipUpdate {
-                    operation: Operation::Touch as i32,
-                    relationship: Some(rel(&format!("document:cmp_ind{i}"), "reader", "user:bob")),
-                }],
-                optional_preconditions: vec![],
-                optional_transaction_metadata: None,
-            };
-            memory_transport::write_relationships(handle, &req).unwrap();
-        }
-        let individual_time = start.elapsed();
-        println!("10 individual adds: {individual_time:?}");
-
-        let relationships: Vec<Relationship> = (0..10)
-            .map(|i| rel(&format!("document:cmp_bulk{i}"), "reader", "user:bob"))
-            .collect();
-        let updates: Vec<RelationshipUpdate> = relationships
-            .iter()
-            .map(|r| RelationshipUpdate {
-                operation: Operation::Touch as i32,
-                relationship: Some(r.clone()),
-            })
-            .collect();
-        let req = WriteRelationshipsRequest {
-            updates,
-            optional_preconditions: vec![],
-            optional_transaction_metadata: None,
-        };
-        let start = Instant::now();
-        memory_transport::write_relationships(handle, &req).unwrap();
-        let bulk_time = start.elapsed();
-        println!("10 bulk add: {bulk_time:?}");
-        println!(
-            "Speedup: {:.1}x",
-            individual_time.as_secs_f64() / bulk_time.as_secs_f64()
-        );
-
-        let _ = dispose(handle);
-    }
-
-    /// Performance test (memory transport): 50,000 relationships.
-    #[tokio::test]
-    #[ignore = "performance test - run manually with --ignored flag"]
-    #[allow(clippy::too_many_lines)]
-    async fn perf_memory_embedded_50k_relationships() {
-        const TOTAL_RELS: usize = 50_000;
-        const BATCH_SIZE: usize = 1000;
-        const NUM_CHECKS: usize = 500;
-        use std::time::Instant;
-
-        let (handle, _guard) = start_memory_server().unwrap();
-        memory_transport::write_schema(
-            handle,
-            &WriteSchemaRequest {
-                schema: TEST_SCHEMA.to_string(),
-            },
-        )
-        .unwrap();
-
-        println!("\n=== Performance (memory transport): 50,000 relationships ===");
-
-        println!("Creating instance (memory) done.");
-        println!("Adding {TOTAL_RELS} relationships in batches of {BATCH_SIZE}...");
-        let start = Instant::now();
-        for batch_num in 0..(TOTAL_RELS / BATCH_SIZE) {
-            let batch_start = batch_num * BATCH_SIZE;
-            let relationships: Vec<Relationship> = (batch_start..batch_start + BATCH_SIZE)
-                .map(|i| {
-                    rel(
-                        &format!("document:doc{i}"),
-                        "reader",
-                        &format!("user:user{}", i % 1000),
-                    )
-                })
-                .collect();
-            let updates: Vec<RelationshipUpdate> = relationships
-                .iter()
-                .map(|r| RelationshipUpdate {
-                    operation: Operation::Touch as i32,
-                    relationship: Some(r.clone()),
-                })
-                .collect();
-            let req = WriteRelationshipsRequest {
-                updates,
-                optional_preconditions: vec![],
-                optional_transaction_metadata: None,
-            };
-            memory_transport::write_relationships(handle, &req).unwrap();
-        }
-        println!(
-            "Total time to add {} relationships: {:?}",
-            TOTAL_RELS,
-            start.elapsed()
-        );
-
-        let warm = check_req("document:doc0", "read", "user:user0");
-        for _ in 0..20 {
-            let _ = memory_transport::check_permission(handle, &warm);
-        }
-
-        let num_checks_u32 = u32::try_from(NUM_CHECKS).unwrap();
-        let start = Instant::now();
-        for i in 0..NUM_CHECKS {
-            let req = check_req(
-                &format!("document:doc{}", i % TOTAL_RELS),
-                "read",
-                &format!("user:user{}", i % 1000),
-            );
-            let _ = memory_transport::check_permission(handle, &req).unwrap();
-        }
-        let elapsed = start.elapsed();
-
-        println!("Total time for {NUM_CHECKS} checks: {elapsed:?}");
-        println!("Average per check: {:?}", elapsed / num_checks_u32);
-        println!(
-            "Checks per second: {:.0}",
-            f64::from(num_checks_u32) / elapsed.as_secs_f64()
-        );
-
-        let start = Instant::now();
-        for i in 0..NUM_CHECKS {
-            let req = check_req(
-                &format!("document:doc{}", i % TOTAL_RELS),
-                "read",
-                "user:nonexistent",
-            );
-            let _ = memory_transport::check_permission(handle, &req);
-        }
-        let elapsed = start.elapsed();
-        println!("\nNegative checks (user not found):");
-        println!("Average per check: {:?}", elapsed / num_checks_u32);
-
-        let _ = dispose(handle);
     }
 
     /// Shared-datastore tests: two embedded servers using the same remote datastore.
@@ -1673,38 +1010,28 @@ definition document {
             };
 
             let schema = TEST_SCHEMA;
-            let db1 = EmbeddedSpiceDB::new_with_options(schema, &[], Some(&opts))
-                .await
-                .unwrap();
-            let db2 = EmbeddedSpiceDB::new_with_options(schema, &[], Some(&opts))
-                .await
-                .unwrap();
+            let db1 = EmbeddedSpiceDB::new(schema, &[], Some(&opts)).unwrap();
+            let db2 = EmbeddedSpiceDB::new(schema, &[], Some(&opts)).unwrap();
 
             // Write via server 1
             db1.permissions()
-                .write_relationships(tonic::Request::new(WriteRelationshipsRequest {
+                .write_relationships(&WriteRelationshipsRequest {
                     updates: vec![RelationshipUpdate {
                         operation: Operation::Touch as i32,
                         relationship: Some(rel("document:shared", "reader", "user:alice")),
                     }],
                     optional_preconditions: vec![],
                     optional_transaction_metadata: None,
-                }))
-                .await
+                })
                 .unwrap();
 
             // Read via server 2 (shared datastore)
             let r = db2
                 .permissions()
-                .check_permission(tonic::Request::new(check_req(
-                    "document:shared",
-                    "read",
-                    "user:alice",
-                )))
-                .await
+                .check_permission(&check_req("document:shared", "read", "user:alice"))
                 .unwrap();
             assert_eq!(
-                r.into_inner().permissionship,
+                r.permissionship,
                 Permissionship::HasPermission as i32
             );
         }
@@ -1786,36 +1113,26 @@ definition document {
             };
 
             let schema = TEST_SCHEMA;
-            let db1 = EmbeddedSpiceDB::new_with_options(schema, &[], Some(&opts))
-                .await
-                .unwrap();
-            let db2 = EmbeddedSpiceDB::new_with_options(schema, &[], Some(&opts))
-                .await
-                .unwrap();
+            let db1 = EmbeddedSpiceDB::new(schema, &[], Some(&opts)).unwrap();
+            let db2 = EmbeddedSpiceDB::new(schema, &[], Some(&opts)).unwrap();
 
             db1.permissions()
-                .write_relationships(tonic::Request::new(WriteRelationshipsRequest {
+                .write_relationships(&WriteRelationshipsRequest {
                     updates: vec![RelationshipUpdate {
                         operation: Operation::Touch as i32,
                         relationship: Some(rel("document:shared", "reader", "user:alice")),
                     }],
                     optional_preconditions: vec![],
                     optional_transaction_metadata: None,
-                }))
-                .await
+                })
                 .unwrap();
 
             let r = db2
                 .permissions()
-                .check_permission(tonic::Request::new(check_req(
-                    "document:shared",
-                    "read",
-                    "user:alice",
-                )))
-                .await
+                .check_permission(&check_req("document:shared", "read", "user:alice"))
                 .unwrap();
             assert_eq!(
-                r.into_inner().permissionship,
+                r.permissionship,
                 Permissionship::HasPermission as i32
             );
         }
