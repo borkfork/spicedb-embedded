@@ -1,5 +1,5 @@
-# Build and publish the Rust crate to crates.io.
-# Trigger: push a version tag (e.g. v0.1.0) or run manually (workflow_dispatch).
+# Build and publish each platform to their respective registries.
+# Trigger: push a version tag (e.g. v0.1.0). A dry run can be triggered manually.
 #
 # Required env vars:
 #   SONATYPE_USERNAME - Maven Central Portal username
@@ -17,8 +17,17 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Tag to publish (e.g. v0.1.0). Must already exist."
+        description: "Version (e.g. v0.1.0)"
         required: true
+      ref:
+        description: "Branch/commit (default: main)"
+        required: false
+        default: "main"
+      actually_publish:
+        description: "REALLY publish (not dry-run)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   id-token: write # Required for OIDC
@@ -28,7 +37,23 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  # Dry-run by default for manual triggers, real publish for tag pushes
+  IS_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.actually_publish != 'true' }}
+  GIT_REF: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.ref || 'main') || github.ref }}
+  VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}
+
 jobs:
+  # Set version number (strip leading 'v') and other env for use in later jobs.
+  environment:
+    runs-on: ubuntu-latest
+    outputs:
+      version_num: ${{ steps.env.outputs.version_num }}
+    steps:
+      - name: Set outputs
+        id: env
+        run: echo "version_num=${VERSION#v}" >> "$GITHUB_OUTPUT"
+
   # Build shared C library per platform for packaging with C#, Node, Java, Python
   build-shared-libs:
     defaults:
@@ -50,7 +75,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
+          ref: ${{ env.GIT_REF }}
           fetch-depth: 0
 
       - name: Set GOCACHE (absolute path required by Go)
@@ -128,7 +153,7 @@ jobs:
 
   # Publish spicedb-grpc-tonic first; spicedb-embedded-sys depends on it (version from crates.io when publishing).
   publish-rust-api:
-    needs: build-shared-libs
+    needs: [build-shared-libs, environment]
     runs-on: ubuntu-latest
     env:
       MISE_ENABLE_TOOLS: "rust,buf,protoc"
@@ -138,7 +163,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
+          ref: ${{ env.GIT_REF }}
           fetch-depth: 0
 
       - uses: jdx/mise-action@v3
@@ -147,16 +172,20 @@ jobs:
 
       - name: Publish spicedb-grpc-tonic to crates.io
         run: |
-          cargo publish -p spicedb-grpc-tonic --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty 2>&1 | tee /tmp/publish.log || true
-          code=${PIPESTATUS[0]}
-          if [ "$code" -ne 0 ] && grep -q "already exists on crates.io" /tmp/publish.log; then
-            echo "spicedb-grpc-tonic version already on crates.io, continuing"
-            exit 0
+          if [ "${{ env.IS_DRY_RUN }}" = "true" ]; then
+            cargo publish -p spicedb-grpc-tonic --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty --dry-run
+          else
+            cargo publish -p spicedb-grpc-tonic --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty 2>&1 | tee /tmp/publish.log || true
+            code=${PIPESTATUS[0]}
+            if [ "$code" -ne 0 ] && grep -q "already exists on crates.io" /tmp/publish.log; then
+              echo "spicedb-grpc-tonic version already on crates.io, continuing"
+              exit 0
+            fi
+            exit "$code"
           fi
-          exit "$code"
 
   publish-rust-sys:
-    needs: [build-shared-libs, publish-rust-api]
+    needs: [build-shared-libs, publish-rust-api, environment]
     runs-on: ubuntu-latest
     env:
       MISE_ENABLE_TOOLS: "rust,buf,protoc"
@@ -166,7 +195,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
+          ref: ${{ env.GIT_REF }}
           fetch-depth: 0
 
       - name: Download shared lib for this platform (linux-x64)
@@ -194,33 +223,32 @@ jobs:
           install_args: "rust buf protoc"
 
       - name: Publish spicedb-embedded-sys to crates.io
-        run: cargo publish -p spicedb-embedded-sys --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
+        run: |
+          if [ "${{ env.IS_DRY_RUN }}" = "true" ]; then
+            cargo publish -p spicedb-embedded-sys --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty --dry-run
+          else
+            cargo publish -p spicedb-embedded-sys --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
+          fi
 
   publish-rust-main:
-    needs: publish-rust-sys
+    needs: [publish-rust-sys, environment]
     runs-on: ubuntu-latest
     env:
       MISE_ENABLE_TOOLS: "rust,buf,protoc"
+      VERSION_NUM: ${{ needs.environment.outputs.version_num }}
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
+          ref: ${{ env.GIT_REF }}
           fetch-depth: 0
-
-      - name: Set version from tag
-        id: version
-        run: |
-          TAG="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}"
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
       - name: Update main crate to depend on published spicedb-embedded-sys by version
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
           cd rust
-          sed -i 's|spicedb-embedded-sys = { path = "spicedb-embedded-sys" }|spicedb-embedded-sys = "'"$VERSION"'"|' Cargo.toml
+          sed -i 's|spicedb-embedded-sys = { path = "spicedb-embedded-sys" }|spicedb-embedded-sys = "'"$VERSION_NUM"'"|' Cargo.toml
           grep "spicedb-embedded-sys" Cargo.toml
 
       - uses: Swatinem/rust-cache@v2
@@ -232,24 +260,30 @@ jobs:
           install_args: "rust buf protoc"
 
       - name: Publish main crate to crates.io
-        run: cargo publish -p spicedb-embedded --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
+        run: |
+          if [ "${{ env.IS_DRY_RUN }}" = "true" ]; then
+            cargo publish -p spicedb-embedded --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty --dry-run
+          else
+            cargo publish -p spicedb-embedded --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
+          fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   publish-java:
-    needs: [build-shared-libs]
+    needs: [build-shared-libs, environment]
     runs-on: ubuntu-latest
     env:
       SONATYPE_USERNAME: ${{ vars.SONATYPE_USERNAME }}
       SONATYPE_TOKEN: ${{ secrets.SONATYPE_TOKEN }}
       GPG_PASSPHRASE: ""
+      VERSION_NUM: ${{ needs.environment.outputs.version_num }}
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
+          ref: ${{ env.GIT_REF }}
           fetch-depth: 0
 
       - name: Download shared libs for all platforms
@@ -340,24 +374,29 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          TAG="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}"
-          VERSION="${TAG#v}"
           cd java
-          mvn -B -ntp versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+          mvn -B -ntp versions:set -DnewVersion="$VERSION_NUM" -DgenerateBackupPoms=false
           # No clean: natives are in target/natives-layout for classifier JARs
-          mvn -B -ntp -P release package deploy
-          echo "Published Java $VERSION to Maven Central (main + linux-x86_64, linux-aarch_64, osx-aarch_64, windows-x86_64 classifier JARs)" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ env.IS_DRY_RUN }}" = "true" ]; then
+            mvn -B -ntp -P release package
+            echo "Dry run: would publish Java $VERSION_NUM to Maven Central" >> "$GITHUB_STEP_SUMMARY"
+          else
+            mvn -B -ntp -P release package deploy
+            echo "Published Java $VERSION_NUM to Maven Central (main + linux-x86_64, linux-aarch_64, osx-aarch_64, windows-x86_64 classifier JARs)" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   publish-npm:
-    needs: [publish-npm-platforms]
+    needs: [publish-npm-platforms, environment]
     runs-on: ubuntu-latest
+    env:
+      VERSION_NUM: ${{ needs.environment.outputs.version_num }}
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
+          ref: ${{ env.GIT_REF }}
           fetch-depth: 0
 
       - uses: jdx/mise-action@v3
@@ -379,7 +418,7 @@ jobs:
         working-directory: node
         run: |
           npm ci
-          export VERSION="${GITHUB_REF_NAME#v}"
+          export VERSION="$VERSION_NUM"
           node -e "
           const fs = require('fs');
           const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
@@ -396,7 +435,12 @@ jobs:
 
       - name: Publish to npm
         working-directory: node
-        run: npm publish
+        run: |
+          if [ "${{ env.IS_DRY_RUN }}" = "true" ]; then
+            npm publish --dry-run
+          else
+            npm publish
+          fi
 
   # Publish platform-specific optional packages (only that platform's binary).
   # Bootstrap: npm trusted publisher (OIDC) can only be enabled for packages that already exist.
@@ -405,7 +449,10 @@ jobs:
   # then npm publish from each node/packages/<platform>), then add trusted publisher for each in
   # the npm dashboard so future releases can publish via OIDC.
   publish-npm-platforms:
-    needs: [build-shared-libs]
+    needs: [build-shared-libs, environment]
+    runs-on: ubuntu-latest
+    env:
+      VERSION_NUM: ${{ needs.environment.outputs.version_num }}
     defaults:
       run:
         shell: bash
@@ -425,23 +472,16 @@ jobs:
           - npm_platform: win32-x64
             artifact_name: shared-lib-win-x64
             artifact_rid: win-x64
-    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
+          ref: ${{ env.GIT_REF }}
           fetch-depth: 0
 
       - name: Download shared lib for this platform
         uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-
-      - name: Set version
-        id: version
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Prepare platform package
         run: |
@@ -454,7 +494,7 @@ jobs:
           fi
           cp "$NATIVE_SRC"/* "$PKG_DIR/prebuilds/${{ matrix.npm_platform }}/"
           # Overwrite version in package.json
-          sed -i "s/\"version\": \"0.0.0-placeholder\"/\"version\": \"${{ steps.version.outputs.version }}\"/" "$PKG_DIR/package.json"
+          sed -i "s/\"version\": \"0.0.0-placeholder\"/\"version\": \"$VERSION_NUM\"/" "$PKG_DIR/package.json"
           ls -R "$PKG_DIR"
 
       - uses: actions/setup-node@v6
@@ -464,7 +504,12 @@ jobs:
 
       - name: Publish platform package to npm
         working-directory: node/packages/${{ matrix.npm_platform }}
-        run: npm publish --access public
+        run: |
+          if [ "${{ env.IS_DRY_RUN }}" = "true" ]; then
+            npm publish --access public --dry-run
+          else
+            npm publish --access public
+          fi
 
   publish-nuget:
     needs: [build-shared-libs]
@@ -475,7 +520,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
+          ref: ${{ env.GIT_REF }}
           fetch-depth: 0
 
       - name: Download shared libs for all platforms
@@ -511,8 +556,9 @@ jobs:
         working-directory: csharp
         run: dotnet pack -c Release
 
-      # Get a short-lived NuGet API key
+      # Get a short-lived NuGet API key (skip on dry run)
       - name: NuGet login (OIDC → temp API key)
+        if: env.IS_DRY_RUN != 'true'
         uses: NuGet/login@v1
         id: login
         with:
@@ -520,8 +566,16 @@ jobs:
 
       # Push the package
       - name: NuGet push
+        if: env.IS_DRY_RUN != 'true'
         working-directory: csharp
-        run: dotnet nuget push bin/Release/SpiceDbEmbedded.nupkg --api-key ${{steps.login.outputs.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json
+        run: dotnet nuget push bin/Release/SpiceDbEmbedded.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
+
+      - name: NuGet push (dry run)
+        if: env.IS_DRY_RUN == 'true'
+        working-directory: csharp
+        run: |
+          dotnet nuget verify bin/Release/SpiceDbEmbedded.nupkg
+          echo "Dry run: would push SpiceDbEmbedded.nupkg to NuGet"
 
   # Build platform-specific wheels with bundled native lib (one job per OS).
   build-python-wheels:
@@ -549,7 +603,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
+          ref: ${{ env.GIT_REF }}
           fetch-depth: 0
 
       - name: Download shared lib for this platform
@@ -604,7 +658,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref }}
+          ref: ${{ env.GIT_REF }}
           fetch-depth: 0
 
       - name: Download all Python artifacts
@@ -615,9 +669,18 @@ jobs:
           merge-multiple: true
 
       - name: Publish package distributions to PyPI
+        if: env.IS_DRY_RUN != 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: python/dist
+
+      - name: Publish to PyPI (dry run)
+        if: env.IS_DRY_RUN == 'true'
+        run: |
+          pip install twine
+          twine check python/dist/*
+          echo "Dry run: would upload the following to PyPI:"
+          ls -lh python/dist/*
 
   create-release:
     needs:
@@ -628,22 +691,19 @@ jobs:
         publish-npm,
         publish-nuget,
         publish-pypi,
+        environment,
       ]
     runs-on: ubuntu-latest
+    env:
+      VERSION_NUM: ${{ needs.environment.outputs.version_num }}
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.GIT_REF }}
           fetch-depth: 0
-
-      - name: Set version and tag
-        id: tag
-        run: |
-          TAG="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
       - name: Download shared libs for Rust release tarballs
         uses: actions/download-artifact@v4
@@ -671,8 +731,7 @@ jobs:
 
       - name: Delete current tag locally
         run: |
-          TAG="${{ steps.tag.outputs.tag }}"
-          git tag -d "$TAG" 2>/dev/null || true
+          git tag -d "$VERSION" 2>/dev/null || true
           # So conventional-changelog's "latest tag" is the previous release; commits from that tag to HEAD = this release
 
       - name: Generate changelog
@@ -695,11 +754,18 @@ jobs:
             echo "CLEAN_CHANGELOG_EOF"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Create GitHub Release (dry run)
+        if: env.IS_DRY_RUN == 'true'
+        run: |
+          echo "Dry run: would create GitHub release ${{ env.VERSION }} with assets:"
+          ls -lh libspicedb-*.tar.gz
+
       - name: Create GitHub Release
+        if: env.IS_DRY_RUN != 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          name: ${{ steps.tag.outputs.tag }}
+          tag_name: ${{ env.VERSION }}
+          name: ${{ env.VERSION }}
           files: |
             libspicedb-linux-x64.tar.gz
             libspicedb-linux-arm64.tar.gz
@@ -745,13 +811,13 @@ jobs:
             <dependency>
               <groupId>com.borkfork</groupId>
               <artifactId>spicedb-embedded</artifactId>
-              <version>${{ steps.tag.outputs.version }}</version>
+              <version>${{ env.VERSION_NUM }}</version>
             </dependency>
             <!-- Platform native library (use one: linux-x86_64, linux-aarch_64, osx-aarch_64, windows-x86_64) -->
             <dependency>
               <groupId>com.borkfork</groupId>
               <artifactId>spicedb-embedded</artifactId>
-              <version>${{ steps.tag.outputs.version }}</version>
+              <version>${{ env.VERSION_NUM }}</version>
               <classifier>linux-x86_64</classifier>
             </dependency>
             ```
@@ -770,20 +836,20 @@ jobs:
 
             **Java** (Gradle). Add the main artifact and the classifier for your platform (`linux-x86_64`, `linux-aarch_64`, `osx-aarch_64`, or `windows-x86_64`):
             ```groovy
-            implementation 'com.borkfork:spicedb-embedded:${{ steps.tag.outputs.version }}'
-            implementation 'com.borkfork:spicedb-embedded:${{ steps.tag.outputs.version }}:linux-x86_64'  // or linux-aarch_64, osx-aarch_64, windows-x86_64
+            implementation 'com.borkfork:spicedb-embedded:${{ env.VERSION_NUM }}'
+            implementation 'com.borkfork:spicedb-embedded:${{ env.VERSION_NUM }}:linux-x86_64'  // or linux-aarch_64, osx-aarch_64, windows-x86_64
             ```
             Kotlin DSL:
             ```kotlin
-            implementation("com.borkfork:spicedb-embedded:${{ steps.tag.outputs.version }}")
-            implementation("com.borkfork:spicedb-embedded:${{ steps.tag.outputs.version }}:linux-x86_64")  // or linux-aarch_64, osx-aarch_64, windows-x86_64
+            implementation("com.borkfork:spicedb-embedded:${{ env.VERSION_NUM }}")
+            implementation("com.borkfork:spicedb-embedded:${{ env.VERSION_NUM }}:linux-x86_64")  // or linux-aarch_64, osx-aarch_64, windows-x86_64
             ```
             With [osdetector-gradle-plugin](https://github.com/google/osdetector-gradle-plugin) you can use the classifier dynamically:
             ```groovy
             plugins { id "com.google.osdetector" version "1.7.3" }
             dependencies {
-              implementation "com.borkfork:spicedb-embedded:${{ steps.tag.outputs.version }}"
-              implementation "com.borkfork:spicedb-embedded:${{ steps.tag.outputs.version }}:${osdetector.classifier}"
+              implementation "com.borkfork:spicedb-embedded:${{ env.VERSION_NUM }}"
+              implementation "com.borkfork:spicedb-embedded:${{ env.VERSION_NUM }}:${osdetector.classifier}"
             }
             ```
         env:
