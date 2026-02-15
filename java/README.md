@@ -107,12 +107,12 @@ Add the main library and **one** classifier dependency for your platform (`linux
 <dependency>
     <groupId>com.borkfork</groupId>
     <artifactId>spicedb-embedded</artifactId>
-    <version>0.3.4</version>
+    <version>0.3.5</version>
 </dependency>
 <dependency>
     <groupId>com.borkfork</groupId>
     <artifactId>spicedb-embedded</artifactId>
-    <version>0.3.4</version>
+    <version>0.3.5</version>
     <classifier>linux-x86_64</classifier>  <!-- or linux-aarch_64, osx-aarch_64, windows-x86_64 -->
 </dependency>
 ```
