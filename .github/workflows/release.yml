@@ -55,7 +55,7 @@ jobs:
         id: version
         run: |
           version_num="${{ github.event.inputs.version }}"
-          if ! echo "$version_num" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$'; then
+          if ! echo "$version_num" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
             echo "::error::Version must be semantic (e.g. 0.3.6 or 1.0.0-beta.1), got: $version_num"
             exit 1
           fi
@@ -105,14 +105,7 @@ jobs:
 
       - name: Push commit and tag
         run: |
-          ref="${{ github.event.inputs.ref }}"
-          # Use force-with-lease for branch refs so we don't overwrite if the branch advanced
-          if git show-ref --verify --quiet "refs/remotes/origin/$ref" 2>/dev/null; then
-            base_sha="$(git rev-parse HEAD^)"
-            git push --force-with-lease="origin/$ref:$base_sha" origin HEAD:"$ref"
-          else
-            git push origin HEAD:"$ref"
-          fi
+          git push origin HEAD:${{ github.event.inputs.ref }}
           git push origin "${{ steps.version.outputs.tag_name }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -935,16 +928,16 @@ jobs:
           tag_name="${{ needs.prepare-release.outputs.tag_name }}"
           ref="${{ github.event.inputs.ref }}"
           git push origin --delete "$tag_name" || true
-          git fetch origin "$ref" 2>/dev/null || true
-          local_head="$(git rev-parse HEAD)"
+          git fetch origin 2>/dev/null || true
+          head_sha="$(git rev-parse HEAD)"
           if git show-ref --verify --quiet "refs/remotes/origin/$ref" 2>/dev/null; then
             remote_head="$(git rev-parse "refs/remotes/origin/$ref")"
-            if [ "$remote_head" = "$local_head" ]; then
+            if [ "$remote_head" = "$head_sha" ]; then
               prev="$(git rev-parse HEAD^)"
               echo "Reverting dry-run version bump on $ref to $prev"
               git push origin "$prev:$ref"
             else
-              echo "::warning::Remote $ref has moved (remote: $remote_head, our tag: $local_head); skipping branch revert to avoid losing commits."
+              echo "::warning::Remote $ref has moved (remote: $remote_head, our tag: $head_sha); skipping branch revert to avoid losing commits."
             fi
           else
             echo "Remote ref $ref does not exist; skipping branch revert."
