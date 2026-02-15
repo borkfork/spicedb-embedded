@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package spicedb_embedded_node.imports;
 
-// Pull in authzed.api.v1 so buf export includes it (same as Rust spicedb-api).
+// Pull in authzed.api.v1 so buf export includes it (same as Rust spicedb-grpc-tonic).
 import "authzed/api/v1/permission_service.proto";
 import "authzed/api/v1/schema_service.proto";
 import "authzed/api/v1/watch_service.proto";

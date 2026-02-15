@@ -5,11 +5,11 @@
 //! Schema and relationships are written via gRPC (not JSON).
 
 use serde::{Deserialize, Serialize};
-use spicedb_api::v1::{
+use spicedb_embedded_sys::{dispose, start};
+use spicedb_grpc_tonic::v1::{
     RelationshipUpdate, WriteRelationshipsRequest, WriteSchemaRequest,
     relationship_update::Operation,
 };
-use spicedb_embedded_sys::{dispose, start};
 
 use crate::SpiceDBError;
 
@@ -59,13 +59,13 @@ fn parse_json_response(response_str: &str) -> Result<serde_json::Value, SpiceDBE
     }
 }
 
-use spicedb_api::v1::{
+use spicedb_embedded_sys::memory_transport;
+use spicedb_grpc_tonic::v1::{
     CheckBulkPermissionsRequest, CheckBulkPermissionsResponse, CheckPermissionRequest,
     CheckPermissionResponse, DeleteRelationshipsRequest, DeleteRelationshipsResponse,
     ExpandPermissionTreeRequest, ExpandPermissionTreeResponse, ReadSchemaRequest,
     ReadSchemaResponse, WriteRelationshipsResponse, WriteSchemaResponse,
 };
-use spicedb_embedded_sys::memory_transport;
 
 /// Embedded `SpiceDB` instance (in-memory transport). All RPCs go through the FFI.
 /// For streaming APIs (`Watch`, `ReadRelationships`, etc.) use [`streaming_address`](EmbeddedSpiceDB::streaming_address)
@@ -91,7 +91,7 @@ impl EmbeddedSpiceDB {
     /// Returns an error if the C library fails to start, returns invalid JSON, or schema/relationship write fails.
     pub fn new(
         schema: &str,
-        relationships: &[spicedb_api::v1::Relationship],
+        relationships: &[spicedb_grpc_tonic::v1::Relationship],
         options: Option<&StartOptions>,
     ) -> Result<Self, SpiceDBError> {
         let opts = options.cloned().unwrap_or_default();
@@ -306,7 +306,7 @@ mod tests {
 
     use std::time::Duration;
 
-    use spicedb_api::v1::{
+    use spicedb_grpc_tonic::v1::{
         CheckPermissionRequest, Consistency, ObjectReference, ReadRelationshipsRequest,
         Relationship, RelationshipFilter, RelationshipUpdate, SubjectReference, WatchKind,
         WatchRequest, WriteRelationshipsRequest, relationship_update::Operation,
@@ -634,7 +634,9 @@ definition document {
             .await
             .unwrap();
         let mut client =
-            spicedb_api::v1::permissions_service_client::PermissionsServiceClient::new(channel);
+            spicedb_grpc_tonic::v1::permissions_service_client::PermissionsServiceClient::new(
+                channel,
+            );
         let mut stream = client
             .read_relationships(ReadRelationshipsRequest {
                 consistency: Some(fully_consistent()),

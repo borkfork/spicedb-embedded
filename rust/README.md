@@ -185,7 +185,7 @@ let allowed = response.permissionship
 - **`schema()`** — Sync client for ReadSchema, WriteSchema.
 - **`streaming_address()`** — Address for streaming RPCs (Watch, ReadRelationships); connect a gRPC client to this address.
 
-All types are re-exported from `spicedb_api::v1` (generated from buf.build/authzed/api) as `spicedb_embedded::v1`.
+All types are re-exported from `spicedb_grpc_tonic::v1` (generated from buf.build/authzed/api) as `spicedb_embedded::v1`.
 
 ### StartOptions
 
