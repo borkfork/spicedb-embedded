@@ -117,16 +117,17 @@ jobs:
           with open(p) as f: c = f.read()
           with open(p, 'w') as f: f.write(c.replace('version = \"0.0.0\"', f'version = \"{v}\"', 1))
           "
-          # For real publish, add version to -sys dep (keep path so build/publish -sys still works; cargo publish strips path)
+          # For real publish, set -sys dep version to release (path kept so build/publish -sys still works; cargo publish strips path)
           if [ "${{ github.event.inputs.actually_publish }}" = "true" ]; then
             python3 -c "
+            import re
             v = __import__('os').environ['VERSION_NUM']
             p = 'rust/Cargo.toml'
             with open(p) as f: c = f.read()
-            old = 'spicedb-embedded-sys = { path = \"spicedb-embedded-sys\" }'
-            new = f'spicedb-embedded-sys = {{ version = \"{v}\", path = \"spicedb-embedded-sys\" }}'
-            if old not in c: raise SystemExit('expected spicedb-embedded-sys path dep not found')
-            with open(p, 'w') as f: f.write(c.replace(old, new, 1))
+            c2 = re.sub(r'(spicedb-embedded-sys\s*=\s*\{\s*)version\s*=\s*\"[^\"]+\"(\s*,\s*path\s*=\s*\"spicedb-embedded-sys\"\s*\})', r'\g<1>version = \"' + v + r'\"\g<2>', c)
+            c2 = re.sub(r'(spicedb-embedded-sys\s*=\s*\{\s*)path\s*=\s*\"spicedb-embedded-sys\"(\s*\})', r'\g<1>version = \"' + v + r'\", path = \"spicedb-embedded-sys\"\g<2>', c2)
+            if c2 == c: raise SystemExit('failed to update spicedb-embedded-sys version in rust/Cargo.toml')
+            with open(p, 'w') as f: f.write(c2)
             "
           fi
           # Maven
