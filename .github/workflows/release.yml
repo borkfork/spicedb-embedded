@@ -1,5 +1,6 @@
 # Build and publish each platform to their respective registries.
-# Trigger: push a version tag (e.g. v0.1.0). A dry run can be triggered manually.
+# Trigger: workflow_dispatch only. Run manually with numeric version (e.g. 0.3.6, no 'v' prefix).
+# The workflow replaces 0.0.0 with the release version in all package files, commits, tags, then builds/publishes from that tag.
 #
 # Required env vars:
 #   SONATYPE_USERNAME - Maven Central Portal username
@@ -11,16 +12,13 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v[0-9]+.[0-9]+.[0-9]+*" # e.g. v0.1.0, v1.0.0-beta.1
   workflow_dispatch:
     inputs:
       version:
-        description: "Version (e.g. v0.1.0)"
+        description: "Numeric version (e.g. 0.3.6, no 'v' prefix)"
         required: true
       ref:
-        description: "Branch/commit (default: main)"
+        description: "Branch/commit to release from (default: main)"
         required: false
         default: "main"
       actually_publish:
@@ -31,31 +29,90 @@ on:
 
 permissions:
   id-token: write # Required for OIDC
-  contents: write # Create GitHub Release (includes read)
+  contents: write # Create GitHub Release, push commit and tag
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event.inputs.version || 'manual' }}
   cancel-in-progress: false
 
 env:
-  # Dry-run by default for manual triggers, real publish for tag pushes
-  IS_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.actually_publish != 'true' }}
-  GIT_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.ref }}
-  VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}
+  IS_DRY_RUN: ${{ github.event.inputs.actually_publish != 'true' }}
 
 jobs:
-  # Set version number (strip leading 'v') and other env for use in later jobs.
-  setup:
+  # Replace 0.0.0 with version in package files, commit, tag, push. All other jobs checkout this tag.
+  prepare-release:
     runs-on: ubuntu-latest
     outputs:
-      version_num: ${{ steps.env.outputs.version_num }}
+      tag_name: ${{ steps.version.outputs.tag_name }}
+      version_num: ${{ steps.version.outputs.version_num }}
     steps:
-      - name: Set outputs
-        id: env
-        run: echo "version_num=${VERSION#v}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref }}
+          fetch-depth: 0
+
+      - name: Set version and tag name
+        id: version
+        run: |
+          version_num="${{ github.event.inputs.version }}"
+          if ! echo "$version_num" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+            echo "::error::Version must be semantic (e.g. 0.3.6 or 1.0.0-beta.1), got: $version_num"
+            exit 1
+          fi
+          if [ "${{ github.event.inputs.actually_publish }}" = "true" ]; then
+            tag_name="v${version_num}"
+          else
+            tag_name="dry-run-v${version_num}-${{ github.run_id }}"
+          fi
+          echo "version_num=$version_num" >> "$GITHUB_OUTPUT"
+          echo "tag_name=$tag_name" >> "$GITHUB_OUTPUT"
+
+      - name: Replace 0.0.0 with version in package files
+        run: |
+          VERSION_NUM="${{ steps.version.outputs.version_num }}"
+          for f in \
+            rust/Cargo.toml \
+            rust/spicedb-embedded-sys/Cargo.toml \
+            node/package.json \
+            node/packages/linux-x64/package.json \
+            node/packages/linux-arm64/package.json \
+            node/packages/darwin-arm64/package.json \
+            node/packages/win32-x64/package.json \
+            java/pom.xml \
+            python/pyproject.toml \
+            csharp/SpiceDbEmbedded.csproj \
+          ; do
+            sed -i "s/0\.0\.0/$VERSION_NUM/g" "$f"
+          done
+          # For real publish, switch main crate to depend on published spicedb-embedded-sys by version (dry run keeps path dep for cargo publish --dry-run).
+          if [ "${{ github.event.inputs.actually_publish }}" = "true" ]; then
+            sed -i 's|spicedb-embedded-sys = { path = "spicedb-embedded-sys" }|spicedb-embedded-sys = "'"$VERSION_NUM"'"|' rust/Cargo.toml
+          fi
+
+      - name: Update package-lock.json
+        working-directory: node
+        run: npm install
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --staged --quiet || git commit -m "chore: set release version ${{ steps.version.outputs.tag_name }}"
+
+      - name: Create tag
+        run: git tag "${{ steps.version.outputs.tag_name }}"
+
+      - name: Push commit and tag
+        run: |
+          git push origin HEAD:${{ github.event.inputs.ref }}
+          git push origin "${{ steps.version.outputs.tag_name }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # Build shared C library per platform for packaging with C#, Node, Java, Python
   build-shared-libs:
+    needs: [prepare-release]
     defaults:
       run:
         shell: bash
@@ -75,11 +132,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.GIT_REF }}
+          ref: ${{ needs.prepare-release.outputs.tag_name }}
           fetch-depth: 0
 
-      - name: Set GOCACHE (absolute path required by Go)
-        run: echo "GOCACHE=$HOME/.cache/go-build" >> "$GITHUB_ENV"
+      # Reuse staged prebuilds when go.mod/go.sum unchanged (same key as CI; shared across branches/runs).
+      - uses: actions/cache@v4
+        id: prebuild-cache
+        with:
+          path: |
+            node/prebuilds
+            csharp/runtimes
+            java/src/main/resources/natives
+            python/src/spicedb_embedded/natives
+            rust/spicedb-embedded-sys/prebuilds
+          key: shared-c-prebuilds-${{ matrix.rid }}-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
 
       - name: "Set RID from runner (macOS: we only publish osx-arm64; Intel Mac not supported)"
         id: set_rid
@@ -96,28 +162,22 @@ jobs:
           echo "rid=$rid" >> "$GITHUB_OUTPUT"
 
       - uses: jdx/mise-action@v3
+        if: steps.prebuild-cache.outputs.cache-hit != 'true'
         with:
           install_args: "go"
 
+      - name: Set GOCACHE (absolute path required by Go)
+        if: steps.prebuild-cache.outputs.cache-hit != 'true'
+        run: echo "GOCACHE=$HOME/.cache/go-build" >> "$GITHUB_ENV"
+
       - uses: actions/cache@v4
+        if: steps.prebuild-cache.outputs.cache-hit != 'true'
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
           restore-keys: ${{ runner.os }}-go-
-
-      # Reuse staged prebuilds when go.mod/go.sum unchanged (same key as CI; shared across branches/runs).
-      - uses: actions/cache@v4
-        id: prebuild-cache
-        with:
-          path: |
-            node/prebuilds
-            csharp/runtimes
-            java/src/main/resources/natives
-            python/src/spicedb_embedded/natives
-            rust/spicedb-embedded-sys/prebuilds
-          key: shared-c-prebuilds-${{ matrix.rid }}-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
 
       - name: Copy cached prebuilds to out
         if: steps.prebuild-cache.outputs.cache-hit == 'true'
@@ -153,7 +213,7 @@ jobs:
 
   # Publish spicedb-grpc-tonic first; spicedb-embedded-sys depends on it (version from crates.io when publishing).
   publish-rust-api:
-    needs: [build-shared-libs, setup]
+    needs: [build-shared-libs, prepare-release]
     runs-on: ubuntu-latest
     env:
       MISE_ENABLE_TOOLS: "rust,buf,protoc"
@@ -163,7 +223,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.GIT_REF }}
+          ref: ${{ needs.prepare-release.outputs.tag_name }}
           fetch-depth: 0
 
       - uses: jdx/mise-action@v3
@@ -185,7 +245,7 @@ jobs:
           fi
 
   publish-rust-sys:
-    needs: [build-shared-libs, publish-rust-api, setup]
+    needs: [build-shared-libs, publish-rust-api, prepare-release]
     runs-on: ubuntu-latest
     env:
       MISE_ENABLE_TOOLS: "rust,buf,protoc"
@@ -195,7 +255,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.GIT_REF }}
+          ref: ${{ needs.prepare-release.outputs.tag_name }}
           fetch-depth: 0
 
       - name: Download shared lib for this platform (linux-x64)
@@ -231,26 +291,19 @@ jobs:
           fi
 
   publish-rust-main:
-    needs: [publish-rust-sys, setup]
+    needs: [publish-rust-sys, prepare-release]
     runs-on: ubuntu-latest
     env:
       MISE_ENABLE_TOOLS: "rust,buf,protoc"
-      VERSION_NUM: ${{ needs.setup.outputs.version_num }}
+      VERSION_NUM: ${{ needs.prepare-release.outputs.version_num }}
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.GIT_REF }}
+          ref: ${{ needs.prepare-release.outputs.tag_name }}
           fetch-depth: 0
-
-      - name: Update main crate to depend on published spicedb-embedded-sys by version
-        if: env.IS_DRY_RUN != 'true'
-        run: |
-          cd rust
-          sed -i 's|spicedb-embedded-sys = { path = "spicedb-embedded-sys" }|spicedb-embedded-sys = "'"$VERSION_NUM"'"|' Cargo.toml
-          grep "spicedb-embedded-sys" Cargo.toml
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -259,6 +312,10 @@ jobs:
       - uses: jdx/mise-action@v3
         with:
           install_args: "rust buf protoc"
+
+      - name: Update Cargo.lock to use published spicedb-embedded-sys
+        if: env.IS_DRY_RUN != 'true'
+        run: cargo update -p spicedb-embedded-sys
 
       - name: Publish main crate to crates.io
         run: |
@@ -271,20 +328,20 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   publish-java:
-    needs: [build-shared-libs, setup]
+    needs: [build-shared-libs, prepare-release]
     runs-on: ubuntu-latest
     env:
       SONATYPE_USERNAME: ${{ vars.SONATYPE_USERNAME }}
       SONATYPE_TOKEN: ${{ secrets.SONATYPE_TOKEN }}
       GPG_PASSPHRASE: ""
-      VERSION_NUM: ${{ needs.setup.outputs.version_num }}
+      VERSION_NUM: ${{ needs.prepare-release.outputs.version_num }}
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.GIT_REF }}
+          ref: ${{ needs.prepare-release.outputs.tag_name }}
           fetch-depth: 0
 
       - name: Download shared libs for all platforms
@@ -376,8 +433,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           cd java
-          mvn -B -ntp versions:set -DnewVersion="$VERSION_NUM" -DgenerateBackupPoms=false
-          # No clean: natives are in target/natives-layout for classifier JARs
+          # Version already set in prepare-release (0.0.0 → VERSION_NUM in pom.xml). No clean: natives in target/natives-layout.
           if [ "${{ env.IS_DRY_RUN }}" = "true" ]; then
             mvn -B -ntp -P release package
             echo "Dry run: would publish Java $VERSION_NUM to Maven Central" >> "$GITHUB_STEP_SUMMARY"
@@ -387,17 +443,17 @@ jobs:
           fi
 
   publish-npm:
-    needs: [publish-npm-platforms, setup]
+    needs: [publish-npm-platforms, prepare-release]
     runs-on: ubuntu-latest
     env:
-      VERSION_NUM: ${{ needs.setup.outputs.version_num }}
+      VERSION_NUM: ${{ needs.prepare-release.outputs.version_num }}
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.GIT_REF }}
+          ref: ${{ needs.prepare-release.outputs.tag_name }}
           fetch-depth: 0
 
       - uses: jdx/mise-action@v3
@@ -431,11 +487,7 @@ jobs:
           };
           fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
           "
-          if [ "${{ env.IS_DRY_RUN }}" = "true" ]; then
-            npm install --omit=optional
-          else
-            npm install
-          fi
+          npm install
           npm run build
 
       - name: Publish to npm
@@ -454,10 +506,10 @@ jobs:
   # then npm publish from each node/packages/<platform>), then add trusted publisher for each in
   # the npm dashboard so future releases can publish via OIDC.
   publish-npm-platforms:
-    needs: [build-shared-libs, setup]
+    needs: [build-shared-libs, prepare-release]
     runs-on: ubuntu-latest
     env:
-      VERSION_NUM: ${{ needs.setup.outputs.version_num }}
+      VERSION_NUM: ${{ needs.prepare-release.outputs.version_num }}
     defaults:
       run:
         shell: bash
@@ -480,7 +532,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.GIT_REF }}
+          ref: ${{ needs.prepare-release.outputs.tag_name }}
           fetch-depth: 0
 
       - name: Download shared lib for this platform
@@ -498,8 +550,7 @@ jobs:
             NATIVE_SRC="out/${{ matrix.artifact_rid }}/native"
           fi
           cp "$NATIVE_SRC"/* "$PKG_DIR/prebuilds/${{ matrix.npm_platform }}/"
-          # Overwrite version in package.json
-          sed -i "s/\"version\": \"0.0.0-placeholder\"/\"version\": \"$VERSION_NUM\"/" "$PKG_DIR/package.json"
+          # Version already set in prepare-release (0.0.0 → VERSION_NUM in these package.json files).
           ls -R "$PKG_DIR"
 
       - uses: actions/setup-node@v6
@@ -517,17 +568,17 @@ jobs:
           fi
 
   publish-nuget:
-    needs: [build-shared-libs, setup]
+    needs: [build-shared-libs, prepare-release]
     runs-on: ubuntu-latest
     env:
-      VERSION_NUM: ${{ needs.setup.outputs.version_num }}
+      VERSION_NUM: ${{ needs.prepare-release.outputs.version_num }}
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.GIT_REF }}
+          ref: ${{ needs.prepare-release.outputs.tag_name }}
           fetch-depth: 0
 
       - name: Download shared libs for all platforms
@@ -557,11 +608,11 @@ jobs:
           restore-keys: ${{ runner.os }}-nuget-
 
       - name: Build C# package
-        run: dotnet build csharp/SpiceDbEmbedded.sln -c Release
+        run: dotnet build csharp/SpiceDbEmbedded.sln -c Release -p:Version=${{ env.VERSION_NUM }}
 
       - name: Build NuGet package
         working-directory: csharp
-        run: dotnet pack -c Release
+        run: dotnet pack -c Release -p:Version=${{ env.VERSION_NUM }}
 
       # Get a short-lived NuGet API key (skip on dry run)
       - name: NuGet login (OIDC → temp API key)
@@ -586,7 +637,7 @@ jobs:
 
   # Build platform-specific wheels with bundled native lib (one job per OS).
   build-python-wheels:
-    needs: [build-shared-libs]
+    needs: [build-shared-libs, prepare-release]
     defaults:
       run:
         shell: bash
@@ -610,7 +661,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.GIT_REF }}
+          ref: ${{ needs.prepare-release.outputs.tag_name }}
           fetch-depth: 0
 
       - name: Download shared lib for this platform
@@ -657,7 +708,7 @@ jobs:
           path: python/dist/*.tar.gz
 
   publish-pypi:
-    needs: [build-python-wheels]
+    needs: [build-python-wheels, prepare-release]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -665,7 +716,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.GIT_REF }}
+          ref: ${{ needs.prepare-release.outputs.tag_name }}
           fetch-depth: 0
 
       - name: Download all Python artifacts
@@ -698,18 +749,19 @@ jobs:
         publish-npm,
         publish-nuget,
         publish-pypi,
-        setup,
+        prepare-release,
       ]
     runs-on: ubuntu-latest
     env:
-      VERSION_NUM: ${{ needs.setup.outputs.version_num }}
+      VERSION: ${{ needs.prepare-release.outputs.tag_name }}
+      VERSION_NUM: ${{ needs.prepare-release.outputs.version_num }}
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.GIT_REF }}
+          ref: ${{ needs.prepare-release.outputs.tag_name }}
           fetch-depth: 0
 
       - name: Download shared libs for Rust release tarballs
@@ -859,5 +911,39 @@ jobs:
               implementation "com.borkfork:spicedb-embedded:${{ env.VERSION_NUM }}:${osdetector.classifier}"
             }
             ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # On dry run, remove the tag and revert the version-bump commit on the branch.
+  cleanup-dry-run:
+    if: github.event.inputs.actually_publish != 'true'
+    needs: [create-release, prepare-release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag_name }}
+          fetch-depth: 2
+
+      - name: Delete tag and revert commit (dry run)
+        run: |
+          set -euo pipefail
+          tag_name="${{ needs.prepare-release.outputs.tag_name }}"
+          ref="${{ github.event.inputs.ref }}"
+          git push origin --delete "$tag_name" || true
+          git fetch origin 2>/dev/null || true
+          head_sha="$(git rev-parse HEAD)"
+          if git show-ref --verify --quiet "refs/remotes/origin/$ref" 2>/dev/null; then
+            remote_head="$(git rev-parse "refs/remotes/origin/$ref")"
+            if [ "$remote_head" = "$head_sha" ]; then
+              prev="$(git rev-parse HEAD^)"
+              echo "Reverting dry-run version bump on $ref to $prev"
+              git push origin "$prev:$ref"
+            else
+              echo "::warning::Remote $ref has moved (remote: $remote_head, our tag: $head_sha); skipping branch revert to avoid losing commits."
+            fi
+          else
+            echo "Remote ref $ref does not exist; skipping branch revert."
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
