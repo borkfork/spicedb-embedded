@@ -1931,7 +1931,7 @@ dependencies = [
 
 [[package]]
 name = "spicedb-embedded"
-version = "0.3.5"
+version = "0.0.0"
 dependencies = [
  "hyper-util",
  "prost 0.13.5",
@@ -1951,7 +1951,7 @@ dependencies = [
 
 [[package]]
 name = "spicedb-embedded-sys"
-version = "0.3.5"
+version = "0.0.0"
 dependencies = [
  "prost 0.13.5",
  "spicedb-grpc-tonic",
