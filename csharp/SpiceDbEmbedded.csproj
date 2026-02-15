@@ -1,16 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <ItemGroup>
     <Compile Remove="SpiceDbEmbedded.Tests/**" />
   </ItemGroup>
-
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>Borkfork.SpiceDb.Embedded</RootNamespace>
     <PackageId>SpiceDbEmbedded</PackageId>
-    <Version>0.0.0</Version>
+    <Version>0.3.6</Version>
     <Description>Embedded SpiceDB for .NET — embedded authorization using the standard gRPC API</Description>
     <Authors>Borkfork</Authors>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
@@ -18,20 +16,17 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
-
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
     <!-- Native libs per RID (filled by CI from build-shared-libs); allows "just works" without SPICEDB_LIBRARY_PATH -->
     <!-- Copy to output so build/test find lib; same layout as NuGet package -->
     <Content Include="runtimes\**\native\*" Pack="true" PackagePath="runtimes\%(RecursiveDir)%(Filename)%(Extension)" LinkBase="runtimes" CopyToOutputDirectory="PreserveNewest" Condition="Exists('runtimes')" />
   </ItemGroup>
-
   <ItemGroup>
     <PackageReference Include="Authzed.Net" Version="1.5.0" />
     <PackageReference Include="Grpc.Net.Client" Version="2.71.0" />
     <PackageReference Include="System.Text.Json" Version="8.0.5" />
   </ItemGroup>
-
   <Target Name="RenamePackageToNoVersion" AfterTargets="Pack">
     <PropertyGroup>
       <_PackDir>$(BaseOutputPath)$(Configuration)/</_PackDir>
@@ -40,5 +35,4 @@
     </PropertyGroup>
     <Move SourceFiles="$(_NupkgWithVersion)" DestinationFiles="$(_NupkgNoVersion)" Condition="Exists('$(_NupkgWithVersion)')" />
   </Target>
-
 </Project>

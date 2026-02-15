@@ -1,6 +1,6 @@
 [package]
 name = "spicedb-embedded"
-version = "0.0.0"
+version = "0.3.6"
 edition = "2024"
 description = "Embedded SpiceDB for Rust - embedded authorization using the standard gRPC API"
 license = "Apache-2.0"
@@ -31,7 +31,7 @@ path = "src/lib.rs"
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"                                                                 # for C library JSON response parsing
-spicedb-grpc-tonic = { version = "0.1", path = "spicedb-grpc-tonic" }
+spicedb-grpc-tonic = { version = "0.3", path = "spicedb-grpc-tonic" }
 thiserror = "2"
 tokio = { version = "1", features = ["net", "sync", "rt-multi-thread"] }
 tonic = "0.12"
