@@ -1,6 +1,6 @@
 # Build and publish each platform to their respective registries.
 # Trigger: workflow_dispatch only. Run manually with numeric version (e.g. 0.3.6, no 'v' prefix).
-# The workflow replaces 0.0.0 with the release version in all package files, commits, tags, then builds/publishes from that tag.
+# The workflow replaces 0.0.0 with the release version, commits, pushes to a release branch (release/X.Y.Z or dry-run/X.Y.Z-run_id), creates and pushes the tag. All build/publish jobs checkout the tag. Main is never pushed to (branch protection); use the release branch to open a PR if desired.
 #
 # Required env vars:
 #   SONATYPE_USERNAME - Maven Central Portal username
@@ -39,19 +39,20 @@ env:
   IS_DRY_RUN: ${{ github.event.inputs.actually_publish != 'true' }}
 
 jobs:
-  # Replace 0.0.0 with version in package files, commit, tag, push. All other jobs checkout this tag.
+  # Replace 0.0.0 with version in package files, commit, push to a release branch, tag, push tag. All other jobs checkout this tag.
   prepare-release:
     runs-on: ubuntu-latest
     outputs:
       tag_name: ${{ steps.version.outputs.tag_name }}
       version_num: ${{ steps.version.outputs.version_num }}
+      release_branch: ${{ steps.version.outputs.release_branch }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.ref }}
           fetch-depth: 0
 
-      - name: Set version and tag name
+      - name: Set version, tag name, and release branch
         id: version
         run: |
           version_num="${{ github.event.inputs.version }}"
@@ -59,35 +60,88 @@ jobs:
             echo "::error::Version must be semantic (e.g. 0.3.6 or 1.0.0-beta.1), got: $version_num"
             exit 1
           fi
+          run_id="${{ github.run_id }}"
           if [ "${{ github.event.inputs.actually_publish }}" = "true" ]; then
             tag_name="v${version_num}"
+            release_branch="release/${version_num}"
           else
-            tag_name="dry-run-v${version_num}-${{ github.run_id }}"
+            tag_name="dry-run-v${version_num}-${run_id}"
+            release_branch="dry-run/${version_num}-${run_id}"
           fi
           echo "version_num=$version_num" >> "$GITHUB_OUTPUT"
           echo "tag_name=$tag_name" >> "$GITHUB_OUTPUT"
+          echo "release_branch=$release_branch" >> "$GITHUB_OUTPUT"
 
-      - name: Replace 0.0.0 with version in package files
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Install cargo-edit
+        run: cargo install cargo-edit
+
+      - name: Install dotnet-setversion
+        run: |
+          dotnet tool install -g dotnet-setversion
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: Set versions with ecosystem CLI tools
         run: |
           VERSION_NUM="${{ steps.version.outputs.version_num }}"
-          for f in \
-            rust/Cargo.toml \
-            rust/spicedb-embedded-sys/Cargo.toml \
-            node/package.json \
-            node/packages/linux-x64/package.json \
-            node/packages/linux-arm64/package.json \
-            node/packages/darwin-arm64/package.json \
-            node/packages/win32-x64/package.json \
-            java/pom.xml \
-            python/pyproject.toml \
-            csharp/SpiceDbEmbedded.csproj \
-          ; do
-            sed -i "s/0\.0\.0/$VERSION_NUM/g" "$f"
+          export VERSION_NUM
+          # Node: root and platform packages
+          (cd node && npm version "$VERSION_NUM" --no-git-tag-version)
+          (cd node && node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            const v = process.env.VERSION_NUM;
+            for (const k of Object.keys(p.optionalDependencies || {})) p.optionalDependencies[k] = '^' + v;
+            fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
+          ")
+          for dir in node/packages/linux-x64 node/packages/linux-arm64 node/packages/darwin-arm64 node/packages/win32-x64; do
+            (cd "$dir" && npm version "$VERSION_NUM" --no-git-tag-version)
           done
-          # For real publish, switch main crate to depend on published spicedb-embedded-sys by version (dry run keeps path dep for cargo publish --dry-run).
+          # Cargo: workspace member spicedb-embedded only (exclude spicedb-grpc-tonic); -sys is not a member so set its version separately
+          cargo set-version "$VERSION_NUM" --workspace --exclude spicedb-grpc-tonic
+          python3 -c "
+          v = __import__('os').environ['VERSION_NUM']
+          p = 'rust/spicedb-embedded-sys/Cargo.toml'
+          with open(p) as f: c = f.read()
+          with open(p, 'w') as f: f.write(c.replace('version = \"0.0.0\"', f'version = \"{v}\"', 1))
+          "
+          # For real publish, set -sys dep version to release (path kept so build/publish -sys still works; cargo publish strips path)
           if [ "${{ github.event.inputs.actually_publish }}" = "true" ]; then
-            sed -i 's|spicedb-embedded-sys = { path = "spicedb-embedded-sys" }|spicedb-embedded-sys = "'"$VERSION_NUM"'"|' rust/Cargo.toml
+            python3 -c "
+            import re
+            v = __import__('os').environ['VERSION_NUM']
+            p = 'rust/Cargo.toml'
+            with open(p) as f: c = f.read()
+            c2 = re.sub(r'(spicedb-embedded-sys\s*=\s*\{\s*)version\s*=\s*\"[^\"]+\"(\s*,\s*path\s*=\s*\"spicedb-embedded-sys\"\s*\})', r'\g<1>version = \"' + v + r'\"\g<2>', c)
+            c2 = re.sub(r'(spicedb-embedded-sys\s*=\s*\{\s*)path\s*=\s*\"spicedb-embedded-sys\"(\s*\})', r'\g<1>version = \"' + v + r'\", path = \"spicedb-embedded-sys\"\g<2>', c2)
+            if c2 == c: raise SystemExit('failed to update spicedb-embedded-sys version in rust/Cargo.toml')
+            with open(p, 'w') as f: f.write(c2)
+            "
           fi
+          # Maven
+          (cd java && mvn -B -q versions:set -DnewVersion="$VERSION_NUM" -DgenerateBackupPoms=false)
+          # Python: no standard CLI; update project.version in pyproject.toml
+          python3 -c "
+          import os
+          v = os.environ['VERSION_NUM']
+          p = 'python/pyproject.toml'
+          with open(p) as f: c = f.read()
+          with open(p, 'w') as f: f.write(c.replace('version = \"0.0.0\"', f'version = \"{v}\"', 1))
+          "
+          # C#
+          setversion "$VERSION_NUM" csharp/SpiceDbEmbedded.csproj
 
       - name: Update package-lock.json
         working-directory: node
@@ -103,9 +157,9 @@ jobs:
       - name: Create tag
         run: git tag "${{ steps.version.outputs.tag_name }}"
 
-      - name: Push commit and tag
+      - name: Push release branch and tag
         run: |
-          git push origin HEAD:${{ github.event.inputs.ref }}
+          git push origin HEAD:"${{ steps.version.outputs.release_branch }}"
           git push origin "${{ steps.version.outputs.tag_name }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -474,7 +528,7 @@ jobs:
       - name: Build Node.js package
         working-directory: node
         run: |
-          npm ci
+          npm install
           export VERSION="$VERSION_NUM"
           node -e "
           const fs = require('fs');
@@ -632,8 +686,8 @@ jobs:
         if: env.IS_DRY_RUN == 'true'
         working-directory: csharp
         run: |
-          dotnet nuget verify bin/Release/SpiceDbEmbedded.nupkg
-          echo "Dry run: would push SpiceDbEmbedded.nupkg to NuGet"
+          ls -la bin/Release/SpiceDbEmbedded.nupkg
+          echo "Dry run: would push SpiceDbEmbedded.nupkg to NuGet (verify skipped: package is not signed until after push)"
 
   # Build platform-specific wheels with bundled native lib (one job per OS).
   build-python-wheels:
@@ -914,7 +968,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # On dry run, remove the tag and revert the version-bump commit on the branch.
+  # On dry run, remove the tag and delete the temporary release branch.
   cleanup-dry-run:
     if: github.event.inputs.actually_publish != 'true'
     needs: [create-release, prepare-release]
@@ -922,28 +976,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.prepare-release.outputs.tag_name }}
-          fetch-depth: 2
+          fetch-depth: 1
 
-      - name: Delete tag and revert commit (dry run)
+      - name: Delete tag and dry-run branch
         run: |
-          set -euo pipefail
-          tag_name="${{ needs.prepare-release.outputs.tag_name }}"
-          ref="${{ github.event.inputs.ref }}"
-          git push origin --delete "$tag_name" || true
-          git fetch origin 2>/dev/null || true
-          head_sha="$(git rev-parse HEAD)"
-          if git show-ref --verify --quiet "refs/remotes/origin/$ref" 2>/dev/null; then
-            remote_head="$(git rev-parse "refs/remotes/origin/$ref")"
-            if [ "$remote_head" = "$head_sha" ]; then
-              prev="$(git rev-parse HEAD^)"
-              echo "Reverting dry-run version bump on $ref to $prev"
-              git push origin "$prev:$ref"
-            else
-              echo "::warning::Remote $ref has moved (remote: $remote_head, our tag: $head_sha); skipping branch revert to avoid losing commits."
-            fi
-          else
-            echo "Remote ref $ref does not exist; skipping branch revert."
-          fi
+          git push origin --delete "${{ needs.prepare-release.outputs.tag_name }}" || true
+          git push origin --delete "${{ needs.prepare-release.outputs.release_branch }}" || true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
