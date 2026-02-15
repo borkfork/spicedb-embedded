@@ -1,6 +1,6 @@
 [package]
 name = "spicedb-embedded-sys"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2024"
 description = "FFI and native library for SpiceDB C shared library (builds from Go or downloads prebuilt)"
 license = "Apache-2.0"
