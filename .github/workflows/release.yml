@@ -40,7 +40,7 @@ concurrency:
 env:
   # Dry-run by default for manual triggers, real publish for tag pushes
   IS_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.actually_publish != 'true' }}
-  GIT_REF: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.ref || 'main') || github.ref }}
+  GIT_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.ref }}
   VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}
 
 jobs:
@@ -246,6 +246,7 @@ jobs:
           fetch-depth: 0
 
       - name: Update main crate to depend on published spicedb-embedded-sys by version
+        if: env.IS_DRY_RUN != 'true'
         run: |
           cd rust
           sed -i 's|spicedb-embedded-sys = { path = "spicedb-embedded-sys" }|spicedb-embedded-sys = "'"$VERSION_NUM"'"|' Cargo.toml
@@ -430,7 +431,11 @@ jobs:
           };
           fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
           "
-          npm install
+          if [ "${{ env.IS_DRY_RUN }}" = "true" ]; then
+            npm install --omit=optional
+          else
+            npm install
+          fi
           npm run build
 
       - name: Publish to npm
@@ -512,8 +517,10 @@ jobs:
           fi
 
   publish-nuget:
-    needs: [build-shared-libs]
+    needs: [build-shared-libs, setup]
     runs-on: ubuntu-latest
+    env:
+      VERSION_NUM: ${{ needs.setup.outputs.version_num }}
     defaults:
       run:
         shell: bash
