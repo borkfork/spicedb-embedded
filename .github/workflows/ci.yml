@@ -33,21 +33,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set GOCACHE (absolute path required by Go)
-        run: echo "GOCACHE=$HOME/.cache/go-build" >> "$GITHUB_ENV"
-
-      - uses: jdx/mise-action@v3
-        with:
-          install_args: "go"
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
-          restore-keys: ${{ runner.os }}-go-
-
       # Reuse staged prebuilds when go.mod/go.sum unchanged (shared across branches/PRs by key).
       - uses: actions/cache@v4
         id: prebuild-cache
@@ -59,6 +44,24 @@ jobs:
             python/src/spicedb_embedded/natives
             rust/spicedb-embedded-sys/prebuilds
           key: shared-c-prebuilds-${{ matrix.rid }}-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
+
+      - uses: jdx/mise-action@v3
+        if: steps.prebuild-cache.outputs.cache-hit != 'true'
+        with:
+          install_args: "go"
+
+      - name: Set GOCACHE (absolute path required by Go)
+        if: steps.prebuild-cache.outputs.cache-hit != 'true'
+        run: echo "GOCACHE=$HOME/.cache/go-build" >> "$GITHUB_ENV"
+
+      - uses: actions/cache@v4
+        if: steps.prebuild-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
+          restore-keys: ${{ runner.os }}-go-
 
       - name: Build shared C library
         if: steps.prebuild-cache.outputs.cache-hit != 'true'
