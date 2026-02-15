@@ -117,9 +117,17 @@ jobs:
           with open(p) as f: c = f.read()
           with open(p, 'w') as f: f.write(c.replace('version = \"0.0.0\"', f'version = \"{v}\"', 1))
           "
-          # For real publish, switch to published -sys version (dry run keeps path dep for cargo publish --dry-run)
+          # For real publish, add version to -sys dep (keep path so build/publish -sys still works; cargo publish strips path)
           if [ "${{ github.event.inputs.actually_publish }}" = "true" ]; then
-            cargo add spicedb-embedded-sys@"$VERSION_NUM" --manifest-path rust/Cargo.toml
+            python3 -c "
+            v = __import__('os').environ['VERSION_NUM']
+            p = 'rust/Cargo.toml'
+            with open(p) as f: c = f.read()
+            old = 'spicedb-embedded-sys = { path = \"spicedb-embedded-sys\" }'
+            new = f'spicedb-embedded-sys = {{ version = \"{v}\", path = \"spicedb-embedded-sys\" }}'
+            if old not in c: raise SystemExit('expected spicedb-embedded-sys path dep not found')
+            with open(p, 'w') as f: f.write(c.replace(old, new, 1))
+            "
           fi
           # Maven
           (cd java && mvn -B -q versions:set -DnewVersion="$VERSION_NUM" -DgenerateBackupPoms=false)
