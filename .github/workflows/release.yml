@@ -109,9 +109,14 @@ jobs:
           for dir in node/packages/linux-x64 node/packages/linux-arm64 node/packages/darwin-arm64 node/packages/win32-x64; do
             (cd "$dir" && npm version "$VERSION_NUM" --no-git-tag-version)
           done
-          # Cargo: main crate and -sys only (exclude spicedb-grpc-tonic; -sys is not a workspace member, set via manifest-path)
+          # Cargo: workspace member spicedb-embedded only (exclude spicedb-grpc-tonic); -sys is not a member so set its version separately
           cargo set-version "$VERSION_NUM" --workspace --exclude spicedb-grpc-tonic
-          cargo set-version "$VERSION_NUM" --manifest-path rust/spicedb-embedded-sys/Cargo.toml
+          python3 -c "
+          v = __import__('os').environ['VERSION_NUM']
+          p = 'rust/spicedb-embedded-sys/Cargo.toml'
+          with open(p) as f: c = f.read()
+          with open(p, 'w') as f: f.write(c.replace('version = \"0.0.0\"', f'version = \"{v}\"', 1))
+          "
           # For real publish, switch to published -sys version (dry run keeps path dep for cargo publish --dry-run)
           if [ "${{ github.event.inputs.actually_publish }}" = "true" ]; then
             cargo add spicedb-embedded-sys@"$VERSION_NUM" --manifest-path rust/Cargo.toml
