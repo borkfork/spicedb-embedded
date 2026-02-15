@@ -149,17 +149,17 @@ jobs:
         run: |
           cargo publish -p spicedb-api --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty 2>&1 | tee /tmp/publish.log
           code=${PIPESTATUS[0]}
-          if [ $code -ne 0 ] && grep -q "already been published" /tmp/publish.log; then
+          if [ "$code" -ne 0 ] && grep -q "already been published" /tmp/publish.log; then
             echo "spicedb-api version already on crates.io, continuing"
             exit 0
           fi
-          exit $code
+          exit "$code"
 
   publish-rust-sys:
     needs: [build-shared-libs, publish-rust-api]
     runs-on: ubuntu-latest
     env:
-      MISE_ENABLE_TOOLS: "rust"
+      MISE_ENABLE_TOOLS: "rust,buf,protoc"
     defaults:
       run:
         shell: bash
@@ -191,7 +191,7 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "rust"
+          install_args: "rust buf protoc"
 
       - name: Publish spicedb-embedded-sys to crates.io
         run: cargo publish -p spicedb-embedded-sys --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
