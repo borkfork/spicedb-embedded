@@ -1,5 +1,5 @@
 # Build and publish each platform to their respective registries.
-# Trigger: workflow_dispatch only. Run manually with version (e.g. 0.3.6 or v0.3.6).
+# Trigger: workflow_dispatch only. Run manually with numeric version (e.g. 0.3.6, no 'v' prefix).
 # The workflow replaces 0.0.0 with the release version in all package files, commits, tags, then builds/publishes from that tag.
 #
 # Required env vars:
@@ -55,6 +55,10 @@ jobs:
         id: version
         run: |
           version_num="${{ github.event.inputs.version }}"
+          if ! echo "$version_num" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$'; then
+            echo "::error::Version must be semantic (e.g. 0.3.6 or 1.0.0-beta.1), got: $version_num"
+            exit 1
+          fi
           if [ "${{ github.event.inputs.actually_publish }}" = "true" ]; then
             tag_name="v${version_num}"
           else
@@ -101,7 +105,14 @@ jobs:
 
       - name: Push commit and tag
         run: |
-          git push origin HEAD:${{ github.event.inputs.ref }}
+          ref="${{ github.event.inputs.ref }}"
+          # Use force-with-lease for branch refs so we don't overwrite if the branch advanced
+          if git show-ref --verify --quiet "refs/remotes/origin/$ref" 2>/dev/null; then
+            base_sha="$(git rev-parse HEAD^)"
+            git push --force-with-lease="origin/$ref:$base_sha" origin HEAD:"$ref"
+          else
+            git push origin HEAD:"$ref"
+          fi
           git push origin "${{ steps.version.outputs.tag_name }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -305,6 +316,10 @@ jobs:
       - uses: jdx/mise-action@v3
         with:
           install_args: "rust buf protoc"
+
+      - name: Update Cargo.lock to use published spicedb-embedded-sys
+        if: env.IS_DRY_RUN != 'true'
+        run: cargo update -p spicedb-embedded-sys
 
       - name: Publish main crate to crates.io
         run: |
@@ -916,7 +931,23 @@ jobs:
 
       - name: Delete tag and revert commit (dry run)
         run: |
-          git push origin --delete "${{ needs.prepare-release.outputs.tag_name }}" || true
-          git push origin +HEAD^:${{ github.event.inputs.ref }} || true
+          set -euo pipefail
+          tag_name="${{ needs.prepare-release.outputs.tag_name }}"
+          ref="${{ github.event.inputs.ref }}"
+          git push origin --delete "$tag_name" || true
+          git fetch origin "$ref" 2>/dev/null || true
+          local_head="$(git rev-parse HEAD)"
+          if git show-ref --verify --quiet "refs/remotes/origin/$ref" 2>/dev/null; then
+            remote_head="$(git rev-parse "refs/remotes/origin/$ref")"
+            if [ "$remote_head" = "$local_head" ]; then
+              prev="$(git rev-parse HEAD^)"
+              echo "Reverting dry-run version bump on $ref to $prev"
+              git push origin "$prev:$ref"
+            else
+              echo "::warning::Remote $ref has moved (remote: $remote_head, our tag: $local_head); skipping branch revert to avoid losing commits."
+            fi
+          else
+            echo "Remote ref $ref does not exist; skipping branch revert."
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
