@@ -3,7 +3,7 @@
 //! This crate provides an in-process `SpiceDB` instance for authorization checks.
 //! It uses a C-shared library to start `SpiceDB` servers, then connects via Unix
 //! socket. All API access is through tonic clients generated from
-//! [buf.build/authzed/api](https://buf.build/authzed/api) (see the `spicedb-api` crate).
+//! [buf.build/authzed/api](https://buf.build/authzed/api) (see the `spicedb-grpc-tonic` crate).
 //!
 //! # Example
 //!
@@ -52,7 +52,7 @@ mod spicedb;
 
 pub use spicedb::{EmbeddedSpiceDB, MemoryPermissionsClient, MemorySchemaClient, StartOptions};
 // Re-export spicedb-grpc so users have direct access to all generated types
-pub use spicedb_api::v1;
+pub use spicedb_grpc_tonic::v1;
 
 /// Errors from embedded `SpiceDB` operations
 #[derive(Debug, thiserror::Error)]

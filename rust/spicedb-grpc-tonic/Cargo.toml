@@ -1,0 +1,31 @@
+[package]
+name = "spicedb-grpc-tonic"
+version = "0.1.0"
+edition = "2024"
+description = "Authzed/SpiceDB gRPC API generated from buf.build/authzed/api via tonic"
+license = "Apache-2.0"
+repository = "https://github.com/borkfork/spicedb-embedded"
+documentation = "https://docs.rs/spicedb-grpc-tonic"
+homepage = "https://github.com/borkfork/spicedb-embedded"
+keywords = ["spicedb", "authzed", "grpc", "tonic", "authorization"]
+categories = [
+  "api-bindings",
+  "authentication",
+  "network-programming",
+  "security",
+  "asynchronous",
+]
+readme = "README.md"
+include = ["Cargo.toml", "README.md", "src/**", "build.rs", "proto/**"]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+prost = "0.13"
+prost-types = "0.13"
+tonic = "0.12"
+
+[build-dependencies]
+tonic-build = "0.12"
+walkdir = "2"

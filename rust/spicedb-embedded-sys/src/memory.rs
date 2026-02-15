@@ -6,7 +6,7 @@
 use std::os::raw::{c_char, c_int, c_uchar, c_ulonglong};
 
 use prost::Message;
-use spicedb_api::v1::{
+use spicedb_grpc_tonic::v1::{
     CheckBulkPermissionsRequest, CheckBulkPermissionsResponse, CheckPermissionRequest,
     CheckPermissionResponse, DeleteRelationshipsRequest, DeleteRelationshipsResponse,
     ExpandPermissionTreeRequest, ExpandPermissionTreeResponse, ReadSchemaRequest,
