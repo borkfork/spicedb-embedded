@@ -147,7 +147,7 @@ jobs:
 
       - name: Publish spicedb-grpc-tonic to crates.io
         run: |
-          cargo publish -p spicedb-grpc-tonic --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty 2>&1 | tee /tmp/publish.log
+          cargo publish -p spicedb-grpc-tonic --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty 2>&1 | tee /tmp/publish.log || true
           code=${PIPESTATUS[0]}
           if [ "$code" -ne 0 ] && grep -q "already exists on crates.io" /tmp/publish.log; then
             echo "spicedb-grpc-tonic version already on crates.io, continuing"
