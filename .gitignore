@@ -57,6 +57,9 @@ Thumbs.db
 # ReSharper
 resharper-inspect.sarif
 
+# spicedb-grpc-tonic generated code (added with git add -f in release workflow only)
+rust/spicedb-grpc-tonic/src/generated/
+
 # Misc
 *.log
 .env

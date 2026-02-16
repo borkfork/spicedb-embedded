@@ -7,15 +7,12 @@ Authzed/SpiceDB gRPC API types and client stubs generated from [buf.build/authze
 - **Protobuf types** for the Authzed API (e.g. `CheckPermissionRequest`, `Relationship`, `Consistency`)
 - **Tonic client stubs** for the Permissions and Schema services (e.g. `PermissionsServiceClient`)
 
-Protos are exported with `buf export` at build time and compiled with `tonic-build`; only the client side is built (no server code).
+The **published crate** ships with generated code in `src/generated/`, so **you do not need buf or protoc** to build. To regenerate the code (e.g. after updating protos), delete `src/generated/` and run the build with [buf](https://buf.build/docs/installation) installed, or run `scripts/regenerate-spicedb-grpc-tonic.sh` from the repo root.
 
 ## Usage
 
-Add to `Cargo.toml`:
-
-```toml
-[dependencies]
-spicedb-grpc-tonic = "0.1"
+```bash
+cargo add spicedb-grpc-tonic
 ```
 
 Use the re-exported Authzed API v1 types and clients:
@@ -28,12 +25,15 @@ use spicedb_grpc_tonic::v1::{
 };
 ```
 
-## Build requirements
+## Regenerating the generated code
 
-The build script runs `buf` to export protos from the Buf Schema Registry. You need:
+Only needed if you change the proto imports or want to update from a new authzed/api version. From the repo root, with [buf](https://buf.build/docs/installation) installed:
 
-- [buf](https://buf.build/docs/installation)
-- [protoc](https://grpc.io/docs/protoc-installation/) (used by `tonic-build`)
+```bash
+./scripts/regenerate-spicedb-grpc-tonic.sh
+```
+
+Then commit `rust/spicedb-grpc-tonic/src/generated/`.
 
 ## License
 
