@@ -7,7 +7,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rustc-check-cfg=cfg(proto_checked_in)");
 
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR")?);
-    let checked_in = manifest.join("src").join("generated").join("authzed.api.v1.rs");
+    let checked_in = manifest
+        .join("src")
+        .join("generated")
+        .join("authzed.api.v1.rs");
 
     if checked_in.exists() {
         println!("cargo:rustc-cfg=proto_checked_in");
