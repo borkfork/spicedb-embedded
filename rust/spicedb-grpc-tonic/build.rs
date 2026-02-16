@@ -1,6 +1,7 @@
 //! If `src/generated/authzed.api.v1.rs` exists (checked-in for published crate), skip buf and codegen.
 //! Otherwise run buf export (get .protos) + tonic_build::compile_protos (invokes protoc) so developers can regenerate.
 
+use std::io;
 use std::path::PathBuf;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -18,7 +19,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    run_buf_and_tonic(&manifest)
+    if let Err(e) = run_buf_and_tonic(&manifest) {
+        if e.downcast_ref::<io::Error>()
+            .is_some_and(|e| e.kind() == io::ErrorKind::NotFound)
+        {
+            panic!(
+                "spicedb-grpc-tonic: generated code is not present (building from git?) and `buf` was not found. \
+                Install buf (https://buf.build) and protoc, or depend on a published spicedb-embedded from crates.io \
+                so the crate is built with checked-in generated code."
+            );
+        }
+        return Err(e);
+    }
+    Ok(())
 }
 
 fn run_buf_and_tonic(manifest: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
