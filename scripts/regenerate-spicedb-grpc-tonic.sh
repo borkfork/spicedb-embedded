@@ -28,5 +28,5 @@ mkdir -p "$GEN_DIR"
 for f in "$OUT"/*.rs; do
 	[[ -e $f ]] && cp "$f" "$GEN_DIR/"
 done
-echo "Copied $(ls -1 "$GEN_DIR"/*.rs 2>/dev/null | wc -l) .rs files to $GEN_DIR"
+echo "Copied $(find "$GEN_DIR" -maxdepth 1 -name "*.rs" 2>/dev/null | wc -l) .rs files to $GEN_DIR"
 echo "Verify with: cargo build -p spicedb-grpc-tonic"
