@@ -193,7 +193,7 @@ fn download_from_release(rid: &str, version: &str, out_dir: &Path) {
     );
     let archive = out_dir.join("libspicedb.tar.gz");
     let status = Command::new("curl")
-        .args(["-fsSL", "--proto", "=https", "-o"])
+        .args(["-L", "-f", "-s", "-o"])
         .arg(&archive)
         .arg(&url)
         .status();
