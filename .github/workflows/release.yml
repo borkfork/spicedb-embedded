@@ -79,12 +79,8 @@ jobs:
           VERSION_NUM="${{ steps.version.outputs.version_num }}"
           # this is a commit that sets the version of everything to PLACEHOLDER_VERSION
           # we need to swap out PLACEHOLDER_VERSION for the actual version
-          PATCH_DIFF=$(git format-patch -1 6b4f90437928154600ee74dee83d82b69cc5f0c5 --stdout | sed "s/PLACEHOLDER_VERSION/$VERSION_NUM/g")
+          PATCH_DIFF=$(git format-patch -1 c673b17a356270098f17ed323753c7c89710b9ee --stdout | sed "s/PLACEHOLDER_VERSION/$VERSION_NUM/g")
           echo "$PATCH_DIFF" | git apply
-          # For real publish, switch main crate to depend on published spicedb-embedded-sys by version (dry run keeps path dep for cargo publish --dry-run).
-          if [ "${{ github.event.inputs.actually_publish }}" = "true" ]; then
-            sed -i 's|spicedb-embedded-sys = { path = "spicedb-embedded-sys" }|spicedb-embedded-sys = "'"$VERSION_NUM"'"|' rust/Cargo.toml
-          fi
 
       - name: Update package-lock.json
         working-directory: node
