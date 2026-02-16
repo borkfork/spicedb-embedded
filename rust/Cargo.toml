@@ -1,6 +1,6 @@
 [package]
 name = "spicedb-embedded"
-version = "0.0.0"
+version = "0.3.7"
 edition = "2024"
 description = "Embedded SpiceDB for Rust - embedded authorization using the standard gRPC API"
 license = "Apache-2.0"
@@ -38,7 +38,7 @@ tonic = "0.12"
 tower = "0.5"
 tracing = "0.1"
 # Single -sys crate: builds from Go or downloads prebuilt per target. Version required for publish; path used when building.
-spicedb-embedded-sys = { version = "0.0.0", path = "spicedb-embedded-sys" }
+spicedb-embedded-sys = { version = "0.3.7", path = "spicedb-embedded-sys" }
 
 [dev-dependencies]
 prost = "0.13"
