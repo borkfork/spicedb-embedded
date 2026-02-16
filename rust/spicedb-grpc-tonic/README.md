@@ -11,11 +11,8 @@ The **published crate** ships with generated code in `src/generated/`, so **you 
 
 ## Usage
 
-Add to `Cargo.toml`:
-
-```toml
-[dependencies]
-spicedb-grpc-tonic = "0.1"
+```bash
+cargo add spicedb-grpc-tonic
 ```
 
 Use the re-exported Authzed API v1 types and clients:

@@ -227,7 +227,7 @@ jobs:
         run: |
           # Regenerate generated code so published crate does not require buf/protoc.
           ./scripts/regenerate-spicedb-grpc-tonic.sh
-          git add rust/spicedb-grpc-tonic/src/generated/
+          git add -f rust/spicedb-grpc-tonic/src/generated/
 
           if [ "${{ env.IS_DRY_RUN }}" = "true" ]; then
             cargo publish -p spicedb-grpc-tonic --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty --dry-run
