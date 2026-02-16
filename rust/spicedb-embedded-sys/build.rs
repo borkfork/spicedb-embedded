@@ -40,9 +40,11 @@ fn run(rid: &str, release_version: Option<&str>) {
     let prebuild_crate = prebuild_dir.join(&lib_filename);
 
     #[allow(unused_variables)]
-    let (prebuild, prebuild_dir) = if prebuild_crate.exists() {
+    let (prebuild, prebuild_dir) = if prebuild_crate.exists() && is_nonempty_file(&prebuild_crate) {
+        println!("cargo:warning=spicedb-embedded-sys: using prebuilt library from crate (prebuilds/{})", rid);
         (prebuild_crate.clone(), prebuild_dir)
     } else if try_build_from_source(&manifest_dir, &out_dir, &lib_filename) {
+        println!("cargo:warning=spicedb-embedded-sys: built library from Go source (shared/c)");
         let prebuild = out_dir.join(&lib_filename);
         if !prebuild.exists() {
             panic!(
@@ -55,6 +57,7 @@ fn run(rid: &str, release_version: Option<&str>) {
         let env_version = std::env::var("SPICEDB_EMBEDDED_RELEASE_VERSION").ok();
         let version = release_version.or(env_version.as_deref());
         if let Some(version) = version {
+            println!("cargo:warning=spicedb-embedded-sys: downloading prebuilt library from GitHub Release v{}", version);
             validate_release_version(version);
             download_from_release(rid, version, &out_dir);
             let prebuild = out_dir.join(&lib_filename);
@@ -84,6 +87,14 @@ fn run(rid: &str, release_version: Option<&str>) {
             prebuild.display(),
             rid,
             lib_path.display()
+        );
+    }
+    if !is_nonempty_file(&prebuild) {
+        panic!(
+            "Library at {} is empty (0 bytes). This can happen if build-from-source failed partially. \
+            When using the published crate, the build script will download the prebuilt lib from GitHub Release; \
+            ensure network access and retry, or set SPICEDB_EMBEDDED_RELEASE_VERSION to the desired version.",
+            prebuild.display()
         );
     }
     println!("cargo:rerun-if-changed={}", prebuild.display());
@@ -148,12 +159,16 @@ fn try_build_from_source(manifest_dir: &Path, out_dir: &Path, lib_filename: &str
             let _ = std::fs::copy(&def_src, out_dir.join("spicedb.def"));
         }
     }
-    if out_lib.exists() {
+    if out_lib.exists() && is_nonempty_file(&out_lib) {
         println!("cargo:rerun-if-changed={}", shared_c.display());
         true
     } else {
         false
     }
+}
+
+fn is_nonempty_file(path: &Path) -> bool {
+    std::fs::metadata(path).map(|m| m.len() > 0).unwrap_or(false)
 }
 
 /// Copy a directory recursively. Creates dest parent if needed.
@@ -207,6 +222,26 @@ fn download_from_release(rid: &str, version: &str, out_dir: &Path) {
         panic!(
             "curl failed ({}). Check network and that release v{} exists with asset libspicedb-{}.tar.gz",
             status, version, rid
+        );
+    }
+    // Detect 404/HTML response: real gzip starts with 1f 8b and is at least hundreds of bytes.
+    let meta = std::fs::metadata(&archive).unwrap_or_else(|e| {
+        panic!("failed to stat downloaded file {}: {}", archive.display(), e)
+    });
+    let len = meta.len();
+    let mut magic = [0u8; 2];
+    let ok = len >= 100
+        && std::fs::File::open(&archive)
+            .and_then(|mut f| std::io::Read::read_exact(&mut f, &mut magic))
+            .is_ok()
+        && magic == [0x1f, 0x8b];
+    if !ok {
+        let _ = std::fs::remove_file(&archive);
+        panic!(
+            "Downloaded file from {} is {} bytes and does not look like gzip (expected release asset libspicedb-{}.tar.gz). \
+            If the URL returned a 404/HTML page, check that release v{} exists and has that asset. \
+            Try clearing the build: cargo clean -p spicedb-embedded-sys",
+            url, len, rid, version
         );
     }
     let status = Command::new("tar")
