@@ -81,29 +81,8 @@ jobs:
           echo "$PATCH_DIFF" | git apply
           # For real publish, switch main crate to depend on published spicedb-embedded-sys by version (dry run keeps path dep for cargo publish --dry-run).
           if [ "${{ github.event.inputs.actually_publish }}" = "true" ]; then
-            python3 -c "
-            import re
-            v = __import__('os').environ['VERSION_NUM']
-            p = 'rust/Cargo.toml'
-            with open(p) as f: c = f.read()
-            c2 = re.sub(r'(spicedb-embedded-sys\s*=\s*\{\s*)version\s*=\s*\"[^\"]+\"(\s*,\s*path\s*=\s*\"spicedb-embedded-sys\"\s*\})', r'\g<1>version = \"' + v + r'\"\g<2>', c)
-            c2 = re.sub(r'(spicedb-embedded-sys\s*=\s*\{\s*)path\s*=\s*\"spicedb-embedded-sys\"(\s*\})', r'\g<1>version = \"' + v + r'\", path = \"spicedb-embedded-sys\"\g<2>', c2)
-            if c2 == c: raise SystemExit('failed to update spicedb-embedded-sys version in rust/Cargo.toml')
-            with open(p, 'w') as f: f.write(c2)
-            "
+            sed -i 's|spicedb-embedded-sys = { path = "spicedb-embedded-sys" }|spicedb-embedded-sys = "'"$VERSION_NUM"'"|' rust/Cargo.toml
           fi
-          # Maven
-          (cd java && mvn -B -q versions:set -DnewVersion="$VERSION_NUM" -DgenerateBackupPoms=false)
-          # Python: no standard CLI; update project.version in pyproject.toml
-          python3 -c "
-          import os
-          v = os.environ['VERSION_NUM']
-          p = 'python/pyproject.toml'
-          with open(p) as f: c = f.read()
-          with open(p, 'w') as f: f.write(c.replace('version = \"0.0.0\"', f'version = \"{v}\"', 1))
-          "
-          # C#
-          setversion "$VERSION_NUM" csharp/SpiceDbEmbedded.csproj
 
       - name: Update package-lock.json
         working-directory: node
