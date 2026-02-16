@@ -68,9 +68,11 @@ jobs:
             tag_name="dry-run-v${version_num}-${run_id}"
             release_branch="dry-run/${version_num}-${run_id}"
           fi
-          echo "version_num=$version_num" >> "$GITHUB_OUTPUT"
-          echo "tag_name=$tag_name" >> "$GITHUB_OUTPUT"
-          echo "release_branch=$release_branch" >> "$GITHUB_OUTPUT"
+          {
+            echo "version_num=$version_num"
+            echo "tag_name=$tag_name"
+            echo "release_branch=$release_branch"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Set versions with ecosystem CLI tools
         run: |
