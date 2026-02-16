@@ -1,6 +1,6 @@
 {
   "name": "spicedb-embedded-darwin-arm64",
-  "version": "0.0.0",
+  "version": "0.3.8",
   "description": "Native SpiceDB binaries for macOS ARM64 (optional dependency of spicedb-embedded)",
   "os": [
     "darwin"

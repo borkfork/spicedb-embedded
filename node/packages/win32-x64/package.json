@@ -1,6 +1,6 @@
 {
   "name": "spicedb-embedded-win32-x64",
-  "version": "0.0.0",
+  "version": "0.3.8",
   "description": "Native SpiceDB binaries for Windows x64 (optional dependency of spicedb-embedded)",
   "os": [
     "win32"
