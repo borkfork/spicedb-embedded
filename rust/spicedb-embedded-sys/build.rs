@@ -27,6 +27,10 @@ fn target_rid() -> &'static str {
 }
 
 fn run(rid: &str, release_version: Option<&str>) {
+    println!(
+        "cargo:warning=spicedb-embedded-sys: build script running (pkg_version={})",
+        release_version.unwrap_or("none")
+    );
     let manifest_dir = PathBuf::from(
         std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR set by Cargo"),
     );
@@ -57,6 +61,12 @@ fn run(rid: &str, release_version: Option<&str>) {
         let env_version = std::env::var("SPICEDB_EMBEDDED_RELEASE_VERSION").ok();
         let version = release_version.or(env_version.as_deref());
         if let Some(version) = version {
+            if version == "0.0.0" {
+                panic!(
+                    "spicedb-embedded-sys: building from git (version 0.0.0) but build-from-source failed and there is no release v0.0.0. \
+                    Install Go (CGO enabled) so the script can build from shared/c, or set SPICEDB_EMBEDDED_RELEASE_VERSION to a released version (e.g. 0.3.8) to download the prebuilt lib."
+                );
+            }
             println!("cargo:warning=spicedb-embedded-sys: downloading prebuilt library from GitHub Release v{}", version);
             validate_release_version(version);
             download_from_release(rid, version, &out_dir);
@@ -99,6 +109,15 @@ fn run(rid: &str, release_version: Option<&str>) {
     }
     println!("cargo:rerun-if-changed={}", prebuild.display());
     std::fs::copy(&prebuild, &lib_path).expect("copy prebuild to OUT_DIR");
+
+    // Final check: the file we just wrote is what the linker will use; never succeed with 0 bytes.
+    if !is_nonempty_file(&lib_path) {
+        panic!(
+            "spicedb-embedded-sys: library at {} is empty (0 bytes) after copy. The linker would fail. \
+            Build-from-source or download produced an invalid file.",
+            lib_path.display()
+        );
+    }
 
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     if target_os == "windows" {
@@ -256,6 +275,25 @@ fn download_from_release(rid: &str, version: &str, out_dir: &Path) {
         panic!("tar failed ({}) extracting {}", status, archive.display());
     }
     let _ = std::fs::remove_file(&archive);
+
+    // Ensure the extracted library exists and is non-empty so we never leave a 0-byte file for the linker.
+    let (lib_filename, _) = lib_artifact_name_and_path(rid, out_dir);
+    let lib_path = out_dir.join(&lib_filename);
+    if !lib_path.exists() {
+        panic!(
+            "After extracting {}, {} was not found. Tarball may have wrong layout (expected ./{} at root).",
+            archive.display(),
+            lib_path.display(),
+            lib_filename
+        );
+    }
+    if !is_nonempty_file(&lib_path) {
+        panic!(
+            "After extracting {}, {} is empty (0 bytes). Delete target and retry, or set SPICEDB_EMBEDDED_RELEASE_VERSION to a released version.",
+            archive.display(),
+            lib_path.display()
+        );
+    }
 }
 
 fn lib_artifact_name_and_path(rid: &str, out_dir: &Path) -> (String, PathBuf) {
