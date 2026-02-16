@@ -1,6 +1,6 @@
 {
   "name": "spicedb-embedded-linux-x64",
-  "version": "0.0.0",
+  "version": "PLACEHOLDER_VERSION",
   "description": "Native SpiceDB binaries for Linux x64 (optional dependency of spicedb-embedded)",
   "os": [
     "linux"
