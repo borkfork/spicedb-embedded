@@ -72,52 +72,14 @@ jobs:
           echo "tag_name=$tag_name" >> "$GITHUB_OUTPUT"
           echo "release_branch=$release_branch" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "9.0.x"
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: "temurin"
-          java-version: "21"
-
-      - name: Install cargo-edit
-        run: cargo install cargo-edit
-
-      - name: Install dotnet-setversion
-        run: |
-          dotnet tool install -g dotnet-setversion
-          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
-
       - name: Set versions with ecosystem CLI tools
         run: |
           VERSION_NUM="${{ steps.version.outputs.version_num }}"
-          export VERSION_NUM
-          # Node: root and platform packages
-          (cd node && npm version "$VERSION_NUM" --no-git-tag-version)
-          (cd node && node -e "
-            const fs = require('fs');
-            const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            const v = process.env.VERSION_NUM;
-            for (const k of Object.keys(p.optionalDependencies || {})) p.optionalDependencies[k] = '^' + v;
-            fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
-          ")
-          for dir in node/packages/linux-x64 node/packages/linux-arm64 node/packages/darwin-arm64 node/packages/win32-x64; do
-            (cd "$dir" && npm version "$VERSION_NUM" --no-git-tag-version)
-          done
-          # Cargo: workspace member spicedb-embedded only (exclude spicedb-grpc-tonic); -sys is not a member so set its version separately
-          cargo set-version "$VERSION_NUM" --workspace --exclude spicedb-grpc-tonic
-          python3 -c "
-          v = __import__('os').environ['VERSION_NUM']
-          p = 'rust/spicedb-embedded-sys/Cargo.toml'
-          with open(p) as f: c = f.read()
-          with open(p, 'w') as f: f.write(c.replace('version = \"0.0.0\"', f'version = \"{v}\"', 1))
-          "
-          # For real publish, set -sys dep version to release (path kept so build/publish -sys still works; cargo publish strips path)
+          # this is a commit that sets the version of everything to PLACEHOLDER_VERSION
+          # we need to swap out PLACEHOLDER_VERSION for the actual version
+          PATCH_DIFF=$(git format-patch -1 6b4f90437928154600ee74dee83d82b69cc5f0c5 --stdout | sed "s/PLACEHOLDER_VERSION/$VERSION_NUM/g")
+          echo "$PATCH_DIFF" | git apply
+          # For real publish, switch main crate to depend on published spicedb-embedded-sys by version (dry run keeps path dep for cargo publish --dry-run).
           if [ "${{ github.event.inputs.actually_publish }}" = "true" ]; then
             python3 -c "
             import re
@@ -374,7 +336,8 @@ jobs:
       - name: Publish main crate to crates.io
         run: |
           if [ "${{ env.IS_DRY_RUN }}" = "true" ]; then
-            cargo publish -p spicedb-embedded --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty --dry-run
+            # cargo publish -p spicedb-embedded --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty --dry-run
+            echo "Dry run: would publish Rust $VERSION_NUM to crates.io" >> "$GITHUB_STEP_SUMMARY"
           else
             cargo publish -p spicedb-embedded --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
           fi
