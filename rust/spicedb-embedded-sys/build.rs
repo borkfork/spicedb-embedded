@@ -27,10 +27,10 @@ fn target_rid() -> &'static str {
 }
 
 fn run(rid: &str, release_version: Option<&str>) {
+    let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR set by Cargo"));
     let manifest_dir = PathBuf::from(
         std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR set by Cargo"),
     );
-    let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR set by Cargo"));
     let (lib_filename, lib_path) = lib_artifact_name_and_path(rid, &out_dir);
 
     // When in repo, ensure Go source is present inside the -sys crate (for build-from-source and consistency).
@@ -40,7 +40,9 @@ fn run(rid: &str, release_version: Option<&str>) {
     let prebuild_crate = prebuild_dir.join(&lib_filename);
 
     #[allow(unused_variables)]
-    let (prebuild, prebuild_dir) = if prebuild_crate.exists() {
+    let (prebuild, prebuild_dir) = if prebuild_crate.exists()
+        && file_size_at_least(&prebuild_crate, MIN_LIB_SIZE_BYTES)
+    {
         (prebuild_crate.clone(), prebuild_dir)
     } else if try_build_from_source(&manifest_dir, &out_dir, &lib_filename) {
         let prebuild = out_dir.join(&lib_filename);
@@ -87,7 +89,22 @@ fn run(rid: &str, release_version: Option<&str>) {
         );
     }
     println!("cargo:rerun-if-changed={}", prebuild.display());
-    std::fs::copy(&prebuild, &lib_path).expect("copy prebuild to OUT_DIR");
+    // When build-from-source or download already wrote to out_dir, prebuild == lib_path; copying a file onto itself truncates it.
+    if prebuild != lib_path {
+        std::fs::copy(&prebuild, &lib_path).expect("copy prebuild to OUT_DIR");
+    }
+
+    // Final check: the file we just wrote is what the linker will use; require plausible size.
+    if !file_size_at_least(&lib_path, MIN_LIB_SIZE_BYTES) {
+        let size = std::fs::metadata(&lib_path).map(|m| m.len()).unwrap_or(0);
+        panic!(
+            "spicedb-embedded-sys: library at {} is {} bytes (need at least {}). The linker would fail. \
+            Build-from-source or download produced an invalid or truncated file.",
+            lib_path.display(),
+            size,
+            MIN_LIB_SIZE_BYTES
+        );
+    }
 
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     if target_os == "windows" {
@@ -128,18 +145,40 @@ fn try_build_from_source(manifest_dir: &Path, out_dir: &Path, lib_filename: &str
     }
     let _ = std::fs::create_dir_all(out_dir);
     let out_lib = out_dir.join(lib_filename);
-    let status = Command::new("go")
+    let output = match Command::new("go")
         .args(["build", "-buildmode=c-shared", "-o"])
         .arg(&out_lib)
         .arg(".")
         .current_dir(&shared_c)
         .env("CGO_ENABLED", "1")
-        .status();
-    let ok = match status {
-        Ok(s) => s.success(),
-        Err(_) => false,
+        .output()
+    {
+        Ok(o) => o,
+        Err(e) => {
+            println!(
+                "cargo:warning=spicedb-embedded-sys: go build failed to run: {}",
+                e
+            );
+            return false;
+        }
     };
-    if !ok {
+    if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        println!(
+            "cargo:warning=spicedb-embedded-sys: go build exited with {:?}",
+            output.status
+        );
+        if !stdout.is_empty() {
+            for line in stdout.lines() {
+                println!("cargo:warning=spicedb-embedded-sys: go stdout: {}", line);
+            }
+        }
+        if !stderr.is_empty() {
+            for line in stderr.lines() {
+                println!("cargo:warning=spicedb-embedded-sys: go stderr: {}", line);
+            }
+        }
         return false;
     }
     if lib_filename.ends_with(".dll") {
@@ -148,12 +187,29 @@ fn try_build_from_source(manifest_dir: &Path, out_dir: &Path, lib_filename: &str
             let _ = std::fs::copy(&def_src, out_dir.join("spicedb.def"));
         }
     }
-    if out_lib.exists() {
+    let size = std::fs::metadata(&out_lib).map(|m| m.len()).unwrap_or(0);
+    // Require a plausible size (real lib is tens of MB); 0-byte or tiny means build failed or was truncated.
+    if out_lib.exists() && file_size_at_least(&out_lib, MIN_LIB_SIZE_BYTES) {
         println!("cargo:rerun-if-changed={}", shared_c.display());
         true
     } else {
+        println!(
+            "cargo:warning=spicedb-embedded-sys: go build succeeded but {} is {} bytes (need >= {}), skipping build-from-source",
+            out_lib.display(),
+            size,
+            MIN_LIB_SIZE_BYTES
+        );
         false
     }
+}
+
+/// Minimum size for a valid libspicedb dylib/so/dll (real builds are tens of MB).
+const MIN_LIB_SIZE_BYTES: u64 = 1_000_000;
+
+fn file_size_at_least(path: &Path, min_bytes: u64) -> bool {
+    std::fs::metadata(path)
+        .map(|m| m.len() >= min_bytes)
+        .unwrap_or(false)
 }
 
 /// Copy a directory recursively. Creates dest parent if needed.
@@ -209,6 +265,30 @@ fn download_from_release(rid: &str, version: &str, out_dir: &Path) {
             status, version, rid
         );
     }
+    // Detect 404/HTML response: real gzip starts with 1f 8b and is at least hundreds of bytes.
+    let meta = std::fs::metadata(&archive).unwrap_or_else(|e| {
+        panic!(
+            "failed to stat downloaded file {}: {}",
+            archive.display(),
+            e
+        )
+    });
+    let len = meta.len();
+    let mut magic = [0u8; 2];
+    let ok = len >= 100
+        && std::fs::File::open(&archive)
+            .and_then(|mut f| std::io::Read::read_exact(&mut f, &mut magic))
+            .is_ok()
+        && magic == [0x1f, 0x8b];
+    if !ok {
+        let _ = std::fs::remove_file(&archive);
+        panic!(
+            "Downloaded file from {} is {} bytes and does not look like gzip (expected release asset libspicedb-{}.tar.gz). \
+            If the URL returned a 404/HTML page, check that release v{} exists and has that asset. \
+            Try clearing the build: cargo clean -p spicedb-embedded-sys",
+            url, len, rid, version
+        );
+    }
     let status = Command::new("tar")
         .args(["-xzf"])
         .arg(&archive)
@@ -221,6 +301,28 @@ fn download_from_release(rid: &str, version: &str, out_dir: &Path) {
         panic!("tar failed ({}) extracting {}", status, archive.display());
     }
     let _ = std::fs::remove_file(&archive);
+
+    // Ensure the extracted library exists and is non-empty so we never leave a 0-byte file for the linker.
+    let (lib_filename, _) = lib_artifact_name_and_path(rid, out_dir);
+    let lib_path = out_dir.join(&lib_filename);
+    if !lib_path.exists() {
+        panic!(
+            "After extracting {}, {} was not found. Tarball may have wrong layout (expected ./{} at root).",
+            archive.display(),
+            lib_path.display(),
+            lib_filename
+        );
+    }
+    if !file_size_at_least(&lib_path, MIN_LIB_SIZE_BYTES) {
+        let size = std::fs::metadata(&lib_path).map(|m| m.len()).unwrap_or(0);
+        panic!(
+            "After extracting {}, {} is {} bytes (need at least {}). Delete target and retry, or set SPICEDB_EMBEDDED_RELEASE_VERSION.",
+            archive.display(),
+            lib_path.display(),
+            size,
+            MIN_LIB_SIZE_BYTES
+        );
+    }
 }
 
 fn lib_artifact_name_and_path(rid: &str, out_dir: &Path) -> (String, PathBuf) {
