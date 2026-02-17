@@ -1,8 +1,7 @@
 //! If `src/generated/authzed.api.v1.rs` exists (checked-in for published crate), skip buf and codegen.
 //! Otherwise run buf export (get .protos) + tonic_build::compile_protos (invokes protoc) so developers can regenerate.
 
-use std::io;
-use std::path::PathBuf;
+use std::{io, path::PathBuf};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rustc-check-cfg=cfg(proto_checked_in)");
