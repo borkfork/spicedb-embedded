@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.3](https://github.com/borkfork/spicedb-embedded/compare/v0.4.2...v0.4.3) (2026-02-22)
+
+
+### Bug Fixes
+
+* Dispatch update-lockfiles on release-please PR creation ([#58](https://github.com/borkfork/spicedb-embedded/issues/58)) ([d35c97d](https://github.com/borkfork/spicedb-embedded/commit/d35c97dcf76117c6e92214642179476dcbf424ae))
+* Use workflow dispatch instead of call to support pypi publishing ([#56](https://github.com/borkfork/spicedb-embedded/issues/56)) ([0a12b90](https://github.com/borkfork/spicedb-embedded/commit/0a12b90b13bb1b70ec2c18bf7629264c8accd052))
+
 ## [0.4.2](https://github.com/borkfork/spicedb-embedded/compare/v0.4.1...v0.4.2) (2026-02-22)
 
 
