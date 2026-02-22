@@ -11,15 +11,20 @@
 name: Publish
 
 on:
+  workflow_call:
+    inputs:
+      tag_name:
+        required: true
+        type: string
   release:
     types: [published]
 
 permissions:
-  id-token: write # Required for OIDC
+  id-token: write # Required for trusted publisher auth
   contents: write # Update GitHub Release with artifacts
 
 concurrency:
-  group: publish-${{ github.event.release.tag_name }}
+  group: publish-${{ inputs.tag_name || github.event.release.tag_name }}
   cancel-in-progress: false
 
 jobs:
@@ -34,7 +39,7 @@ jobs:
       - name: Check tag format
         id: check
         run: |
-          TAG="${{ github.event.release.tag_name }}"
+          TAG="${{ inputs.tag_name || github.event.release.tag_name }}"
           if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
             {
               echo "should_publish=true"
@@ -516,7 +521,7 @@ jobs:
         working-directory: csharp
         run: dotnet pack -c Release -p:Version=${{ env.VERSION_NUM }}
 
-      - name: NuGet login (OIDC -> temp API key)
+      - name: NuGet login
         uses: NuGet/login@v1
         id: login
         with:
