@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/borkfork/spicedb-embedded/compare/v0.4.1...v0.4.2) (2026-02-22)
+
+
+### Bug Fixes
+
+* Fix java/rust versioning ([#54](https://github.com/borkfork/spicedb-embedded/issues/54)) ([2e2a05d](https://github.com/borkfork/spicedb-embedded/commit/2e2a05d988a7fb7806ac9f37294a32f344254ac6))
+
 ## [0.4.1](https://github.com/borkfork/spicedb-embedded/compare/v0.4.0...v0.4.1) (2026-02-22)
 
 
