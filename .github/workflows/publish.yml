@@ -36,9 +36,11 @@ jobs:
         run: |
           TAG="${{ github.event.release.tag_name }}"
           if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-            echo "should_publish=true" >> "$GITHUB_OUTPUT"
-            echo "version_num=${TAG#v}" >> "$GITHUB_OUTPUT"
-            echo "tag_name=$TAG" >> "$GITHUB_OUTPUT"
+            {
+              echo "should_publish=true"
+              echo "version_num=${TAG#v}"
+              echo "tag_name=$TAG"
+            } >> "$GITHUB_OUTPUT"
           else
             echo "should_publish=false" >> "$GITHUB_OUTPUT"
           fi

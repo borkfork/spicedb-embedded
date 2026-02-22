@@ -148,7 +148,7 @@ run = "DOCKER_BUILDKIT=1 docker build -t spicedb-embedded-test -f Dockerfile ."
 
 [tasks.rust-test]
 description = "Run Rust tests (main crate only so only current platform's -sys is built)"
-run = "mise run shared-c-build && bash ./scripts/stage-all-prebuilds.sh && cargo test -p spicedb-embedded --locked"
+run = "mise run shared-c-build && bash ./scripts/stage-rust-prebuild.sh && cargo test -p spicedb-embedded --locked"
 
 [tasks.cargo-deny]
 description = "Run cargo-deny (license, advisory, ban checks)"
@@ -173,12 +173,12 @@ run = "taplo format"
 [tasks.java-build]
 description = "Build the Java library"
 dir = "java"
-run = "mise run shared-c-build && bash ../scripts/stage-all-prebuilds.sh && mvn compile"
+run = "mise run shared-c-build && bash ../scripts/stage-java-prebuild.sh && mvn compile"
 
 [tasks.java-test]
 description = "Build and test the Java library"
 dir = "java"
-run = "mise run shared-c-build && bash ../scripts/stage-all-prebuilds.sh && mvn test"
+run = "mise run shared-c-build && bash ../scripts/stage-java-prebuild.sh && mvn test"
 
 # ============================================================================
 # Python tasks
@@ -187,12 +187,12 @@ run = "mise run shared-c-build && bash ../scripts/stage-all-prebuilds.sh && mvn 
 [tasks.python-build]
 description = "Build the Python package"
 dir = "python"
-run = "mise run shared-c-build && bash ../scripts/stage-all-prebuilds.sh && pip install -e ."
+run = "mise run shared-c-build && bash ../scripts/stage-python-prebuild.sh && pip install -e ."
 
 [tasks.python-test]
 description = "Build and test the Python package"
 dir = "python"
-run = "mise run shared-c-build && bash ../scripts/stage-all-prebuilds.sh && pip install -e '.[dev]' && pytest"
+run = "mise run shared-c-build && bash ../scripts/stage-python-prebuild.sh && pip install -e '.[dev]' && pytest"
 
 # ============================================================================
 # C# / .NET tasks
@@ -200,11 +200,11 @@ run = "mise run shared-c-build && bash ../scripts/stage-all-prebuilds.sh && pip 
 
 [tasks.csharp-build]
 description = "Build the C# library"
-run = "mise run shared-c-build && bash ./scripts/stage-all-prebuilds.sh && dotnet build csharp/SpiceDbEmbedded.sln"
+run = "mise run shared-c-build && bash ./scripts/stage-csharp-prebuild.sh && dotnet build csharp/SpiceDbEmbedded.sln"
 
 [tasks.csharp-test]
 description = "Build and test the C# library"
-run = "mise run shared-c-build && bash ./scripts/stage-all-prebuilds.sh && dotnet build csharp/SpiceDbEmbedded.sln && dotnet test csharp/SpiceDbEmbedded.Tests/SpiceDbEmbedded.Tests.csproj --no-build"
+run = "mise run shared-c-build && bash ./scripts/stage-csharp-prebuild.sh && dotnet build csharp/SpiceDbEmbedded.sln && dotnet test csharp/SpiceDbEmbedded.Tests/SpiceDbEmbedded.Tests.csproj --no-build"
 
 # ============================================================================
 # Node.js
@@ -213,9 +213,9 @@ run = "mise run shared-c-build && bash ./scripts/stage-all-prebuilds.sh && dotne
 [tasks.node-build]
 description = "Build the Node.js package"
 dir = "node"
-run = "mise run shared-c-build && bash ../scripts/stage-all-prebuilds.sh && npm ci && npm run build"
+run = "mise run shared-c-build && bash ../scripts/stage-node-prebuild.sh && npm ci && npm run build"
 
 [tasks.node-test]
 description = "Build and test the Node.js package"
 dir = "node"
-run = "mise run shared-c-build && bash ../scripts/stage-all-prebuilds.sh && npm ci && npm run build && npm test"
+run = "mise run shared-c-build && bash ../scripts/stage-node-prebuild.sh && npm ci && npm run build && npm test"

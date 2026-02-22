@@ -2,8 +2,8 @@
 version: v2
 deps:
   - name: buf.build/authzed/api
-    commit: 72d63cd4abf74ce2800b486768aba154
-    digest: b5:9963735ce7dd0a08208985b36da2579dc5893da81e2eafeaf2a3b5f7ae967a3ab28d98612c1e0f4ba0d8bf79268f0a1e842434d5d51d66da0dc0e5136f9892de
+    commit: 5b2fc906e1a24776ba1b3b7b059f1842
+    digest: b5:3b64e336e0c1e212de5ece41585e9591a81e31b73a4e47a08119287dc65370e5002334d7ebd5d083564d0bf9fc741f226bebd0301bfc18929d4b451bdd722104
   - name: buf.build/bufbuild/protovalidate
     commit: 0409229c37804d6187ee0806eb4eebce
     digest: b5:795db9d3a6e066dc61d99ac651fa7f136171869abe2211ca272dd84aada7bc4583b9508249fa5b61300a5b1fe8b6dbf6edbc088aa0345d1ccb9fff705e3d48e9
