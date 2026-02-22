@@ -11,9 +11,10 @@
 name: Publish
 
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
       tag_name:
+        description: 'Release tag (e.g. v0.4.2)'
         required: true
         type: string
   release:

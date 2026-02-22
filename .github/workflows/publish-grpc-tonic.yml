@@ -8,9 +8,10 @@
 name: Publish spicedb-grpc-tonic
 
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
       tag_name:
+        description: 'Release tag (e.g. spicedb-grpc-tonic-v0.2.1)'
         required: true
         type: string
   release:
