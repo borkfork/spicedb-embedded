@@ -5,6 +5,7 @@ on:
     branches: [main]
 
 permissions:
+  actions: write # Dispatch publish workflows via gh workflow run
   contents: write
   pull-requests: write
 
