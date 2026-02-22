@@ -131,6 +131,10 @@ run = "npm ci && npm run format"
 description = "Run Clippy linter (main crate only so only current platform's -sys is built)"
 run = "cargo clippy -p spicedb-embedded --locked --all-features --all-targets"
 
+[tasks.docsrs]
+description = "Check that documentation builds on docs.rs"
+run = "cargo +nightly fetch && DOCS_RS=1 cargo +nightly doc -p spicedb-embedded-sys --no-deps --offline"
+
 [tasks.test]
 description = "Run tests for all languages"
 depends = ["rust-test", "java-test", "python-test", "csharp-test", "node-test"]

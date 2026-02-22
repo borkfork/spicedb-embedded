@@ -83,6 +83,24 @@ jobs:
             rust/spicedb-embedded-sys/prebuilds
           retention-days: 1
 
+  docs-rs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "rust"
+
+      - name: Install nightly toolchain
+        run: rustup toolchain install nightly
+
+      - name: Fetch dependencies
+        run: cargo +nightly fetch
+
+      - name: Verify docs.rs build (offline, like real docs.rs)
+        run: DOCS_RS=1 cargo +nightly doc -p spicedb-embedded-sys --no-deps --offline
+
   format-toml-shell:
     runs-on: ubuntu-latest
     defaults:
