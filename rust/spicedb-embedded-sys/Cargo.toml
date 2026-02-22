@@ -11,6 +11,11 @@ keywords = ["spicedb", "ffi", "native"]
 categories = ["development-tools::ffi"]
 include = ["Cargo.toml", "src/**", "build.rs", "shared/**"]
 
+[package.metadata.docs.rs]
+# docs.rs uses a sandboxed environment without Go or network access.
+# Set the cfg flag so build.rs skips native library acquisition.
+rustc-args = ["--cfg", "docsrs"]
+
 [lib]
 path = "src/lib.rs"
 

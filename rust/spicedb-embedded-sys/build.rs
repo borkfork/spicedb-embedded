@@ -6,6 +6,12 @@ use std::{
 };
 
 fn main() {
+    // docs.rs builds in a sandbox without Go, network, or prebuilt libraries.
+    // The docsrs cfg is set via [package.metadata.docs.rs] rustc-args in Cargo.toml.
+    if std::env::var("DOCS_RS").is_ok() {
+        return;
+    }
+
     let rid = target_rid();
     run(rid, Some(env!("CARGO_PKG_VERSION")));
 }
