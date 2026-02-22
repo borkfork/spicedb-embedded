@@ -1,0 +1,70 @@
+# Publish spicedb-grpc-tonic to crates.io when release-please creates a release for it.
+# This is separate from the main publish workflow because spicedb-grpc-tonic has its own
+# version number and release cycle.
+#
+# Required secrets:
+#   CARGO_REGISTRY_TOKEN - crates.io API token (from https://crates.io/settings/tokens)
+
+name: Publish spicedb-grpc-tonic
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-grpc-tonic-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  check-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      should_publish: ${{ steps.check.outputs.should_publish }}
+      tag_name: ${{ steps.check.outputs.tag_name }}
+    steps:
+      - name: Check tag format
+        id: check
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          if [[ "$TAG" =~ ^spicedb-grpc-tonic-v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+            echo "tag_name=$TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  publish:
+    needs: [check-tag]
+    if: needs.check-tag.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    env:
+      MISE_ENABLE_TOOLS: "rust,buf,protoc"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-tag.outputs.tag_name }}
+          fetch-depth: 0
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "rust buf protoc"
+
+      - name: Publish spicedb-grpc-tonic to crates.io
+        run: |
+          # Regenerate generated code so published crate does not require buf/protoc.
+          ./scripts/regenerate-spicedb-grpc-tonic.sh
+          git add -f rust/spicedb-grpc-tonic/src/generated/
+
+          cargo publish -p spicedb-grpc-tonic --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty 2>&1 | tee /tmp/publish.log || true
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ] && grep -q "already exists on crates.io" /tmp/publish.log; then
+            echo "spicedb-grpc-tonic version already on crates.io, continuing"
+            exit 0
+          fi
+          exit "$code"

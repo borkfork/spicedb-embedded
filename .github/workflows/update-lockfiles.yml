@@ -1,0 +1,45 @@
+# Update Cargo.lock and package-lock.json on release-please PRs.
+# The "simple" release type does not natively update lock files, so this companion
+# workflow detects release-please PRs and commits lock file changes.
+#
+# GITHUB_TOKEN pushes do NOT re-trigger workflows, so there is no infinite loop.
+
+name: Update lockfiles on release PRs
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  update-lockfiles:
+    # Only run on release-please PRs
+    if: startsWith(github.head_ref, 'release-please--')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "rust node"
+
+      - name: Update Cargo.lock
+        run: cargo update -w
+
+      - name: Update package-lock.json
+        working-directory: node
+        run: npm install
+
+      - name: Commit lockfile updates
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock node/package-lock.json
+          git diff --staged --quiet || git commit -m "chore: update lockfiles"
+          git push

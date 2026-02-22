@@ -1,0 +1,32 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "separate-pull-requests": true,
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "component": "spicedb-embedded",
+      "include-component-in-tag": false,
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        { "type": "generic", "path": "rust/Cargo.toml" },
+        { "type": "generic", "path": "rust/spicedb-embedded-sys/Cargo.toml" },
+        { "type": "xml", "path": "java/pom.xml", "xpath": "//project/version" },
+        { "type": "toml", "path": "python/pyproject.toml", "jsonpath": "$.project.version" },
+        { "type": "xml", "path": "csharp/SpiceDbEmbedded.csproj", "xpath": "//PropertyGroup/Version" },
+        { "type": "json", "path": "node/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "node/package.json", "jsonpath": "$.optionalDependencies['spicedb-embedded-linux-x64']" },
+        { "type": "json", "path": "node/package.json", "jsonpath": "$.optionalDependencies['spicedb-embedded-linux-arm64']" },
+        { "type": "json", "path": "node/package.json", "jsonpath": "$.optionalDependencies['spicedb-embedded-darwin-arm64']" },
+        { "type": "json", "path": "node/package.json", "jsonpath": "$.optionalDependencies['spicedb-embedded-win32-x64']" },
+        { "type": "json", "path": "node/packages/linux-x64/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "node/packages/linux-arm64/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "node/packages/darwin-arm64/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "node/packages/win32-x64/package.json", "jsonpath": "$.version" }
+      ]
+    },
+    "rust/spicedb-grpc-tonic": {
+      "release-type": "rust",
+      "component": "spicedb-grpc-tonic"
+    }
+  }
+}

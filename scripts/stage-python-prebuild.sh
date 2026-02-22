@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# Stages the built shared library into node/prebuilds/<platform>-<arch>/ for local testing.
-# Node expects prebuilds/darwin-arm64/, linux-x64/, win32-x64/ (no "native" subdir).
-# Run from repo root after shared-c-build. Then: cd node && npm run build && npm test
-# Usage: ./scripts/stage-node-prebuild.sh
+# Stages the built shared library into python/src/spicedb_embedded/natives/<key>/ for local testing.
+# Run from repo root after shared-c-build.
+# Usage: ./scripts/stage-python-prebuild.sh
 
 set -e
 root=$(git rev-parse --show-toplevel)
@@ -35,6 +34,6 @@ if [ ! -f "$lib_src" ]; then
 	exit 1
 fi
 
-mkdir -p "$root/node/prebuilds/$key"
-cp "$lib_src" "$root/node/prebuilds/$key/"
-echo "Staged $libname -> node/prebuilds/$key/"
+mkdir -p "$root/python/src/spicedb_embedded/natives/$key"
+cp "$lib_src" "$root/python/src/spicedb_embedded/natives/$key/"
+echo "Staged $libname -> python/src/spicedb_embedded/natives/$key/"
