@@ -1,6 +1,6 @@
 [package]
 name = "spicedb-embedded"
-version = "0.3.9"
+version = "0.3.9"                                                                              # x-release-please-version
 edition = "2024"
 description = "Embedded SpiceDB for Rust - embedded authorization using the standard gRPC API"
 license = "Apache-2.0"
