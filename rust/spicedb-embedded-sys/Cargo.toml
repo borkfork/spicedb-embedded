@@ -12,8 +12,8 @@ categories = ["development-tools::ffi"]
 include = ["Cargo.toml", "src/**", "build.rs", "shared/**"]
 
 [package.metadata.docs.rs]
-# docs.rs uses a sandboxed environment without Go or network access.
-# Set the cfg flag so build.rs skips native library acquisition.
+# docs.rs sets DOCS_RS=1, which build.rs checks to skip native library acquisition.
+# The cfg flag below is available for any #[cfg(docsrs)] gates in library code.
 rustc-args = ["--cfg", "docsrs"]
 
 [lib]
