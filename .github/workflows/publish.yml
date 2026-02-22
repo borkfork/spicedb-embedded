@@ -1,0 +1,765 @@
+# Build and publish each platform to their respective registries.
+# Triggered when release-please creates a GitHub Release with a v* tag.
+#
+# Required env vars:
+#   SONATYPE_USERNAME - Maven Central Portal username
+# Required secrets:
+#   CARGO_REGISTRY_TOKEN - crates.io API token (from https://crates.io/settings/tokens)
+#   SONATYPE_TOKEN - Maven Central Portal token (from https://central.sonatype.com/usertoken)
+#   GPG_PRIVATE_KEY - GPG private key for signing (no passphrase)
+
+name: Publish
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  id-token: write # Required for OIDC
+  contents: write # Update GitHub Release with artifacts
+
+concurrency:
+  group: publish-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  # Only run for main package releases (v* tags), not spicedb-grpc-tonic releases
+  check-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      should_publish: ${{ steps.check.outputs.should_publish }}
+      version_num: ${{ steps.check.outputs.version_num }}
+      tag_name: ${{ steps.check.outputs.tag_name }}
+    steps:
+      - name: Check tag format
+        id: check
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+            echo "version_num=${TAG#v}" >> "$GITHUB_OUTPUT"
+            echo "tag_name=$TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Build shared C library per platform for packaging with C#, Node, Java, Python
+  build-shared-libs:
+    needs: [check-tag]
+    if: needs.check-tag.outputs.should_publish == 'true'
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            rid: linux-x64
+          - runner: ubuntu-24.04-arm
+            rid: linux-arm64
+          - runner: macos-latest
+            rid: osx-arm64
+          - runner: windows-latest
+            rid: win-x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-tag.outputs.tag_name }}
+          fetch-depth: 0
+
+      # Reuse staged prebuilds when go.mod/go.sum unchanged (same key as CI; shared across branches/runs).
+      - uses: actions/cache@v4
+        id: prebuild-cache
+        with:
+          path: |
+            node/prebuilds
+            csharp/runtimes
+            java/src/main/resources/natives
+            python/src/spicedb_embedded/natives
+            rust/spicedb-embedded-sys/prebuilds
+          key: shared-c-prebuilds-${{ matrix.rid }}-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
+
+      - name: "Set RID from runner (macOS: we only publish osx-arm64; Intel Mac not supported)"
+        id: set_rid
+        run: |
+          runner="${{ matrix.runner }}"
+          if [[ "$runner" == macos* ]]; then
+            case "$(uname -m)" in
+              x86_64) echo "::error::osx-x64 is no longer supported; use an arm64 Mac runner" ; exit 1 ;;
+              *)      rid="osx-arm64" ;;
+            esac
+          else
+            rid="${{ matrix.rid }}"
+          fi
+          echo "rid=$rid" >> "$GITHUB_OUTPUT"
+
+      - uses: jdx/mise-action@v3
+        if: steps.prebuild-cache.outputs.cache-hit != 'true'
+        with:
+          install_args: "go"
+
+      - name: Set GOCACHE (absolute path required by Go)
+        if: steps.prebuild-cache.outputs.cache-hit != 'true'
+        run: echo "GOCACHE=$HOME/.cache/go-build" >> "$GITHUB_ENV"
+
+      - uses: actions/cache@v4
+        if: steps.prebuild-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
+          restore-keys: ${{ runner.os }}-go-
+
+      - name: Copy cached prebuilds to out
+        if: steps.prebuild-cache.outputs.cache-hit == 'true'
+        run: |
+          rid="${{ steps.set_rid.outputs.rid }}"
+          mkdir -p "out/$rid/native"
+          cp -r "rust/spicedb-embedded-sys/prebuilds/$rid/"* "out/$rid/native/"
+
+      - name: Build shared C library
+        if: steps.prebuild-cache.outputs.cache-hit != 'true'
+        run: mise run shared-c-build
+
+      - name: Stage and upload shared lib
+        if: steps.prebuild-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "out/${{ steps.set_rid.outputs.rid }}/native"
+          case "${{ matrix.runner }}" in
+            ubuntu*) cp shared/c/libspicedb.so "out/${{ steps.set_rid.outputs.rid }}/native/" ;;
+            macos*)  cp shared/c/libspicedb.dylib "out/${{ steps.set_rid.outputs.rid }}/native/" ;;
+            windows*)
+              cp shared/c/spicedb.dll "out/${{ steps.set_rid.outputs.rid }}/native/"
+              if [ -f shared/c/spicedb.def ]; then
+                cp shared/c/spicedb.def "out/${{ steps.set_rid.outputs.rid }}/native/"
+              fi
+              ;;
+          esac
+
+      - name: Upload shared lib
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-lib-${{ steps.set_rid.outputs.rid }}
+          path: out
+
+  # Publish spicedb-grpc-tonic first; spicedb-embedded-sys depends on it (version from crates.io when publishing).
+  # This is idempotent: if the version already exists on crates.io, it succeeds silently.
+  publish-rust-api:
+    needs: [build-shared-libs, check-tag]
+    if: needs.check-tag.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    env:
+      MISE_ENABLE_TOOLS: "rust,buf,protoc"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-tag.outputs.tag_name }}
+          fetch-depth: 0
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "rust buf protoc"
+
+      - name: Publish spicedb-grpc-tonic to crates.io
+        run: |
+          # Regenerate generated code so published crate does not require buf/protoc.
+          ./scripts/regenerate-spicedb-grpc-tonic.sh
+          git add -f rust/spicedb-grpc-tonic/src/generated/
+
+          cargo publish -p spicedb-grpc-tonic --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty 2>&1 | tee /tmp/publish.log || true
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ] && grep -q "already exists on crates.io" /tmp/publish.log; then
+            echo "spicedb-grpc-tonic version already on crates.io, continuing"
+            exit 0
+          fi
+          exit "$code"
+
+  publish-rust-sys:
+    needs: [build-shared-libs, publish-rust-api, check-tag]
+    if: needs.check-tag.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    env:
+      MISE_ENABLE_TOOLS: "rust,buf,protoc"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-tag.outputs.tag_name }}
+          fetch-depth: 0
+
+      - name: Download shared lib for this platform (linux-x64)
+        uses: actions/download-artifact@v4
+        with:
+          name: shared-lib-linux-x64
+
+      - name: Stage shared lib into -sys crate prebuilds for build (verify step)
+        run: |
+          mkdir -p "rust/spicedb-embedded-sys/prebuilds/linux-x64"
+          cp -r linux-x64/native/* "rust/spicedb-embedded-sys/prebuilds/linux-x64/"
+          if [ -f shared/c/spicedb.def ]; then
+            cp shared/c/spicedb.def "rust/spicedb-embedded-sys/prebuilds/linux-x64/"
+          fi
+
+      - name: Package Go source into -sys crate and git add -f for publish
+        run: |
+          mkdir -p rust/spicedb-embedded-sys/shared
+          cp -r shared/c rust/spicedb-embedded-sys/shared/
+          git add -f rust/spicedb-embedded-sys/shared/
+          git status rust/spicedb-embedded-sys/shared/
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "rust buf protoc"
+
+      - name: Publish spicedb-embedded-sys to crates.io
+        run: |
+          cargo publish -p spicedb-embedded-sys --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
+
+  publish-rust-main:
+    needs: [publish-rust-sys, check-tag]
+    if: needs.check-tag.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    env:
+      MISE_ENABLE_TOOLS: "rust,buf,protoc"
+      VERSION_NUM: ${{ needs.check-tag.outputs.version_num }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-tag.outputs.tag_name }}
+          fetch-depth: 0
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "rust buf protoc"
+
+      - name: Update Cargo.lock to use published spicedb-embedded-sys
+        run: cargo update -p spicedb-embedded-sys
+
+      - name: Publish main crate to crates.io
+        run: |
+          cargo publish -p spicedb-embedded --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  publish-java:
+    needs: [build-shared-libs, check-tag]
+    if: needs.check-tag.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    env:
+      SONATYPE_USERNAME: ${{ vars.SONATYPE_USERNAME }}
+      SONATYPE_TOKEN: ${{ secrets.SONATYPE_TOKEN }}
+      GPG_PASSPHRASE: ""
+      VERSION_NUM: ${{ needs.check-tag.outputs.version_num }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-tag.outputs.tag_name }}
+          fetch-depth: 0
+
+      - name: Download shared libs for all platforms
+        uses: actions/download-artifact@v4
+        with:
+          pattern: shared-lib-*
+          path: shared-libs
+          merge-multiple: true
+
+      - name: Lay out natives for classifier JARs (target/natives-layout for release profile)
+        run: |
+          mkdir -p java/target/natives-layout/linux-x86_64/natives/linux-x86_64 \
+                   java/target/natives-layout/linux-aarch_64/natives/linux-aarch_64 \
+                   java/target/natives-layout/osx-aarch_64/natives/osx-aarch_64 \
+                   java/target/natives-layout/windows-x86_64/natives/windows-x86_64
+          cp shared-libs/linux-x64/native/* java/target/natives-layout/linux-x86_64/natives/linux-x86_64/
+          cp shared-libs/linux-arm64/native/* java/target/natives-layout/linux-aarch_64/natives/linux-aarch_64/
+          cp shared-libs/osx-arm64/native/* java/target/natives-layout/osx-aarch_64/natives/osx-aarch_64/
+          cp shared-libs/win-x64/native/* java/target/natives-layout/windows-x86_64/natives/windows-x86_64/
+          ls -R java/target/natives-layout
+
+      - name: Verify natives layout for classifier JARs
+        run: |
+          for plat in linux-x86_64 linux-aarch_64 osx-aarch_64 windows-x86_64; do
+            dir="java/target/natives-layout/$plat/natives/$plat"
+            count=$(find "$dir" -type f 2>/dev/null | wc -l)
+            if [ "$count" -eq 0 ]; then
+              echo "::error::No native files in $dir (shared-libs layout may be wrong)"
+              exit 1
+            fi
+            echo "$plat: $count file(s)"
+          done
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "java maven"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2-
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+          cache: maven
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+
+      - name: Configure Maven Central credentials
+        run: |
+          if [ -z "$SONATYPE_USERNAME" ] || [ -z "$SONATYPE_TOKEN" ]; then
+            echo "::error::SONATYPE_USERNAME and SONATYPE_TOKEN secrets must be set. Create a user token at https://central.sonatype.com/usertoken and add both values as repo secrets."
+            exit 1
+          fi
+          mkdir -p ~/.m2
+          # Write actual credentials (setup-java would write ${env.VAR} literals that Maven does not expand)
+          cat > ~/.m2/settings.xml << EOF
+          <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+            <servers>
+              <server>
+                <id>central</id>
+                <username>${SONATYPE_USERNAME}</username>
+                <password>${SONATYPE_TOKEN}</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
+
+      - name: Build Java library
+        working-directory: java
+        run: mvn -B -ntp compile
+
+      - name: Prepare test classpath natives (src/main/resources/natives so Surefire uses same path as CI/local)
+        run: |
+          mkdir -p java/src/main/resources/natives
+          cp -r java/target/natives-layout/linux-x86_64/natives/* java/src/main/resources/natives/
+          cp -r java/target/natives-layout/linux-aarch_64/natives/* java/src/main/resources/natives/
+          cp -r java/target/natives-layout/osx-aarch_64/natives/* java/src/main/resources/natives/
+          cp -r java/target/natives-layout/windows-x86_64/natives/* java/src/main/resources/natives/
+          ls -R java/src/main/resources/natives
+
+      - name: Publish to Maven Central
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          cd java
+          mvn -B -ntp -P release package deploy
+          echo "Published Java $VERSION_NUM to Maven Central (main + linux-x86_64, linux-aarch_64, osx-aarch_64, windows-x86_64 classifier JARs)" >> "$GITHUB_STEP_SUMMARY"
+
+  # Publish platform-specific optional packages (only that platform's binary).
+  publish-npm-platforms:
+    needs: [build-shared-libs, check-tag]
+    if: needs.check-tag.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    env:
+      VERSION_NUM: ${{ needs.check-tag.outputs.version_num }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - npm_platform: linux-x64
+            artifact_name: shared-lib-linux-x64
+            artifact_rid: linux-x64
+          - npm_platform: linux-arm64
+            artifact_name: shared-lib-linux-arm64
+            artifact_rid: linux-arm64
+          - npm_platform: darwin-arm64
+            artifact_name: shared-lib-osx-arm64
+            artifact_rid: osx-arm64
+          - npm_platform: win32-x64
+            artifact_name: shared-lib-win-x64
+            artifact_rid: win-x64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-tag.outputs.tag_name }}
+          fetch-depth: 0
+
+      - name: Download shared lib for this platform
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+
+      - name: Prepare platform package
+        run: |
+          PKG_DIR="node/packages/${{ matrix.npm_platform }}"
+          mkdir -p "$PKG_DIR/prebuilds/${{ matrix.npm_platform }}"
+          # Artifact from upload path "out" may extract as out/<rid>/native or <rid>/native
+          NATIVE_SRC="${{ matrix.artifact_rid }}/native"
+          if [ ! -d "$NATIVE_SRC" ]; then
+            NATIVE_SRC="out/${{ matrix.artifact_rid }}/native"
+          fi
+          cp "$NATIVE_SRC"/* "$PKG_DIR/prebuilds/${{ matrix.npm_platform }}/"
+          ls -R "$PKG_DIR"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Publish platform package to npm
+        working-directory: node/packages/${{ matrix.npm_platform }}
+        run: |
+          npm publish --access public
+
+  publish-npm:
+    needs: [publish-npm-platforms, check-tag]
+    if: needs.check-tag.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    env:
+      VERSION_NUM: ${{ needs.check-tag.outputs.version_num }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-tag.outputs.tag_name }}
+          fetch-depth: 0
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "node"
+
+      - uses: actions/cache@v4
+        with:
+          path: node/node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json', '**/package.json') }}
+          restore-keys: ${{ runner.os }}-npm-
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Build Node.js package
+        working-directory: node
+        run: |
+          npm install
+          npm run build
+
+      - name: Publish to npm
+        working-directory: node
+        run: |
+          npm publish
+
+  publish-nuget:
+    needs: [build-shared-libs, check-tag]
+    if: needs.check-tag.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    env:
+      VERSION_NUM: ${{ needs.check-tag.outputs.version_num }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-tag.outputs.tag_name }}
+          fetch-depth: 0
+
+      - name: Download shared libs for all platforms
+        uses: actions/download-artifact@v4
+        with:
+          pattern: shared-lib-*
+          path: shared-libs
+          merge-multiple: true
+
+      - name: Lay out runtimes for NuGet package
+        run: |
+          mkdir -p csharp/runtimes
+          for dir in shared-libs/*/; do
+            rid=$(basename "$dir")
+            mv "$dir" "csharp/runtimes/$rid"
+          done
+          ls -R csharp/runtimes
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "dotnet"
+
+      - uses: actions/cache@v4
+        with:
+          path: csharp/artifacts
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/bin/Release/SpiceDbEmbedded.nupkg') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: Build C# package
+        run: dotnet build csharp/SpiceDbEmbedded.sln -c Release -p:Version=${{ env.VERSION_NUM }}
+
+      - name: Build NuGet package
+        working-directory: csharp
+        run: dotnet pack -c Release -p:Version=${{ env.VERSION_NUM }}
+
+      - name: NuGet login (OIDC -> temp API key)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: NuGet push
+        working-directory: csharp
+        run: dotnet nuget push bin/Release/SpiceDbEmbedded.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
+
+  # Build platform-specific wheels with bundled native lib (one job per OS).
+  build-python-wheels:
+    needs: [build-shared-libs, check-tag]
+    if: needs.check-tag.outputs.should_publish == 'true'
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            artifact_rid: linux-x64
+            natives_key: linux-x64
+          - runner: ubuntu-24.04-arm
+            artifact_rid: linux-arm64
+            natives_key: linux-arm64
+          - runner: macos-latest
+            artifact_rid: osx-arm64
+            natives_key: darwin-arm64
+          - runner: windows-latest
+            artifact_rid: win-x64
+            natives_key: win32-x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-tag.outputs.tag_name }}
+          fetch-depth: 0
+
+      - name: Download shared lib for this platform
+        uses: actions/download-artifact@v4
+        with:
+          name: shared-lib-${{ matrix.artifact_rid }}
+
+      - name: Stage native lib into package
+        run: |
+          mkdir -p python/src/spicedb_embedded/natives/${{ matrix.natives_key }}
+          NATIVE_SRC="${{ matrix.artifact_rid }}/native"
+          [ ! -d "$NATIVE_SRC" ] && NATIVE_SRC="out/${{ matrix.artifact_rid }}/native"
+          cp "$NATIVE_SRC"/* python/src/spicedb_embedded/natives/${{ matrix.natives_key }}/
+          ls -R python/src/spicedb_embedded/natives
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "python"
+
+      - name: Build Python package
+        working-directory: python
+        run: pip install -e .
+
+      - name: Build wheel
+        working-directory: python
+        run: python -m pip install build && python -m build --wheel
+
+      - name: Build sdist (Linux only)
+        if: matrix.runner == 'ubuntu-latest'
+        working-directory: python
+        run: python -m build --sdist
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-wheel-${{ matrix.natives_key }}
+          path: python/dist/*.whl
+
+      - name: Upload sdist
+        if: matrix.runner == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-sdist
+          path: python/dist/*.tar.gz
+
+  publish-pypi:
+    needs: [build-python-wheels, check-tag]
+    if: needs.check-tag.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-tag.outputs.tag_name }}
+          fetch-depth: 0
+
+      - name: Download all Python artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: python-*
+          path: python/dist
+          merge-multiple: true
+
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: python/dist
+
+  # After all publishing completes, update the GitHub Release (created by release-please)
+  # with build artifacts and registry links.
+  update-release:
+    needs:
+      [
+        build-shared-libs,
+        publish-rust-main,
+        publish-java,
+        publish-npm,
+        publish-nuget,
+        publish-pypi,
+        check-tag,
+      ]
+    if: needs.check-tag.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    env:
+      TAG_NAME: ${{ needs.check-tag.outputs.tag_name }}
+      VERSION_NUM: ${{ needs.check-tag.outputs.version_num }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-tag.outputs.tag_name }}
+          fetch-depth: 0
+
+      - name: Download shared libs for Rust release tarballs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: shared-lib-*
+          path: shared-libs
+          merge-multiple: true
+
+      - name: Build lib tarballs for Rust crates (download at build time)
+        run: |
+          set -e
+          for rid in linux-x64 linux-arm64 osx-arm64 win-x64; do
+            src="shared-libs/${rid}/native"
+            [[ ! -d "$src" ]] && src="shared-libs/out/${rid}/native"
+            [[ ! -d "$src" ]] && { echo "Missing shared lib for ${rid}"; exit 1; }
+            mkdir -p "rust-lib-assets/${rid}"
+            cp -r "${src}/." "rust-lib-assets/${rid}/"
+            (cd "rust-lib-assets/${rid}" && tar -czf "../../libspicedb-${rid}.tar.gz" .)
+          done
+          ls -la libspicedb-*.tar.gz
+
+      - name: Update GitHub Release with artifacts and registry links
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          append_body: true
+          files: |
+            libspicedb-linux-x64.tar.gz
+            libspicedb-linux-arm64.tar.gz
+            libspicedb-osx-arm64.tar.gz
+            libspicedb-win-x64.tar.gz
+          body: |
+
+            ---
+
+            Packages have been published to the following registries:
+
+            | Package | Registry | Link |
+            |---------|----------|------|
+            | **Rust** | crates.io | [spicedb-embedded](https://crates.io/crates/spicedb-embedded) |
+            | **Java** | Maven Central | [com.borkfork:spicedb-embedded](https://central.sonatype.com/artifact/com.borkfork/spicedb-embedded) |
+            | **Node.js** | npm | [spicedb-embedded](https://www.npmjs.com/package/spicedb-embedded) |
+            | **.NET** | NuGet | [SpiceDbEmbedded](https://www.nuget.org/packages/SpiceDbEmbedded) |
+            | **Python** | PyPI | [spicedb-embedded](https://pypi.org/project/spicedb-embedded/) |
+
+            ### Installation
+
+            **Rust**:
+            ```bash
+            cargo add spicedb-embedded
+            ```
+
+            **Node.js**:
+            ```bash
+            npm install spicedb-embedded
+            ```
+
+            **.NET**:
+            ```bash
+            dotnet add package SpiceDbEmbedded
+            ```
+
+            **Python**:
+            ```bash
+            pip install spicedb-embedded
+            ```
+
+            **Java** (Maven). Add the main artifact and the matching classifier JAR for your platform (`linux-x86_64`, `linux-aarch_64`, `osx-aarch_64`, `windows-x86_64`):
+            ```xml
+            <dependency>
+              <groupId>com.borkfork</groupId>
+              <artifactId>spicedb-embedded</artifactId>
+              <version>${{ env.VERSION_NUM }}</version>
+            </dependency>
+            <!-- Platform native library (use one: linux-x86_64, linux-aarch_64, osx-aarch_64, windows-x86_64) -->
+            <dependency>
+              <groupId>com.borkfork</groupId>
+              <artifactId>spicedb-embedded</artifactId>
+              <version>${{ env.VERSION_NUM }}</version>
+              <classifier>linux-x86_64</classifier>
+            </dependency>
+            ```
+
+            With **os-maven-plugin** you can use `${os.detected.classifier}` directly:
+            ```xml
+            <extensions>
+              <extension>
+                <groupId>kr.motd.maven</groupId>
+                <artifactId>os-maven-plugin</artifactId>
+                <version>1.7.1</version>
+              </extension>
+            </extensions>
+            ```
+            Then add the native dependency with `<classifier>${os.detected.classifier}</classifier>`.
+
+            **Java** (Gradle). Add the main artifact and the classifier for your platform (`linux-x86_64`, `linux-aarch_64`, `osx-aarch_64`, or `windows-x86_64`):
+            ```groovy
+            implementation 'com.borkfork:spicedb-embedded:${{ env.VERSION_NUM }}'
+            implementation 'com.borkfork:spicedb-embedded:${{ env.VERSION_NUM }}:linux-x86_64'  // or linux-aarch_64, osx-aarch_64, windows-x86_64
+            ```
+            Kotlin DSL:
+            ```kotlin
+            implementation("com.borkfork:spicedb-embedded:${{ env.VERSION_NUM }}")
+            implementation("com.borkfork:spicedb-embedded:${{ env.VERSION_NUM }}:linux-x86_64")  // or linux-aarch_64, osx-aarch_64, windows-x86_64
+            ```
+            With [osdetector-gradle-plugin](https://github.com/google/osdetector-gradle-plugin) you can use the classifier dynamically:
+            ```groovy
+            plugins { id "com.google.osdetector" version "1.7.3" }
+            dependencies {
+              implementation "com.borkfork:spicedb-embedded:${{ env.VERSION_NUM }}"
+              implementation "com.borkfork:spicedb-embedded:${{ env.VERSION_NUM }}:${osdetector.classifier}"
+            }
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
