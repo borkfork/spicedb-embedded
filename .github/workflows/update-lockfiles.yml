@@ -1,6 +1,6 @@
 # Update Cargo.lock and package-lock.json on release-please PR branches.
 # The "simple" release type does not natively update lock files, so this companion
-# workflow updates them after release-please creates or updates a PR.
+# workflow updates them after release-please creates a PR.
 #
 # Dispatched from release-please.yml after PR creation.
 
@@ -16,6 +16,10 @@ on:
 
 permissions:
   contents: write
+
+concurrency:
+  group: update-lockfiles-${{ inputs.branch }}
+  cancel-in-progress: false
 
 jobs:
   update-lockfiles:

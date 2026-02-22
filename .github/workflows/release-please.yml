@@ -55,6 +55,7 @@ jobs:
     steps:
       - name: Dispatch lockfile updates for each release PR
         run: |
+          set -eo pipefail
           echo '${{ needs.release-please.outputs.prs }}' | jq -r '.[].headBranchName' | while read -r branch; do
             echo "Dispatching lockfile update for branch: $branch"
             gh workflow run update-lockfiles.yml -f branch="$branch"
