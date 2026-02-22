@@ -20,7 +20,13 @@ dotnet = "9.0"
 
 [tasks.check]
 description = "Run format checks, lint, ReSharper, and tests for all languages"
-depends = ["format-check", "rust-clippy", "rust-cargo-deny", "csharp-resharper-check", "test"]
+depends = [
+  "format-check",
+  "rust-clippy",
+  "rust-cargo-deny",
+  "csharp-resharper-check",
+  "test",
+]
 
 # ============================================================================
 # SpiceDB shared/c build tasks
