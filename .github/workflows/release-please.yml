@@ -7,13 +7,35 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  id-token: write # Passed to publish workflows for trusted publisher auth
 
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      grpc_release_created: ${{ steps.release.outputs['rust/spicedb-grpc-tonic--release_created'] }}
+      grpc_tag_name: ${{ steps.release.outputs['rust/spicedb-grpc-tonic--tag_name'] }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  publish:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/publish.yml
+    with:
+      tag_name: ${{ needs.release-please.outputs.tag_name }}
+    secrets: inherit
+
+  publish-grpc-tonic:
+    needs: release-please
+    if: needs.release-please.outputs.grpc_release_created == 'true'
+    uses: ./.github/workflows/publish-grpc-tonic.yml
+    with:
+      tag_name: ${{ needs.release-please.outputs.grpc_tag_name }}
+    secrets: inherit

@@ -8,6 +8,11 @@
 name: Publish spicedb-grpc-tonic
 
 on:
+  workflow_call:
+    inputs:
+      tag_name:
+        required: true
+        type: string
   release:
     types: [published]
 
@@ -15,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: publish-grpc-tonic-${{ github.event.release.tag_name }}
+  group: publish-grpc-tonic-${{ inputs.tag_name || github.event.release.tag_name }}
   cancel-in-progress: false
 
 jobs:
@@ -28,7 +33,7 @@ jobs:
       - name: Check tag format
         id: check
         run: |
-          TAG="${{ github.event.release.tag_name }}"
+          TAG="${{ inputs.tag_name || github.event.release.tag_name }}"
           if [[ "$TAG" =~ ^spicedb-grpc-tonic-v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
             echo "should_publish=true" >> "$GITHUB_OUTPUT"
             echo "tag_name=$TAG" >> "$GITHUB_OUTPUT"
