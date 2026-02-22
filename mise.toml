@@ -34,11 +34,6 @@ run = "bash scripts/shared-c-build.sh"
 description = "Force rebuild the SpiceDB C-shared library"
 run = "bash scripts/shared-c-rebuild.sh"
 
-[tasks.change]
-description = "Update CHANGELOG from conventional commits (requires knope; not available on linux-arm64)"
-tools."github:knope-dev/knope" = "knope/v0.21.7"
-run = "knope document-change"
-
 [tasks.format-check]
 description = "Verify format for all languages"
 depends = [

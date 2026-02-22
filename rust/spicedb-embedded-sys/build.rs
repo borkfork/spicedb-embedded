@@ -6,6 +6,12 @@ use std::{
 };
 
 fn main() {
+    // docs.rs sets the DOCS_RS environment variable, which we use to skip build work here.
+    println!("cargo:rerun-if-env-changed=DOCS_RS");
+    if std::env::var("DOCS_RS").is_ok() {
+        return;
+    }
+
     let rid = target_rid();
     run(rid, Some(env!("CARGO_PKG_VERSION")));
 }

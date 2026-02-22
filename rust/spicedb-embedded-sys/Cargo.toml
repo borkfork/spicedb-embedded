@@ -11,6 +11,11 @@ keywords = ["spicedb", "ffi", "native"]
 categories = ["development-tools::ffi"]
 include = ["Cargo.toml", "src/**", "build.rs", "shared/**"]
 
+[package.metadata.docs.rs]
+# docs.rs sets DOCS_RS=1, which build.rs checks to skip native library acquisition.
+# The cfg flag below is available for any #[cfg(docsrs)] gates in library code.
+rustc-args = ["--cfg", "docsrs"]
+
 [lib]
 path = "src/lib.rs"
 
