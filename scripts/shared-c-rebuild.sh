@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -e
-root=$(git rev-parse --show-toplevel)
+root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$root/shared/c"
 rm -f libspicedb.so libspicedb.dylib libspicedb.h spicedb.dll spicedb.h
 out=$("$root/scripts/lib-path.sh")

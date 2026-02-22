@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -e
-root=$(git rev-parse --show-toplevel)
+root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$root/shared/c"
 out=$("$root/scripts/lib-path.sh")
 CGO_ENABLED=1 go mod tidy

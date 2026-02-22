@@ -4,7 +4,7 @@
 # Usage: ./scripts/stage-all-prebuilds.sh
 
 set -e
-root=$(git rev-parse --show-toplevel)
+root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
 "$root/scripts/stage-node-prebuild.sh"
 "$root/scripts/stage-csharp-prebuild.sh"

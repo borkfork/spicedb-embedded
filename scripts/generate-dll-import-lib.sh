@@ -6,7 +6,7 @@
 #   From shared/c (after shared-c-build): ./scripts/generate-dll-import-lib.sh
 #   With paths (e.g. from build.rs):      ./scripts/generate-dll-import-lib.sh <path-to.def> <output-dir>
 set -e
-root=$(git rev-parse --show-toplevel)
+root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 if [ $# -eq 2 ]; then
 	DEF_FILE="$1"
 	OUT_DIR="$2"

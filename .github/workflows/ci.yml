@@ -114,7 +114,7 @@ jobs:
           install_args: "taplo shellcheck shfmt"
 
       - name: TOML, shell, and Actions format check
-        run: mise run format-check-toml && mise run format-check-bash && mise run format-check-actions
+        run: mise run toml-format-check && mise run bash-format-check && mise run actions-format-check
 
   rust:
     needs: shared-c-lib
@@ -173,16 +173,16 @@ jobs:
           workspaces: . -> target
 
       - name: Format check
-        run: mise run format-check-rust
+        run: mise run rust-format-check
 
       - name: Install clippy
         run: rustup component add clippy
 
       - name: Clippy
-        run: mise run clippy
+        run: mise run rust-clippy
 
       - name: Cargo deny
-        run: mise run cargo-deny
+        run: mise run rust-cargo-deny
 
       - name: Test
         run: cargo test -p spicedb-embedded --locked
@@ -232,7 +232,7 @@ jobs:
           eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
 
       - name: Format check
-        run: mise run format-check-java
+        run: mise run java-format-check
 
       - name: Compile
         working-directory: java
@@ -343,7 +343,7 @@ jobs:
           eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
 
       - name: Format check
-        run: mise run format-check-csharp
+        run: mise run csharp-format-check
 
       - name: Test
         run: |
@@ -395,7 +395,7 @@ jobs:
           eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
 
       - name: Format check
-        run: mise run format-check-node
+        run: mise run node-format-check
 
       - name: Test
         working-directory: node
