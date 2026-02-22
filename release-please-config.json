@@ -10,7 +10,7 @@
       "extra-files": [
         { "type": "generic", "path": "rust/Cargo.toml" },
         { "type": "generic", "path": "rust/spicedb-embedded-sys/Cargo.toml" },
-        { "type": "xml", "path": "java/pom.xml", "xpath": "//project/version" },
+        { "type": "generic", "path": "java/pom.xml" },
         { "type": "toml", "path": "python/pyproject.toml", "jsonpath": "$.project.version" },
         { "type": "xml", "path": "csharp/SpiceDbEmbedded.csproj", "xpath": "//PropertyGroup/Version" },
         { "type": "json", "path": "node/package.json", "jsonpath": "$.version" },
