@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/borkfork/spicedb-embedded/compare/v0.4.0...v0.4.1) (2026-02-22)
+
+
+### Bug Fixes
+
+* Auto-publish on release creation ([#52](https://github.com/borkfork/spicedb-embedded/issues/52)) ([9900bfd](https://github.com/borkfork/spicedb-embedded/commit/9900bfd023f5fe9046415208c1018806b75b4de5))
+
 ## [0.4.0](https://github.com/borkfork/spicedb-embedded/compare/v0.3.9...v0.4.0) (2026-02-22)
 
 
