@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 permissions:
-  actions: write # Dispatch publish workflows via gh workflow run
+  actions: write # Dispatch publish/lockfile workflows via gh workflow run
   contents: write
   pull-requests: write
 
@@ -17,6 +17,8 @@ jobs:
       tag_name: ${{ steps.release.outputs.tag_name }}
       grpc_release_created: ${{ steps.release.outputs['rust/spicedb-grpc-tonic--release_created'] }}
       grpc_tag_name: ${{ steps.release.outputs['rust/spicedb-grpc-tonic--tag_name'] }}
+      prs_created: ${{ steps.release.outputs.prs_created }}
+      prs: ${{ steps.release.outputs.prs }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
@@ -42,6 +44,22 @@ jobs:
     steps:
       - name: Dispatch publish grpc-tonic workflow
         run: gh workflow run publish-grpc-tonic.yml -f tag_name=${{ needs.release-please.outputs.grpc_tag_name }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+
+  dispatch-update-lockfiles:
+    needs: release-please
+    if: needs.release-please.outputs.prs_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch lockfile updates for each release PR
+        run: |
+          set -eo pipefail
+          echo '${{ needs.release-please.outputs.prs }}' | jq -r '.[].headBranchName' | while read -r branch; do
+            echo "Dispatching lockfile update for branch: $branch"
+            gh workflow run update-lockfiles.yml -f branch="$branch"
+          done
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

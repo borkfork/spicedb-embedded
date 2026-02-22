@@ -1,28 +1,33 @@
-# Update Cargo.lock and package-lock.json on release-please PRs.
+# Update Cargo.lock and package-lock.json on release-please PR branches.
 # The "simple" release type does not natively update lock files, so this companion
-# workflow detects release-please PRs and commits lock file changes.
+# workflow updates them after release-please creates a PR.
 #
-# GITHUB_TOKEN pushes do NOT re-trigger workflows, so there is no infinite loop.
+# Dispatched from release-please.yml after PR creation.
 
 name: Update lockfiles on release PRs
 
 on:
-  pull_request:
-    types: [opened, synchronize]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Release PR branch to update lockfiles on'
+        required: true
+        type: string
 
 permissions:
   contents: write
 
+concurrency:
+  group: update-lockfiles-${{ inputs.branch }}
+  cancel-in-progress: false
+
 jobs:
   update-lockfiles:
-    # Only run on release-please PRs
-    if: startsWith(github.head_ref, 'release-please--')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ inputs.branch }}
           fetch-depth: 0
 
       - uses: jdx/mise-action@v3
