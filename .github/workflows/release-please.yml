@@ -53,13 +53,17 @@ jobs:
     if: needs.release-please.outputs.prs_created == 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch lockfile updates for each release PR
+      - name: Dispatch lockfile updates for root package PR
         run: |
           set -eo pipefail
-          echo '${{ needs.release-please.outputs.prs }}' | jq -r '.[].headBranchName' | while read -r branch; do
-            echo "Dispatching lockfile update for branch: $branch"
-            gh workflow run update-lockfiles.yml -f branch="$branch"
-          done
+          # Only update lockfiles for the root package PR; grpc-tonic uses the rust
+          # release type which manages its own Cargo.toml, and its version bumps are
+          # incompatible with the workspace until the consuming crates adopt them.
+          BRANCH=$(echo '${{ needs.release-please.outputs.prs }}' | jq -r '.[] | select(.headBranchName | contains("grpc-tonic") | not) | .headBranchName')
+          if [ -n "$BRANCH" ]; then
+            echo "Dispatching lockfile update for branch: $BRANCH"
+            gh workflow run update-lockfiles.yml -f branch="$BRANCH"
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
