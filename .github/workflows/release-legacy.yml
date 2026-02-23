@@ -28,6 +28,7 @@ on:
         default: false
 
 permissions:
+  actions: write # Dispatch update-examples workflow
   id-token: write # Required for OIDC
   contents: write # Create GitHub Release, push commit and tag
 
@@ -914,6 +915,19 @@ jobs:
             ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # After all publishing completes, update example version pins and lockfiles
+  # so examples on main reference the newly published packages.
+  dispatch-update-examples:
+    needs: [create-release, prepare-release]
+    if: github.event.inputs.actually_publish == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch example updates
+        run: gh workflow run update-examples.yml -f version=${{ needs.prepare-release.outputs.version_num }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
 
   # On dry run, remove the tag and delete the temporary release branch.
   cleanup-dry-run:
