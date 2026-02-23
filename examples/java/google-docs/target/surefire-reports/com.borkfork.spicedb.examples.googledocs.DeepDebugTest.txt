@@ -1,0 +1,16 @@
+-------------------------------------------------------------------------------
+Test set: com.borkfork.spicedb.examples.googledocs.DeepDebugTest
+-------------------------------------------------------------------------------
+Tests run: 3, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 2.018 s <<< FAILURE! -- in com.borkfork.spicedb.examples.googledocs.DeepDebugTest
+com.borkfork.spicedb.examples.googledocs.DeepDebugTest.javalinViaHttp -- Time elapsed: 1.988 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: ERROR: invalid handle: 1 ==> expected: <200> but was: <500>
+	at org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+	at org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:150)
+	at org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:563)
+	at com.borkfork.spicedb.examples.googledocs.DeepDebugTest.javalinViaHttp(DeepDebugTest.java:137)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+

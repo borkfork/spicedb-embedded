@@ -186,6 +186,9 @@ jobs:
       - name: Test
         run: cargo test -p spicedb-embedded --locked
 
+      - name: Example tests
+        run: mise run example-rust-test
+
   java:
     needs: shared-c-lib
     strategy:
@@ -240,6 +243,9 @@ jobs:
       - name: Test
         working-directory: java
         run: mvn test
+
+      - name: Example tests
+        run: mise run example-java-test
 
   python:
     needs: shared-c-lib
@@ -297,6 +303,9 @@ jobs:
         working-directory: python
         run: pytest
 
+      - name: Example tests
+        run: mise run example-python-test
+
   csharp:
     needs: shared-c-lib
     strategy:
@@ -348,6 +357,9 @@ jobs:
         run: |
           dotnet build csharp/SpiceDbEmbedded.sln
           dotnet test csharp/SpiceDbEmbedded.Tests/SpiceDbEmbedded.Tests.csproj --no-build
+
+      - name: Example tests
+        run: mise run example-csharp-test
 
   node:
     needs: shared-c-lib
@@ -402,3 +414,6 @@ jobs:
           npm ci
           npm run build
           npm test
+
+      - name: Example tests
+        run: mise run example-node-test

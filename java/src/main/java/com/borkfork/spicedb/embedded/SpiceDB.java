@@ -16,12 +16,26 @@ import com.sun.jna.ptr.PointerByReference;
 interface SpiceDB extends Library {
 
   /**
-   * Load the native library. Prefers bundled JAR natives, then spicedb.library.path, then
-   * "spicedb".
+   * Load the native library singleton. Uses a holder class for lazy, thread-safe initialization.
+   *
+   * <p>The static reference prevents GC from collecting the JNA NativeLibrary (which uses
+   * WeakReference caching internally). Without this, GC can unload and reload the Go shared library
+   * between calls, losing all in-process state (handles, goroutines).
    */
   static SpiceDB load() {
-    String libPath = SpiceDBLibraryPath.getLibraryPath(SpiceDB.class);
-    return Native.load(libPath != null ? libPath : "spicedb", SpiceDB.class);
+    return Holder.INSTANCE;
+  }
+
+  /** Lazy holder — loaded on first access, strong reference prevents GC of native library. */
+  final class Holder {
+    static final SpiceDB INSTANCE;
+
+    static {
+      String libPath = SpiceDBLibraryPath.getLibraryPath(SpiceDB.class);
+      INSTANCE = Native.load(libPath != null ? libPath : "spicedb", SpiceDB.class);
+    }
+
+    private Holder() {}
   }
 
   /**

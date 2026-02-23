@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.borkfork.spicedb.examples.googledocs.GcTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.656 s -- in com.borkfork.spicedb.examples.googledocs.GcTest
