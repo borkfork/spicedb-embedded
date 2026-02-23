@@ -63,9 +63,9 @@ fn run_buf_and_tonic(manifest: &std::path::Path) -> Result<(), Box<dyn std::erro
         .map(|e| e.path().to_path_buf())
         .collect();
 
-    tonic_build::configure()
+    tonic_prost_build::configure()
         .build_server(false)
-        .compile_protos(&protos, &[&export_dir])?;
+        .compile_protos(&protos, &[export_dir])?;
 
     println!("cargo:rerun-if-changed=proto/");
     Ok(())
