@@ -118,17 +118,24 @@ func (w *watchStreamingProxy) Watch(req *pb.WatchRequest, srv grpc.ServerStreami
 
 // startStreamingProxy starts a gRPC server on a unix/tcp listener that forwards only streaming RPCs to the bufconn clientConn.
 func startStreamingProxy(ctx context.Context, instance *Instance, id uint64, wg *errgroup.Group) (string, error) {
-	addr := streamingProxyAddr(id)
 	var lis net.Listener
 	var err error
+	var addr string
 	if runtime.GOOS == "windows" {
-		lis, err = net.Listen("tcp", addr)
+		// Bind to port 0 so the OS assigns a free port; avoids "address already in use" when
+		// tests run in parallel or the port range is occupied.
+		lis, err = net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return "", err
+		}
+		addr = lis.Addr().String()
 	} else {
+		addr = streamingProxyAddr(id)
 		_ = os.Remove(addr)
 		lis, err = net.Listen("unix", addr)
-	}
-	if err != nil {
-		return "", err
+		if err != nil {
+			return "", err
+		}
 	}
 	instance.streamingListener = lis
 
