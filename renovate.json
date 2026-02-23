@@ -1,6 +1,69 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Renovate config for spicedb-embedded: Rust, Go, Node, Python, Java, C#",
   "extends": [
-    "config:recommended"
-  ]
+    "config:recommended",
+    ":dependencyDashboard",
+    "group:monorepos"
+  ],
+  "enabledManagers": [
+    "cargo",
+    "gomod",
+    "npm",
+    "nuget",
+    "maven",
+    "pip_setup"
+  ],
+  "labels": ["dependencies"],
+  "schedule": ["before 6am on monday"],
+  "timezone": "UTC",
+  "packageRules": [
+    {
+      "description": "Group Rust crate updates (minor and patch)",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "rust crates"
+    },
+    {
+      "description": "Group npm dependency updates (minor and patch)",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "npm dependencies"
+    },
+    {
+      "description": "Group Python dependency updates (minor and patch)",
+      "matchManagers": ["pip_setup"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "python dependencies"
+    },
+    {
+      "description": "Group Go module updates (minor and patch)",
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "go modules"
+    },
+    {
+      "description": "Group Maven dependency updates (minor and patch)",
+      "matchManagers": ["maven"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "maven dependencies"
+    },
+    {
+      "description": "Group NuGet package updates (minor and patch)",
+      "matchManagers": ["nuget"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "nuget packages"
+    }
+  ],
+  "managerConfig": {
+    "cargo": {
+      "rangeStrategy": "bump"
+    },
+    "gomod": {
+      "postUpdateOptions": ["gomodTidy"]
+    },
+    "npm": {
+      "rangeStrategy": "bump"
+    }
+  }
 }
