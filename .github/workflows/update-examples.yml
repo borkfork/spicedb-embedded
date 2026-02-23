@@ -1,0 +1,90 @@
+# Update example version pins and lockfiles after a release is published.
+# Examples depend on the published registry packages (crates.io, npm, PyPI, etc.),
+# so lockfiles can only be resolved after publish completes.
+#
+# Triggered by: publish.yml dispatch after all registries are updated.
+
+name: Update examples after publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Published version number (e.g. 0.5.2)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-examples
+  cancel-in-progress: false
+
+jobs:
+  update-examples:
+    runs-on: ubuntu-latest
+    env:
+      MISE_ENABLE_TOOLS: "rust,node"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "rust node"
+
+      - name: Update example version pins
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          MAJOR_MINOR="${VERSION%.*}"
+
+          # Java pom.xml: update <version> on lines following <artifactId>spicedb-embedded</artifactId>
+          sed -i '/<artifactId>spicedb-embedded<\/artifactId>/{n;s|<version>[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*</version>|<version>'"${VERSION}"'</version>|}' \
+            examples/java/google-docs/pom.xml
+
+          # C# csproj: update SpiceDbEmbedded PackageReference Version attribute
+          sed -i 's|SpiceDbEmbedded" Version="[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*"|SpiceDbEmbedded" Version="'"${VERSION}"'"|' \
+            examples/csharp/google-docs/GoogleDocsExample.csproj
+
+          # Node package.json: update spicedb-embedded dependency
+          sed -i 's|"spicedb-embedded": "[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*"|"spicedb-embedded": "'"${VERSION}"'"|' \
+            examples/node/google-docs/package.json
+
+          # Python pyproject.toml: update spicedb-embedded minimum version
+          sed -i 's|"spicedb-embedded>=[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*"|"spicedb-embedded>='"${VERSION}"'"|' \
+            examples/python/google-docs/pyproject.toml
+
+          # Rust Cargo.toml: update major.minor semver range
+          sed -i 's|spicedb-embedded = "[0-9][0-9]*\.[0-9][0-9]*"|spicedb-embedded = "'"${MAJOR_MINOR}"'"|' \
+            examples/rust/google-docs/Cargo.toml
+
+      - name: Update Cargo.lock
+        run: cargo update
+
+      - name: Update Node example lockfile
+        working-directory: examples/node/google-docs
+        run: npm install
+
+      - name: Create pull request
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --staged --quiet && echo "No changes needed" && exit 0
+          BRANCH="chore/update-examples-v${VERSION}"
+          git checkout -b "$BRANCH"
+          git commit -m "chore: update examples to v${VERSION}"
+          git push -u origin "$BRANCH"
+          BODY="Auto-generated after v${VERSION} was published to package registries."
+          BODY="${BODY}"$'\n\n'"Updates example dependency version pins and lockfiles to reference the newly published packages."
+          gh pr create \
+            --title "chore: update examples to v${VERSION}" \
+            --body "$BODY"

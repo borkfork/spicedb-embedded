@@ -21,6 +21,7 @@ on:
     types: [published]
 
 permissions:
+  actions: write # Dispatch update-examples workflow
   id-token: write # Required for trusted publisher auth
   contents: write # Update GitHub Release with artifacts
 
@@ -774,3 +775,16 @@ jobs:
             ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # After all publishing completes, update example version pins and lockfiles
+  # so examples on main reference the newly published packages.
+  dispatch-update-examples:
+    needs: [update-release, check-tag]
+    if: needs.check-tag.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch example updates
+        run: gh workflow run update-examples.yml -f version=${{ needs.check-tag.outputs.version_num }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
