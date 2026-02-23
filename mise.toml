@@ -261,7 +261,7 @@ run = "pip install -e ."
 description = "Build and test the Python package"
 depends = ["python-stage-prebuild"]
 dir = "python"
-run = "pip install -e '.[dev]' && pytest"
+run = "pip install -e \".[dev]\" && pytest"
 
 # ============================================================================
 # C# / .NET tasks
@@ -294,3 +294,60 @@ description = "Build and test the Node.js package"
 depends = ["node-build"]
 dir = "node"
 run = "npm test"
+
+# ============================================================================
+# Example projects (examples/<lang>/google-docs)
+# ============================================================================
+
+[tasks.example-rust-build]
+description = "Build the Rust google-docs example"
+run = "cargo build -p google-docs-example"
+
+[tasks.example-rust-test]
+description = "Run tests for the Rust google-docs example"
+depends = ["example-rust-build"]
+run = "cargo test -p google-docs-example"
+
+[tasks.example-node-build]
+description = "Build the Node.js google-docs example"
+dir = "examples/node/google-docs"
+run = "npm ci && npm run build"
+
+[tasks.example-node-test]
+description = "Run tests for the Node.js google-docs example"
+depends = ["example-node-build"]
+dir = "examples/node/google-docs"
+run = "npm test"
+
+[tasks.example-python-build]
+description = "Build the Python google-docs example (install deps)"
+dir = "examples/python/google-docs"
+run = "pip install -e './[dev]'"
+
+[tasks.example-python-test]
+description = "Run tests for the Python google-docs example"
+depends = ["example-python-build"]
+dir = "examples/python/google-docs"
+run = "pytest tests/ -v"
+
+[tasks.example-java-build]
+description = "Build the Java google-docs example"
+dir = "examples/java/google-docs"
+run = "mvn compile -q"
+
+[tasks.example-java-test]
+description = "Run tests for the Java google-docs example"
+depends = ["example-java-build"]
+dir = "examples/java/google-docs"
+run = "mvn test"
+
+[tasks.example-csharp-build]
+description = "Build the C# google-docs example"
+dir = "examples/csharp/google-docs"
+run = "dotnet build"
+
+[tasks.example-csharp-test]
+description = "Run tests for the C# google-docs example"
+depends = ["example-csharp-build"]
+dir = "examples/csharp/google-docs"
+run = "dotnet test GoogleDocsExample.Tests/GoogleDocsExample.Tests.csproj --no-build"

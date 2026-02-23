@@ -1,8 +1,9 @@
 # Update Cargo.lock and package-lock.json on release-please PR branches.
 # The "simple" release type does not natively update lock files, so this companion
-# workflow updates them after release-please creates a PR.
+# workflow updates them after release-please creates a PR, and on every push to
+# the release-please branch (so lockfiles stay fresh when the PR is updated).
 #
-# Dispatched from release-please.yml after PR creation.
+# Triggered by: release-please.yml dispatch (on PR creation) and on push to release-please--*.
 
 name: Update lockfiles on release PRs
 
@@ -13,12 +14,14 @@ on:
         description: 'Release PR branch to update lockfiles on'
         required: true
         type: string
+  push:
+    branches: ["release-please--**"]
 
 permissions:
   contents: write
 
 concurrency:
-  group: update-lockfiles-${{ inputs.branch }}
+  group: update-lockfiles-${{ github.event.inputs.branch || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -27,7 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.branch }}
+          ref: ${{ github.event.inputs.branch || github.ref_name }}
           fetch-depth: 0
 
       - uses: jdx/mise-action@v3
@@ -37,14 +40,18 @@ jobs:
       - name: Update Cargo.lock
         run: cargo update -w
 
-      - name: Update package-lock.json
+      - name: Update package-lock.json (main node package)
         working-directory: node
+        run: npm install
+
+      - name: Update package-lock.json (node example)
+        working-directory: examples/node/google-docs
         run: npm install
 
       - name: Commit lockfile updates
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Cargo.lock node/package-lock.json
+          git add Cargo.lock node/package-lock.json examples/node/google-docs/package-lock.json
           git diff --staged --quiet || git commit -m "chore: update lockfiles"
           git push
