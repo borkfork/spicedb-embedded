@@ -300,8 +300,13 @@ jobs:
         working-directory: python
         run: pytest
 
+      - name: pip install (example project)
+        working-directory: examples/python/google-docs
+        run: pip install -e '.[dev]'
+
       - name: Example tests
-        run: mise run example-python-test
+        working-directory: examples/python/google-docs
+        run: pytest tests/ -v
 
   csharp:
     needs: shared-c-lib
