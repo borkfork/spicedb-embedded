@@ -313,7 +313,7 @@ jobs:
         run: |
           pip install -e '.[dev]'
           # Reinstall local library editably (pip may have replaced it with PyPI version)
-          pip install -e ${{ github.workspace }}/python
+          pip install -e ../../../python
 
       - name: Example tests
         working-directory: examples/python/google-docs
