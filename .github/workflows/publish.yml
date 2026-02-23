@@ -256,7 +256,7 @@ jobs:
           install_args: "rust buf protoc"
 
       - name: Update Cargo.lock to use published spicedb-embedded-sys
-        run: cargo update -p spicedb-embedded-sys
+        run: cargo update -p spicedb-embedded-sys@${{ needs.check-tag.outputs.version_num }}
 
       - name: Publish main crate to crates.io
         run: |
