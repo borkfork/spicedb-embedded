@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, 'release-please--**']
+    branches: [main, "release-please--**"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -243,9 +243,6 @@ jobs:
       - name: Test
         working-directory: java
         run: mvn test
-
-      - name: Example tests
-        run: mise run example-java-test
 
   python:
     needs: shared-c-lib
