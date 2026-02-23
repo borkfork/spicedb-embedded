@@ -311,7 +311,7 @@ run = "cargo test -p google-docs-example"
 [tasks.example-node-build]
 description = "Build the Node.js google-docs example"
 dir = "examples/node/google-docs"
-run = "npm install && npm run build"
+run = "npm ci && npm run build"
 
 [tasks.example-node-test]
 description = "Run tests for the Node.js google-docs example"
@@ -322,7 +322,7 @@ run = "npm test"
 [tasks.example-python-build]
 description = "Build the Python google-docs example (install deps)"
 dir = "examples/python/google-docs"
-run = "pip install -e \".[dev]\""
+run = "pip install -e './[dev]'"
 
 [tasks.example-python-test]
 description = "Run tests for the Python google-docs example"

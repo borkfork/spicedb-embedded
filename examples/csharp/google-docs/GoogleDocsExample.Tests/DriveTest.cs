@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.Sockets;
 using Authzed.Api.V1;
 using Borkfork.SpiceDb.Examples.GoogleDocs;
 using Xunit;
@@ -42,7 +43,7 @@ public class DriveTest
                 Updates = { new RelationshipUpdate { Operation = RelationshipUpdate.Types.Operation.Touch, Relationship = Rel("folder:marketing", "viewer", "user:alice") } }
             });
 
-            var port = 30000 + Random.Shared.Next(0, 10000);
+            var port = GetAvailablePort();
             app.Urls.Add($"http://127.0.0.1:{port}");
             await app.StartAsync();
             try
@@ -83,7 +84,7 @@ public class DriveTest
         });
         using (spicedb)
         {
-            var port = 30000 + Random.Shared.Next(0, 10000);
+            var port = GetAvailablePort();
             app.Urls.Add($"http://127.0.0.1:{port}");
             await app.StartAsync();
             try
@@ -116,7 +117,7 @@ public class DriveTest
         });
         using (spicedb)
         {
-            var port = 30000 + Random.Shared.Next(0, 10000);
+            var port = GetAvailablePort();
             app.Urls.Add($"http://127.0.0.1:{port}");
             await app.StartAsync();
             try
@@ -150,7 +151,7 @@ public class DriveTest
         });
         using (spicedb)
         {
-            var port = 30000 + Random.Shared.Next(0, 10000);
+            var port = GetAvailablePort();
             app.Urls.Add($"http://127.0.0.1:{port}");
             await app.StartAsync();
             try
@@ -183,7 +184,7 @@ public class DriveTest
         });
         using (spicedb)
         {
-            var port = 30000 + Random.Shared.Next(0, 10000);
+            var port = GetAvailablePort();
             app.Urls.Add($"http://127.0.0.1:{port}");
             await app.StartAsync();
             try
@@ -217,5 +218,13 @@ public class DriveTest
     {
         public string? Error { get; set; }
         public string? Message { get; set; }
+    }
+
+    private static int GetAvailablePort()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint!).Port;
+        return port;
     }
 }

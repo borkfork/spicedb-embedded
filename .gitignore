@@ -3,6 +3,7 @@
 
 # Java
 java/target/
+examples/java/google-docs/target/
 
 # Python
 __pycache__/

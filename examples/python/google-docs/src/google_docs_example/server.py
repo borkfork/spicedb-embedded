@@ -1,5 +1,7 @@
 """Google Docs–style example: GET /drive/{folder}/{document_id} with X-User header."""
 
+from contextlib import asynccontextmanager
+
 from authzed.api.v1 import (
     CheckPermissionRequest,
     CheckPermissionResponse,
@@ -48,7 +50,13 @@ def create_app(initial_relationships: list[Relationship] | None = None):
     )
     spicedb = EmbeddedSpiceDB(DRIVE_SCHEMA, relationships)
 
-    app = FastAPI(title="Google Docs example")
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        yield
+        if getattr(app.state, "spicedb", None) is not None:
+            app.state.spicedb.close()
+
+    app = FastAPI(title="Google Docs example", lifespan=lifespan)
     app.state.spicedb = spicedb
 
     @app.get("/drive/{folder_id}/{document_id}")
@@ -101,10 +109,10 @@ def create_app(initial_relationships: list[Relationship] | None = None):
     return app, spicedb
 
 
-# Default app for uvicorn (e.g. uvicorn google_docs_example.server:app)
-app, _ = create_app()
-
-
 def main():
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=3000)
+    app, spicedb = create_app()
+    try:
+        uvicorn.run(app, host="0.0.0.0", port=3000)
+    finally:
+        spicedb.close()

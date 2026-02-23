@@ -12,7 +12,7 @@ The example depends on `spicedb-embedded` 0.4.3 from PyPI. From this directory (
 
 ```bash
 pip install -e ".[dev]"   # install example + spicedb-embedded, pytest, httpx
-uvicorn google_docs_example.server:app --factory "google_docs_example.server:create_app" --host 0.0.0.0 --port 3000
+uvicorn google_docs_example.server:create_app --factory --host 0.0.0.0 --port 3000
 ```
 
 Or run the main helper:

@@ -10,7 +10,7 @@ import org.slf4j.Logger;
 
 /** Google Docs–style server: GET /drive/:folder/:documentId with X-User header. */
 public final class Server {
-  private static Logger logger = LoggerFactory.getLogger(Server.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(Server.class);
 
   public static Relationship rel(String resource, String relation, String subject) {
     String[] resParts = resource.split(":");
@@ -64,7 +64,7 @@ public final class Server {
     String documentId = ctx.pathParam("documentId");
     String user = ctx.header("X-User");
     if (user == null || user.isBlank()) {
-      ctx.status(401).json(new ErrorBody("Missing X-User header"));
+      ctx.status(401).json(java.util.Map.of("error", "Missing X-User header"));
       return;
     }
     user = user.trim();
@@ -92,7 +92,7 @@ public final class Server {
     try {
       var response = spicedb.permissions().checkPermission(request);
 
-      logger.info(
+      LOGGER.info(
           "Permission check result for user '{}' on document '{}': {}",
           user,
           documentId,
@@ -114,8 +114,9 @@ public final class Server {
       ctx.json(
           new SuccessBody(true, user, folderId, documentId, "Access allowed"));
     } catch (Exception e) {
-      logger.error("Error checking permissions for user '{}' on document '{}'", user, documentId, e);
-      ctx.status(500).json(new ErrorBody("Internal error: " + e.getMessage()));
+      LOGGER.error("Error checking permissions for user '{}' on document '{}'", user, documentId, e);
+      ctx.status(500)
+          .json(new ErrorBody("Internal error", "Internal error: " + e.getMessage()));
     }
   }
 
