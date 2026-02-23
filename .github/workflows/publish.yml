@@ -611,10 +611,27 @@ jobs:
           name: python-sdist
           path: python/dist/*.tar.gz
 
+  # Collect all wheels + sdist and publish from a single x86_64 runner
+  # (pypa/gh-action-pypi-publish uses a linux/amd64 Docker image that fails on ARM).
+  publish-pypi:
+    needs: [build-python-wheels, check-tag]
+    if: needs.check-tag.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all Python artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: python-*
+          path: dist
+          merge-multiple: true
+
+      - name: List packages
+        run: ls -lh dist/
+
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: python/dist
+          packages-dir: dist
 
   # After all publishing completes, update the GitHub Release (created by release-please)
   # with build artifacts and registry links.
@@ -626,7 +643,7 @@ jobs:
         publish-java,
         publish-npm,
         publish-nuget,
-        build-python-wheels,
+        publish-pypi,
         check-tag,
       ]
     if: needs.check-tag.outputs.should_publish == 'true'

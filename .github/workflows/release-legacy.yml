@@ -711,19 +711,35 @@ jobs:
           name: python-sdist
           path: python/dist/*.tar.gz
 
+  # Collect all wheels + sdist and publish from a single x86_64 runner
+  # (pypa/gh-action-pypi-publish uses a linux/amd64 Docker image that fails on ARM).
+  publish-pypi:
+    needs: [build-python-wheels, prepare-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all Python artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: python-*
+          path: dist
+          merge-multiple: true
+
+      - name: List packages
+        run: ls -lh dist/
+
       - name: Publish to PyPI
         if: env.IS_DRY_RUN != 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: python/dist
+          packages-dir: dist
 
       - name: Publish to PyPI (dry run)
         if: env.IS_DRY_RUN == 'true'
         run: |
           pip install twine
-          twine check python/dist/*
+          twine check dist/*
           echo "Dry run: would upload the following to PyPI:"
-          ls -lh python/dist/*
+          ls -lh dist/*
 
   create-release:
     needs:
@@ -733,7 +749,7 @@ jobs:
         publish-java,
         publish-npm,
         publish-nuget,
-        build-python-wheels,
+        publish-pypi,
         prepare-release,
       ]
     runs-on: ubuntu-latest
