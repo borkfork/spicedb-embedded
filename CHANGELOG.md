@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0](https://github.com/borkfork/spicedb-embedded/compare/v0.4.3...v0.5.0) (2026-02-23)
+
+
+### Features
+
+* Add examples for each language ([#61](https://github.com/borkfork/spicedb-embedded/issues/61)) ([522079e](https://github.com/borkfork/spicedb-embedded/commit/522079ef8ab59ad68026710891c0eba46e87f01f))
+
+
+### Bug Fixes
+
+* **deps:** update npm dependencies ([#67](https://github.com/borkfork/spicedb-embedded/issues/67)) ([d85c5d1](https://github.com/borkfork/spicedb-embedded/commit/d85c5d1e5221b5cbb2de402a647aed8ccebfc775))
+
 ## [0.4.3](https://github.com/borkfork/spicedb-embedded/compare/v0.4.2...v0.4.3) (2026-02-22)
 
 
