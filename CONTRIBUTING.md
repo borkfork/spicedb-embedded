@@ -14,10 +14,10 @@ When working on a single language, you can install only the tools needed:
 - **C#:** `mise install dotnet go`
 - **Node:** `mise install node go`
 
-To prevent mise from auto-installing other tools when running tasks (e.g. `mise run format-check-csharp`), set `MISE_ENABLE_TOOLS` before running:
+To prevent mise from auto-installing other tools when running tasks (e.g. `mise run csharp-format-check`), set `MISE_ENABLE_TOOLS` before running:
 
 ```bash
-MISE_ENABLE_TOOLS=dotnet,go mise run format-check-csharp
+MISE_ENABLE_TOOLS=dotnet,go mise run csharp-format-check
 MISE_ENABLE_TOOLS=dotnet,go mise run csharp-test
 ```
 

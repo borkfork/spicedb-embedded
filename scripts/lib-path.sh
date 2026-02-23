@@ -3,7 +3,7 @@
 # Assumes the script is run from within the git repository.
 # Usage: ./scripts/lib-path.sh
 
-root=$(git rev-parse --show-toplevel)
+root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 os=$(uname -s)
 if [ "$os" = "Darwin" ]; then
 	echo "${root}/shared/c/libspicedb.dylib"

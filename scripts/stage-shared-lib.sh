@@ -6,7 +6,7 @@
 # Output: <staging-dir>/<rid>/native/<libname>
 
 set -e
-root=$(git rev-parse --show-toplevel)
+root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 staging="${1:?usage: stage-shared-lib.sh <staging-dir>}"
 cd "$root"
 

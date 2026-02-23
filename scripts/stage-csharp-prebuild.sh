@@ -4,7 +4,7 @@
 # Usage: ./scripts/stage-csharp-prebuild.sh
 
 set -e
-root=$(git rev-parse --show-toplevel)
+root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$root"
 
 case "$(uname -s)" in

@@ -1,7 +1,7 @@
 //! FFI bindings to the SpiceDB C shared library (built from Go or downloaded per target).
 //!
-//! The server is always in-memory. Use [`memory`] for safe, typed RPCs or the raw C functions
-//! below for marshalled protobuf bytes.
+//! Provides an in-memory server and raw C functions that take in marshalled gRPC requests and
+//! return marshalled responses or error strings.
 
 mod instance;
 mod memory;

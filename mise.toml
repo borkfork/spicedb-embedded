@@ -20,7 +20,13 @@ dotnet = "9.0"
 
 [tasks.check]
 description = "Run format checks, lint, ReSharper, and tests for all languages"
-depends = ["format-check", "clippy", "cargo-deny", "resharper-check", "test"]
+depends = [
+  "format-check",
+  "rust-clippy",
+  "rust-cargo-deny",
+  "csharp-resharper-check",
+  "test",
+]
 
 # ============================================================================
 # SpiceDB shared/c build tasks
@@ -37,99 +43,137 @@ run = "bash scripts/shared-c-rebuild.sh"
 [tasks.format-check]
 description = "Verify format for all languages"
 depends = [
-  "format-check-rust",
-  "format-check-bash",
-  "format-check-toml",
-  "format-check-actions",
-  "format-check-python",
-  "format-check-java",
-  "format-check-csharp",
-  "format-check-node",
+  "rust-format-check",
+  "bash-format-check",
+  "toml-format-check",
+  "actions-format-check",
+  "python-format-check",
+  "java-format-check",
+  "csharp-format-check",
+  "node-format-check",
 ]
 
-[tasks.resharper-check]
+[tasks.csharp-resharper-check]
 description = "Run ReSharper InspectCode (C#) and fail if issues found"
-run = "dotnet tool restore && dotnet tool run jb -- inspectcode csharp/SpiceDbEmbedded.sln -o=resharper-inspect.sarif && (jq -e '.runs[0].results | length == 0' resharper-inspect.sarif >/dev/null) || (echo 'ReSharper found issues; see resharper-inspect.sarif' && exit 1)"
+dir = "csharp"
+run = "dotnet tool restore && dotnet tool run jb -- inspectcode SpiceDbEmbedded.sln -o=resharper-inspect.sarif && (jq -e '.runs[0].results | length == 0' resharper-inspect.sarif >/dev/null) || (echo 'ReSharper found issues; see resharper-inspect.sarif' && exit 1)"
 
-[tasks.format-check-bash]
+[tasks.bash-format-check]
 description = "Lint and verify Bash script format (check only, no writes)"
-run = "shellcheck scripts/*.sh && shfmt -d -s scripts/"
+dir = "scripts"
+run = "shellcheck *.sh && shfmt -d -s ."
 
-[tasks.format-check-actions]
+[tasks.actions-format-check]
 description = "Lint GitHub Actions workflows and inline shell (via actionlint + shellcheck)"
 tools.actionlint = "1.7.10"
 run = "actionlint"
 
-[tasks.format-check-rust]
+[tasks.rust-install-rustfmt]
+description = "Install rustfmt"
+run = "rustup component add --toolchain nightly rustfmt"
+
+[tasks.rust-format-check]
 description = "Verify Rust format"
-run = "rustup toolchain install nightly && rustup component add --toolchain nightly rustfmt && cargo +nightly fmt --all --check"
+depends = ["rust-install-rustfmt"]
+run = "cargo +nightly fmt --all --check"
 
-[tasks.format-check-python]
-description = "Verify Python format"
+[tasks.python-install]
+description = "Run pip install"
 dir = "python"
-run = "pip install -e \".[dev]\" -q && ruff format --check ."
+run = "pip install -e \".[dev]\" -q"
 
-[tasks.format-check-java]
+[tasks.python-format-check]
+description = "Verify Python format"
+depends = ["python-install"]
+dir = "python"
+run = "ruff format --check ."
+
+[tasks.java-format-check]
 description = "Verify Java format"
 dir = "java"
 run = "mvn spotless:check"
 
-[tasks.format-check-csharp]
+[tasks.csharp-format-check]
 description = "Verify C# format"
-run = "dotnet format csharp/SpiceDbEmbedded.sln --verify-no-changes"
+dir = "csharp"
+run = "dotnet format SpiceDbEmbedded.sln --verify-no-changes"
 
-[tasks.format-check-node]
+[tasks.node-format-check]
 description = "Verify Node.js package format"
 dir = "node"
-run = "npm ci && npm run format:check"
+run = "npm run format:check"
 
 [tasks.reformat]
 description = "Reformat all languages"
 depends = [
-  "reformat-rust",
-  "reformat-bash",
-  "reformat-toml",
-  "reformat-python",
-  "reformat-java",
-  "reformat-csharp",
-  "reformat-resharper",
-  "reformat-node",
+  "rust-reformat",
+  "bash-reformat",
+  "toml-reformat",
+  "python-reformat",
+  "java-reformat",
+  "csharp-reformat",
+  "csharp-reformat-resharper",
+  "node-reformat",
 ]
 
-[tasks.reformat-bash]
+[tasks.bash-reformat]
 description = "Reformat Bash scripts (writes changes)"
-run = "shfmt -w -s scripts/"
+dir = "scripts"
+run = "shfmt -w -s ."
 
-[tasks.reformat-rust]
+[tasks.rust-reformat]
 description = "Reformat Rust"
-run = "rustup toolchain install nightly && rustup component add --toolchain nightly rustfmt && cargo +nightly fmt --all"
+depends = ["rust-install-rustfmt"]
+run = "cargo +nightly fmt --all"
 
-[tasks.reformat-python]
+[tasks.python-reformat]
 description = "Reformat Python"
+depends = ["python-install"]
 dir = "python"
-run = "pip install -e '.[dev]' -q && ruff format ."
+run = "ruff format ."
 
-[tasks.reformat-java]
+[tasks.java-reformat]
 description = "Reformat Java"
 dir = "java"
 run = "mvn spotless:apply"
 
-[tasks.reformat-csharp]
+[tasks.csharp-reformat]
 description = "Reformat C#"
-run = "dotnet format csharp/SpiceDbEmbedded.sln"
+dir = "csharp"
+run = "dotnet format SpiceDbEmbedded.sln"
 
-[tasks.reformat-resharper]
+[tasks.csharp-reformat-resharper]
 description = "Apply ReSharper CleanupCode (C#); excludes files that trigger ReSharper CLI HTML-injection bug"
-run = "dotnet tool restore && dotnet tool run jb -- cleanupcode csharp/SpiceDbEmbedded.sln --profile=\"Built-in: Reformat Code\" --exclude=\"**/EmbeddedSpiceDb.cs;**/SpiceDbException.cs;**/SpiceDbFfi.cs;**/TcpChannel.cs;**/UnixSocketChannel.cs;**/EmbeddedSpiceDbTests.cs\""
+dir = "csharp"
+run = "dotnet tool restore && dotnet tool run jb -- cleanupcode SpiceDbEmbedded.sln --profile=\"Built-in: Reformat Code\" --exclude=\"**/EmbeddedSpiceDb.cs;**/SpiceDbException.cs;**/SpiceDbFfi.cs;**/TcpChannel.cs;**/UnixSocketChannel.cs;**/EmbeddedSpiceDbTests.cs\""
 
-[tasks.reformat-node]
-description = "Reformat Node.js package"
+[tasks.node-install]
+description = "Run npm install"
 dir = "node"
-run = "npm ci && npm run format"
+run = "npm install"
 
-[tasks.clippy]
+[tasks.node-reformat]
+description = "Reformat Node.js package"
+depends = ["node-install"]
+dir = "node"
+run = "npm run format"
+
+[tasks.rust-clippy]
 description = "Run Clippy linter (main crate only so only current platform's -sys is built)"
 run = "cargo clippy -p spicedb-embedded --locked --all-features --all-targets"
+
+[tasks.rust-docsrs]
+description = "Check that documentation builds on docs.rs (uses published spicedb-grpc-tonic, no buf/protoc needed)"
+run = """
+#!/usr/bin/env bash
+set -e
+# Strip path overrides so cargo resolves spicedb-grpc-tonic from crates.io (which has checked-in generated code, no buf/protoc needed).
+trap 'git checkout rust/Cargo.toml rust/spicedb-embedded-sys/Cargo.toml Cargo.lock 2>/dev/null' EXIT
+sed -i.bak 's|, path = "spicedb-grpc-tonic"||;s|, path = "../spicedb-grpc-tonic"||' rust/Cargo.toml rust/spicedb-embedded-sys/Cargo.toml
+rm -f rust/Cargo.toml.bak rust/spicedb-embedded-sys/Cargo.toml.bak
+cargo +nightly fetch
+DOCS_RS=1 cargo +nightly doc -p spicedb-embedded-sys --no-deps --offline
+"""
 
 [tasks.test]
 description = "Run tests for all languages"
@@ -141,23 +185,49 @@ description = "Build and run all tests in Docker (uses BuildKit cache for faster
 # For amd64-only testing: docker build --platform linux/amd64 ...
 run = "DOCKER_BUILDKIT=1 docker build -t spicedb-embedded-test -f Dockerfile ."
 
+[tasks.rust-stage-prebuild]
+description = "Stage prebuilds for rust"
+depends = ["shared-c-build"]
+run = "bash ./scripts/stage-rust-prebuild.sh"
+
+[tasks.node-stage-prebuild]
+description = "Stage prebuilds for node"
+depends = ["shared-c-build"]
+run = "bash ./scripts/stage-node-prebuild.sh"
+
+[tasks.java-stage-prebuild]
+description = "Stage prebuilds for java"
+depends = ["shared-c-build"]
+run = "bash ./scripts/stage-java-prebuild.sh"
+
+[tasks.python-stage-prebuild]
+description = "Stage prebuilds for python"
+depends = ["shared-c-build"]
+run = "bash ./scripts/stage-rust-prebuild.sh"
+
+[tasks.csharp-stage-prebuild]
+description = "Stage prebuilds for C#"
+depends = ["shared-c-build"]
+run = "bash ./scripts/stage-csharp-prebuild.sh"
+
 [tasks.rust-test]
 description = "Run Rust tests (main crate only so only current platform's -sys is built)"
-run = "mise run shared-c-build && bash ./scripts/stage-rust-prebuild.sh && cargo test -p spicedb-embedded --locked"
+depends = ["rust-stage-prebuild"]
+run = "cargo test -p spicedb-embedded --locked"
 
-[tasks.cargo-deny]
+[tasks.rust-cargo-deny]
 description = "Run cargo-deny (license, advisory, ban checks)"
 run = "cargo deny check -c deny.toml"
 
-[tasks.publish-dry-run]
+[tasks.rust-publish-dry-run]
 description = "Sync shared/c into rust/shared and run cargo publish --dry-run (same as release workflow)"
 run = "mkdir -p rust/shared && cp -r shared/c rust/shared/ && git add -f rust/shared/ && cargo publish -p spicedb-embedded --dry-run --allow-dirty; git reset HEAD rust/shared/ 2>/dev/null || true"
 
-[tasks.format-check-toml]
+[tasks.toml-format-check]
 description = "Check TOML formatting"
 run = "taplo format --check"
 
-[tasks.reformat-toml]
+[tasks.toml-reformat]
 description = "Reformat TOML files"
 run = "taplo format"
 
@@ -167,13 +237,15 @@ run = "taplo format"
 
 [tasks.java-build]
 description = "Build the Java library"
+depends = ["java-stage-prebuild"]
 dir = "java"
-run = "mise run shared-c-build && bash ../scripts/stage-java-prebuild.sh && mvn compile"
+run = "mvn compile"
 
 [tasks.java-test]
 description = "Build and test the Java library"
+depends = ["java-stage-prebuild"]
 dir = "java"
-run = "mise run shared-c-build && bash ../scripts/stage-java-prebuild.sh && mvn test"
+run = "mvn test"
 
 # ============================================================================
 # Python tasks
@@ -181,13 +253,15 @@ run = "mise run shared-c-build && bash ../scripts/stage-java-prebuild.sh && mvn 
 
 [tasks.python-build]
 description = "Build the Python package"
+depends = ["python-stage-prebuild"]
 dir = "python"
-run = "mise run shared-c-build && bash ../scripts/stage-python-prebuild.sh && pip install -e ."
+run = "pip install -e ."
 
 [tasks.python-test]
 description = "Build and test the Python package"
+depends = ["python-stage-prebuild"]
 dir = "python"
-run = "mise run shared-c-build && bash ../scripts/stage-python-prebuild.sh && pip install -e '.[dev]' && pytest"
+run = "pip install -e '.[dev]' && pytest"
 
 # ============================================================================
 # C# / .NET tasks
@@ -195,11 +269,15 @@ run = "mise run shared-c-build && bash ../scripts/stage-python-prebuild.sh && pi
 
 [tasks.csharp-build]
 description = "Build the C# library"
-run = "mise run shared-c-build && bash ./scripts/stage-csharp-prebuild.sh && dotnet build csharp/SpiceDbEmbedded.sln"
+depends = ["csharp-stage-prebuild"]
+dir = "csharp"
+run = "dotnet build SpiceDbEmbedded.sln"
 
 [tasks.csharp-test]
 description = "Build and test the C# library"
-run = "mise run shared-c-build && bash ./scripts/stage-csharp-prebuild.sh && dotnet build csharp/SpiceDbEmbedded.sln && dotnet test csharp/SpiceDbEmbedded.Tests/SpiceDbEmbedded.Tests.csproj --no-build"
+depends = ["csharp-stage-prebuild"]
+dir = "csharp"
+run = "dotnet build SpiceDbEmbedded.sln && dotnet test SpiceDbEmbedded.Tests/SpiceDbEmbedded.Tests.csproj --no-build"
 
 # ============================================================================
 # Node.js
@@ -207,10 +285,12 @@ run = "mise run shared-c-build && bash ./scripts/stage-csharp-prebuild.sh && dot
 
 [tasks.node-build]
 description = "Build the Node.js package"
+depends = ["node-stage-prebuild"]
 dir = "node"
-run = "mise run shared-c-build && bash ../scripts/stage-node-prebuild.sh && npm ci && npm run build"
+run = "npm run build"
 
 [tasks.node-test]
 description = "Build and test the Node.js package"
+depends = ["node-build"]
 dir = "node"
-run = "mise run shared-c-build && bash ../scripts/stage-node-prebuild.sh && npm ci && npm run build && npm test"
+run = "npm test"
