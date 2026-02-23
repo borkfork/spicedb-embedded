@@ -20,5 +20,5 @@ rustdoc-args = ["--cfg", "docsrs"]
 path = "src/lib.rs"
 
 [dependencies]
-prost = "0.13"
+prost = "0.14.3"
 spicedb-grpc-tonic = { version = "0.2.0", path = "../spicedb-grpc-tonic" }

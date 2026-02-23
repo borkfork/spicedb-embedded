@@ -22,10 +22,11 @@ include = ["Cargo.toml", "README.md", "src/**", "build.rs", "proto/**"]
 path = "src/lib.rs"
 
 [dependencies]
-prost = "0.13"
-prost-types = "0.13"
-tonic = "0.12"
+prost = "0.14.3"
+prost-types = "0.14.3"
+tonic = "0.14.5"
+tonic-prost = "0.14.5"
 
 [build-dependencies]
-tonic-build = "0.12"
-walkdir = "2"
+tonic-prost-build = "0.14.5"
+walkdir = "2.5.0"
