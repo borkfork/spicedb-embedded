@@ -66,9 +66,10 @@ jobs:
       - name: Update Cargo.lock
         run: cargo update
 
-      - name: Update Node example lockfile
-        working-directory: examples/node/google-docs
-        run: npm install
+      - name: Update Node lockfiles
+        run: |
+          npm install --prefix node
+          npm install --prefix examples/node/google-docs
 
       - name: Create pull request
         env:
@@ -85,6 +86,7 @@ jobs:
           git push -u origin "$BRANCH"
           BODY="Auto-generated after v${VERSION} was published to package registries."
           BODY="${BODY}"$'\n\n'"Updates example dependency version pins and lockfiles to reference the newly published packages."
-          gh pr create \
+          PR_URL=$(gh pr create \
             --title "chore: update examples to v${VERSION}" \
-            --body "$BODY"
+            --body "$BODY")
+          gh pr merge "$PR_URL" --auto --squash
