@@ -28,9 +28,13 @@ keywords = [
 path = "src/lib.rs"
 
 [dependencies]
-hyper-util = { version = "0.1.20", features = ["client-legacy", "http1", "tokio"] }
+hyper-util = { version = "0.1.20", features = [
+  "client-legacy",
+  "http1",
+  "tokio",
+] }
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"                                                                 # for C library JSON response parsing
+serde_json = "1.0.149" # for C library JSON response parsing
 spicedb-grpc-tonic = { version = "0.2.0", path = "spicedb-grpc-tonic" }
 thiserror = "2.0.18"
 tokio = { version = "1.49.0", features = ["net", "sync", "rt-multi-thread"] }
