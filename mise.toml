@@ -163,8 +163,17 @@ description = "Run Clippy linter (main crate only so only current platform's -sy
 run = "cargo clippy -p spicedb-embedded --locked --all-features --all-targets"
 
 [tasks.rust-docsrs]
-description = "Check that documentation builds on docs.rs"
-run = "cargo +nightly fetch && DOCS_RS=1 cargo +nightly doc -p spicedb-embedded-sys --no-deps --offline"
+description = "Check that documentation builds on docs.rs (uses published spicedb-grpc-tonic, no buf/protoc needed)"
+run = """
+#!/usr/bin/env bash
+set -e
+# Strip path overrides so cargo resolves spicedb-grpc-tonic from crates.io (which has checked-in generated code, no buf/protoc needed).
+trap 'git checkout rust/Cargo.toml rust/spicedb-embedded-sys/Cargo.toml Cargo.lock 2>/dev/null' EXIT
+sed -i.bak 's|, path = "spicedb-grpc-tonic"||;s|, path = "../spicedb-grpc-tonic"||' rust/Cargo.toml rust/spicedb-embedded-sys/Cargo.toml
+rm -f rust/Cargo.toml.bak rust/spicedb-embedded-sys/Cargo.toml.bak
+cargo +nightly fetch
+DOCS_RS=1 cargo +nightly doc -p spicedb-embedded-sys --no-deps --offline
+"""
 
 [tasks.test]
 description = "Run tests for all languages"

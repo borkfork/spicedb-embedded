@@ -85,6 +85,8 @@ jobs:
 
   docs-rs:
     runs-on: ubuntu-latest
+    env:
+      MISE_ENABLE_TOOLS: "rust"
     steps:
       - uses: actions/checkout@v4
 
@@ -95,11 +97,8 @@ jobs:
       - name: Install nightly toolchain
         run: rustup toolchain install nightly
 
-      - name: Fetch dependencies
-        run: cargo +nightly fetch
-
       - name: Verify docs.rs build (offline, like real docs.rs)
-        run: DOCS_RS=1 cargo +nightly doc -p spicedb-embedded-sys --no-deps --offline
+        run: mise run rust-docsrs
 
   format-toml-shell:
     runs-on: ubuntu-latest
