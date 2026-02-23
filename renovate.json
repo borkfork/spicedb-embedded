@@ -68,6 +68,11 @@
       "description": "npm: use bump range strategy",
       "matchManagers": ["npm"],
       "rangeStrategy": "bump"
+    },
+    {
+      "description": "Netty native transport must stay on 4.1.x to match grpc-netty (4.2.x is breaking)",
+      "matchPackageNames": ["io.netty:**"],
+      "allowedVersions": "<4.2.0"
     }
   ]
 }

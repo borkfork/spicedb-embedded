@@ -44,6 +44,8 @@
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- Must match the Netty version used by grpc-netty (4.1.x, NOT 4.2.x which is breaking). -->
+        <netty.version>4.1.130.Final</netty.version>
     </properties>
 
     <dependencies>
@@ -77,13 +79,13 @@
         <dependency>
             <groupId>io.netty</groupId>
             <artifactId>netty-transport-native-epoll</artifactId>
-            <version>4.2.10.Final</version>
+            <version>${netty.version}</version>
             <classifier>linux-x86_64</classifier>
         </dependency>
         <dependency>
             <groupId>io.netty</groupId>
             <artifactId>netty-transport-native-epoll</artifactId>
-            <version>4.2.10.Final</version>
+            <version>${netty.version}</version>
             <classifier>linux-aarch_64</classifier>
         </dependency>
 
@@ -91,13 +93,13 @@
         <dependency>
             <groupId>io.netty</groupId>
             <artifactId>netty-transport-native-kqueue</artifactId>
-            <version>4.2.10.Final</version>
+            <version>${netty.version}</version>
             <classifier>osx-x86_64</classifier>
         </dependency>
         <dependency>
             <groupId>io.netty</groupId>
             <artifactId>netty-transport-native-kqueue</artifactId>
-            <version>4.2.10.Final</version>
+            <version>${netty.version}</version>
             <classifier>osx-aarch_64</classifier>
         </dependency>
 
