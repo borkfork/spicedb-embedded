@@ -15,7 +15,7 @@ name = "google-docs"
 path = "src/main.rs"
 
 [dependencies]
-axum = { version = "0.7", features = ["json"] }
+axum = { version = "0.8.8", features = ["json"] }
 serde_json = "1"
 # Use published crate so the example builds without buf (spicedb-grpc-tonic has checked-in generated code).
 # For local dev: override with [patch.crates-io] or path = "../../../rust" in this Cargo.toml.

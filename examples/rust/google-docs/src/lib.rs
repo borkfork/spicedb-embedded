@@ -41,15 +41,10 @@ pub fn rel(resource: &str, relation: &str, subject: &str) -> spicedb_embedded::v
 }
 
 /// Create the app and SpiceDB instance. Pass `None` for default seed, or `Some(rels)` for custom (e.g. empty).
+/// Returns `Router<()>` (state is applied via `with_state`), which works with `axum::serve`.
 pub fn create_app(
     initial_relationships: Option<Vec<spicedb_embedded::v1::Relationship>>,
-) -> Result<
-    (
-        Router<Arc<spicedb_embedded::EmbeddedSpiceDB>>,
-        Arc<spicedb_embedded::EmbeddedSpiceDB>,
-    ),
-    spicedb_embedded::SpiceDBError,
-> {
+) -> Result<(Router<()>, Arc<spicedb_embedded::EmbeddedSpiceDB>), spicedb_embedded::SpiceDBError> {
     let relationships = initial_relationships.unwrap_or_else(seed_relationships);
     let spicedb = Arc::new(spicedb_embedded::EmbeddedSpiceDB::new(
         DRIVE_SCHEMA,
@@ -58,7 +53,7 @@ pub fn create_app(
     )?);
 
     let app = Router::new()
-        .route("/drive/:folder/:document_id", get(drive_handler))
+        .route("/drive/{folder}/{document_id}", get(drive_handler))
         .with_state(spicedb.clone());
 
     Ok((app, spicedb))
