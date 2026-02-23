@@ -30,19 +30,19 @@
     "lint": "npm run format:check"
   },
   "dependencies": {
-    "@authzed/authzed-node": "^1.5.0",
+    "@authzed/authzed-node": "^1.6.1",
     "@grpc/grpc-js": "^1.14.3",
-    "koffi": "^2.9.0"
+    "koffi": "^2.15.1"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "eslint": "^9.0.0",
-    "prettier": "^3.4.0",
-    "typescript": "^5.7.0",
-    "vitest": "^2.0.0"
+    "@types/node": "^22.19.11",
+    "eslint": "^9.39.3",
+    "prettier": "^3.8.1",
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.9"
   },
   "engines": {
-    "node": ">=18.18.0"
+    "node": ">=18.20.8"
   },
   "license": "Apache-2.0",
   "repository": {
