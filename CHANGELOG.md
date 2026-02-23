@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1](https://github.com/borkfork/spicedb-embedded/compare/v0.5.0...v0.5.1) (2026-02-23)
+
+
+### Bug Fixes
+
+* Fix cargo publish ([#70](https://github.com/borkfork/spicedb-embedded/issues/70)) ([3836c6a](https://github.com/borkfork/spicedb-embedded/commit/3836c6a3b25153432770fac254e5eba947992738))
+* Publish separate wheels for python ([#74](https://github.com/borkfork/spicedb-embedded/issues/74)) ([b95baa6](https://github.com/borkfork/spicedb-embedded/commit/b95baa6cfec6e0f2be5391d5e30375c64cfd80ef))
+
 ## [0.5.0](https://github.com/borkfork/spicedb-embedded/compare/v0.4.3...v0.5.0) (2026-02-23)
 
 
