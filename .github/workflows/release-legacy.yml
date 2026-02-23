@@ -312,7 +312,7 @@ jobs:
 
       - name: Update Cargo.lock to use published spicedb-embedded-sys
         if: env.IS_DRY_RUN != 'true'
-        run: cargo update -p spicedb-embedded-sys
+        run: cargo update -p spicedb-embedded-sys@${{ needs.prepare-release.outputs.version_num }}
 
       - name: Publish main crate to crates.io
         run: |
@@ -633,6 +633,7 @@ jobs:
           ls -la bin/Release/SpiceDbEmbedded.nupkg
           echo "Dry run: would push SpiceDbEmbedded.nupkg to NuGet (verify skipped: package is not signed until after push)"
 
+  # Build platform-specific wheels with bundled native lib (one job per OS).
   # Build platform-specific wheels with bundled native lib (one job per OS).
   build-python-wheels:
     needs: [build-shared-libs, prepare-release]
