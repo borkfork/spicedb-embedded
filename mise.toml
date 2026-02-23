@@ -261,7 +261,7 @@ run = "pip install -e ."
 description = "Build and test the Python package"
 depends = ["python-stage-prebuild"]
 dir = "python"
-run = "pip install -e '.[dev]' && pytest"
+run = "pip install -e \".[dev]\" && pytest"
 
 # ============================================================================
 # C# / .NET tasks
@@ -322,7 +322,7 @@ run = "npm test"
 [tasks.example-python-build]
 description = "Build the Python google-docs example (install deps)"
 dir = "examples/python/google-docs"
-run = "pip install -e './[dev]'"
+run = "pip install -e \".[dev]\""
 
 [tasks.example-python-test]
 description = "Run tests for the Python google-docs example"
