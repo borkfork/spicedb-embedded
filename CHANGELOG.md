@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/borkfork/spicedb-embedded/compare/v0.5.1...v0.5.2) (2026-02-23)
+
+
+### Bug Fixes
+
+* Move publishing pypi to a single step ([#77](https://github.com/borkfork/spicedb-embedded/issues/77)) ([6445ad9](https://github.com/borkfork/spicedb-embedded/commit/6445ad94989e2c5f9ece12966ca7e1815f5ceb11))
+
 ## [0.5.1](https://github.com/borkfork/spicedb-embedded/compare/v0.5.0...v0.5.1) (2026-02-23)
 
 
