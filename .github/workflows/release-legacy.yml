@@ -634,7 +634,6 @@ jobs:
           echo "Dry run: would push SpiceDbEmbedded.nupkg to NuGet (verify skipped: package is not signed until after push)"
 
   # Build platform-specific wheels with bundled native lib (one job per OS).
-  # Build platform-specific wheels with bundled native lib (one job per OS).
   build-python-wheels:
     needs: [build-shared-libs, prepare-release]
     defaults:
@@ -647,16 +646,22 @@ jobs:
           - runner: ubuntu-latest
             artifact_rid: linux-x64
             natives_key: linux-x64
+            wheel_platform: manylinux_2_28_x86_64
           - runner: ubuntu-24.04-arm
             artifact_rid: linux-arm64
             natives_key: linux-arm64
+            wheel_platform: manylinux_2_28_aarch64
           - runner: macos-latest
             artifact_rid: osx-arm64
             natives_key: darwin-arm64
+            wheel_platform: macosx_11_0_arm64
           - runner: windows-latest
             artifact_rid: win-x64
             natives_key: win32-x64
+            wheel_platform: win_amd64
     runs-on: ${{ matrix.runner }}
+    env:
+      SPICEDB_WHEEL_PLATFORM: ${{ matrix.wheel_platform }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -706,26 +711,7 @@ jobs:
           name: python-sdist
           path: python/dist/*.tar.gz
 
-  publish-pypi:
-    needs: [build-python-wheels, prepare-release]
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.prepare-release.outputs.tag_name }}
-          fetch-depth: 0
-
-      - name: Download all Python artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: python-*
-          path: python/dist
-          merge-multiple: true
-
-      - name: Publish package distributions to PyPI
+      - name: Publish to PyPI
         if: env.IS_DRY_RUN != 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
@@ -747,7 +733,7 @@ jobs:
         publish-java,
         publish-npm,
         publish-nuget,
-        publish-pypi,
+        build-python-wheels,
         prepare-release,
       ]
     runs-on: ubuntu-latest

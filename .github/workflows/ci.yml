@@ -310,7 +310,10 @@ jobs:
 
       - name: pip install (example project)
         working-directory: examples/python/google-docs
-        run: pip install -e '.[dev]'
+        run: |
+          pip install -e '.[dev]'
+          # Reinstall local library editably (pip may have replaced it with PyPI version)
+          pip install -e ../../../python
 
       - name: Example tests
         working-directory: examples/python/google-docs
