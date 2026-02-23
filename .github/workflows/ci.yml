@@ -115,6 +115,14 @@ jobs:
       - name: TOML, shell, and Actions format check
         run: mise run toml-format-check && mise run bash-format-check && mise run actions-format-check
 
+  renovate-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Renovate config
+        run: npx --yes --package renovate -- renovate-config-validator
+
   rust:
     needs: shared-c-lib
     strategy:
