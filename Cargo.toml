@@ -20,10 +20,3 @@ nonstandard-style = "deny"
 future-incompatible = "deny"
 non_local_definitions = "allow"
 unexpected_cfgs = { level = "allow" }
-
-# Redirect crates.io deps to local paths so the google-docs example (which depends on
-# the published crate) uses the same versions as the workspace, avoiding duplicate tonic/prost.
-[patch.crates-io]
-spicedb-embedded = { path = "rust" }
-spicedb-embedded-sys = { path = "rust/spicedb-embedded-sys" }
-spicedb-grpc-tonic = { path = "rust/spicedb-grpc-tonic" }
