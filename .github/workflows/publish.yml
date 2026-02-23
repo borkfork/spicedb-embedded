@@ -77,7 +77,7 @@ jobs:
           ref: ${{ needs.check-tag.outputs.tag_name }}
           fetch-depth: 0
 
-      # Reuse staged prebuilds when go.mod/go.sum unchanged (same key as CI; shared across branches/runs).
+      # Reuse staged prebuilds when go.mod/go.sum and shared/c Go source unchanged (same key as CI; shared across branches/runs).
       - uses: actions/cache@v4
         id: prebuild-cache
         with:
@@ -87,7 +87,7 @@ jobs:
             java/src/main/resources/natives
             python/src/spicedb_embedded/natives
             rust/spicedb-embedded-sys/prebuilds
-          key: shared-c-prebuilds-${{ matrix.rid }}-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
+          key: shared-c-prebuilds-${{ matrix.rid }}-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod', 'shared/c/*.go') }}
 
       - name: "Set RID from runner (macOS: we only publish osx-arm64; Intel Mac not supported)"
         id: set_rid
@@ -118,7 +118,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
+          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod', 'shared/c/*.go') }}
           restore-keys: ${{ runner.os }}-go-
 
       - name: Copy cached prebuilds to out

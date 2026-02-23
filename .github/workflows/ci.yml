@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Reuse staged prebuilds when go.mod/go.sum unchanged (shared across branches/PRs by key).
+      # Reuse staged prebuilds when go.mod/go.sum and shared/c Go source unchanged (shared across branches/PRs by key).
       - uses: actions/cache@v4
         id: prebuild-cache
         with:
@@ -43,7 +43,7 @@ jobs:
             java/src/main/resources/natives
             python/src/spicedb_embedded/natives
             rust/spicedb-embedded-sys/prebuilds
-          key: shared-c-prebuilds-${{ matrix.rid }}-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
+          key: shared-c-prebuilds-${{ matrix.rid }}-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod', 'shared/c/*.go') }}
 
       - uses: jdx/mise-action@v3
         if: steps.prebuild-cache.outputs.cache-hit != 'true'
@@ -60,7 +60,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
+          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod', 'shared/c/*.go') }}
           restore-keys: ${{ runner.os }}-go-
 
       - name: Build shared C library
@@ -164,7 +164,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod') }}
+          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod', 'shared/c/*.go') }}
           restore-keys: ${{ runner.os }}-go-
 
       - uses: Swatinem/rust-cache@v2
