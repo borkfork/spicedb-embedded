@@ -53,17 +53,21 @@
       "matchManagers": ["nuget"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "nuget packages"
-    }
-  ],
-  "managerConfig": {
-    "cargo": {
+    },
+    {
+      "description": "Cargo: use bump range strategy",
+      "matchManagers": ["cargo"],
       "rangeStrategy": "bump"
     },
-    "gomod": {
+    {
+      "description": "Go: tidy after update",
+      "matchManagers": ["gomod"],
       "postUpdateOptions": ["gomodTidy"]
     },
-    "npm": {
+    {
+      "description": "npm: use bump range strategy",
+      "matchManagers": ["npm"],
       "rangeStrategy": "bump"
     }
-  }
+  ]
 }
