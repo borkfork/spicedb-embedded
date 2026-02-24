@@ -14,12 +14,16 @@
     "maven",
     "pip_setup"
   ],
-  "automerge": true,
   "automergeType": "pr",
   "labels": ["dependencies"],
   "schedule": ["before 6am on monday"],
   "timezone": "UTC",
   "packageRules": [
+    {
+      "description": "Auto-merge minor and patch updates only",
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true
+    },
     {
       "description": "Group Rust crate updates (minor and patch)",
       "matchManagers": ["cargo"],
