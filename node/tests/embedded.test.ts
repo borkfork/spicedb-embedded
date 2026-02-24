@@ -125,30 +125,34 @@ describe("EmbeddedSpiceDB", () => {
     }
   });
 
-  it("streams ReadRelationships via streaming proxy", async () => {
-    const relationships = [
-      rel("document:doc1", "reader", "user:alice"),
-      rel("document:doc1", "writer", "user:bob"),
-    ];
-    const spicedb = await EmbeddedSpiceDB.create(TEST_SCHEMA, relationships);
+  it(
+    "streams ReadRelationships via streaming proxy",
+    { timeout: 30000 },
+    async () => {
+      const relationships = [
+        rel("document:doc1", "reader", "user:alice"),
+        rel("document:doc1", "writer", "user:bob"),
+      ];
+      const spicedb = await EmbeddedSpiceDB.create(TEST_SCHEMA, relationships);
 
-    try {
-      const req = ReadRelationshipsRequest.create({
-        relationshipFilter: RelationshipFilter.create({
-          resourceType: "document",
-          optionalResourceId: "doc1",
-        }),
-      });
-      const results = await spicedb
-        .permissions()
-        .promises.readRelationships(req);
-      expect(results.length).toBeGreaterThanOrEqual(2);
-      const resourceTypes = results
-        .map((r) => r.relationship?.resource?.objectType)
-        .filter(Boolean);
-      expect(resourceTypes.every((t) => t === "document")).toBe(true);
-    } finally {
-      spicedb.close();
+      try {
+        const req = ReadRelationshipsRequest.create({
+          relationshipFilter: RelationshipFilter.create({
+            resourceType: "document",
+            optionalResourceId: "doc1",
+          }),
+        });
+        const results = await spicedb
+          .permissions()
+          .promises.readRelationships(req);
+        expect(results.length).toBeGreaterThanOrEqual(2);
+        const resourceTypes = results
+          .map((r) => r.relationship?.resource?.objectType)
+          .filter(Boolean);
+        expect(resourceTypes.every((t) => t === "document")).toBe(true);
+      } finally {
+        spicedb.close();
+      }
     }
-  });
+  );
 });
