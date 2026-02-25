@@ -1,4 +1,4 @@
 {
   ".": "0.5.2",
-  "rust/spicedb-grpc-tonic": "0.2.0"
+  "rust/spicedb-grpc-tonic": "1.0.0"
 }
