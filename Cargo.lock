@@ -665,7 +665,7 @@ dependencies = [
  "axum 0.8.8",
  "reqwest",
  "serde_json",
- "spicedb-embedded 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spicedb-embedded 0.5.2",
  "tokio",
  "tower 0.5.3",
 ]
@@ -2175,13 +2175,31 @@ dependencies = [
 [[package]]
 name = "spicedb-embedded"
 version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be1691c9fd1b1069e2cec713c83be7ec6850e1bb5007c0c0d1903a25f315e966"
+dependencies = [
+ "hyper-util",
+ "serde",
+ "serde_json",
+ "spicedb-embedded-sys 0.5.2",
+ "spicedb-grpc-tonic 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thiserror",
+ "tokio",
+ "tonic 0.12.3",
+ "tower 0.5.3",
+ "tracing",
+]
+
+[[package]]
+name = "spicedb-embedded"
+version = "0.6.0"
 dependencies = [
  "hyper-util",
  "prost 0.14.3",
  "serde",
  "serde_json",
  "serial_test",
- "spicedb-embedded-sys 0.5.2",
+ "spicedb-embedded-sys 0.6.0",
  "spicedb-grpc-tonic 0.2.0",
  "testcontainers-modules",
  "thiserror",
@@ -2193,32 +2211,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "spicedb-embedded"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be1691c9fd1b1069e2cec713c83be7ec6850e1bb5007c0c0d1903a25f315e966"
-dependencies = [
- "hyper-util",
- "serde",
- "serde_json",
- "spicedb-embedded-sys 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "spicedb-grpc-tonic 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "thiserror",
- "tokio",
- "tonic 0.12.3",
- "tower 0.5.3",
- "tracing",
-]
-
-[[package]]
-name = "spicedb-embedded-sys"
-version = "0.5.2"
-dependencies = [
- "prost 0.14.3",
- "spicedb-grpc-tonic 0.2.0",
-]
-
-[[package]]
 name = "spicedb-embedded-sys"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2226,6 +2218,14 @@ checksum = "b148b6ba97da547107749113b358896670edc7307ef4b4ea8db2da3f48a9c4ff"
 dependencies = [
  "prost 0.13.5",
  "spicedb-grpc-tonic 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "spicedb-embedded-sys"
+version = "0.6.0"
+dependencies = [
+ "prost 0.14.3",
+ "spicedb-grpc-tonic 0.2.0",
 ]
 
 [[package]]
