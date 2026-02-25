@@ -14,16 +14,30 @@ internal static class TcpChannel
         {
             ConnectCallback = async (_, ct) =>
             {
-                var colonIdx = address.LastIndexOf(':');
-                if (colonIdx > 0 && int.TryParse(address.Substring(colonIdx + 1), out var port))
+                string host;
+                int port;
+                if (address.StartsWith("["))
                 {
-                    var host = address.Substring(0, colonIdx);
-                    var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-                    await socket.ConnectAsync(new DnsEndPoint(host, port), ct);
-                    return new NetworkStream(socket, true);
+                    // IPv6: [host]:port
+                    var closeBracket = address.IndexOf(']');
+                    if (closeBracket < 0 || closeBracket + 1 >= address.Length || address[closeBracket + 1] != ':')
+                        throw new SpiceDbException("Invalid TCP address: " + address);
+                    host = address.Substring(1, closeBracket - 1);
+                    if (!int.TryParse(address.Substring(closeBracket + 2), out port))
+                        throw new SpiceDbException("Invalid TCP address (bad port): " + address);
+                }
+                else
+                {
+                    // IPv4 or hostname: host:port
+                    var colonIdx = address.LastIndexOf(':');
+                    if (colonIdx <= 0 || !int.TryParse(address.Substring(colonIdx + 1), out port))
+                        throw new SpiceDbException("Invalid TCP address: " + address);
+                    host = address.Substring(0, colonIdx);
                 }
 
-                throw new SpiceDbException("Invalid TCP address: " + address);
+                var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                await socket.ConnectAsync(new DnsEndPoint(host, port), ct);
+                return new NetworkStream(socket, true);
             }
         };
     }

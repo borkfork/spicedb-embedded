@@ -42,6 +42,9 @@ fn raw_call(
         *mut *mut c_char,
     ),
 ) -> RpcResult<Vec<u8>> {
+    let request_len = c_int::try_from(request_bytes.len())
+        .map_err(|_| RpcError("request too large for FFI (exceeds c_int::MAX)".into()))?;
+
     let mut out_response_bytes: *mut c_uchar = std::ptr::null_mut();
     let mut out_response_len: c_int = 0;
     let mut out_error: *mut c_char = std::ptr::null_mut();
@@ -50,7 +53,7 @@ fn raw_call(
         f(
             handle as c_ulonglong,
             request_bytes.as_ptr(),
-            request_bytes.len() as c_int,
+            request_len,
             &mut out_response_bytes,
             &mut out_response_len,
             &mut out_error,
@@ -65,6 +68,12 @@ fn raw_call(
         return Err(RpcError(s));
     }
 
+    if out_response_len < 0 {
+        return Err(RpcError(format!(
+            "FFI returned negative response length: {}",
+            out_response_len
+        )));
+    }
     let len = out_response_len as usize;
     let bytes = if len == 0 {
         vec![]
