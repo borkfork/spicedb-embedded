@@ -135,15 +135,19 @@ jobs:
         include:
           - runner: ubuntu-latest
             rid: linux-x64
+            extra_tools: "github:authzed/spicedb"
           - runner: ubuntu-24.04-arm
             rid: linux-arm64
+            extra_tools: ""
           - runner: macos-latest
             rid: osx-arm64
+            extra_tools: ""
           - runner: windows-latest
             rid: win-x64
+            extra_tools: ""
     runs-on: ${{ matrix.runner }}
     env:
-      MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,buf,protoc"
+      MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,buf,protoc${{ matrix.extra_tools != '' && format(',{0}', matrix.extra_tools) || '' }}"
       # Rust tests use testcontainers (postgres, mysql, cockroach); use Linux/amd64 Docker platform.
       DOCKER_DEFAULT_PLATFORM: linux/amd64
     defaults:
@@ -166,7 +170,7 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "rust github:EmbarkStudios/cargo-deny buf protoc"
+          install_args: "rust github:EmbarkStudios/cargo-deny buf protoc ${{ matrix.extra_tools }}"
 
       - uses: Swatinem/rust-cache@v2
         with:
