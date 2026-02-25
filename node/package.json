@@ -35,14 +35,14 @@
     "koffi": "^2.15.1"
   },
   "devDependencies": {
-    "@types/node": "^22.19.11",
+    "@types/node": "^24.10.13",
     "eslint": "^10.0.2",
     "prettier": "^3.8.1",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   },
   "engines": {
-    "node": ">=18.20.8"
+    "node": ">=24.14.0"
   },
   "license": "Apache-2.0",
   "repository": {
