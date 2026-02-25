@@ -22,6 +22,9 @@ concurrency:
   group: update-examples
   cancel-in-progress: false
 
+env:
+  MISE_HTTP_TIMEOUT: ${{ vars.MISE_HTTP_TIMEOUT }}
+
 jobs:
   update-examples:
     runs-on: ubuntu-latest

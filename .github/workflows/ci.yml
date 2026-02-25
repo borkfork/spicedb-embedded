@@ -1,5 +1,8 @@
 name: CI
 
+env:
+  MISE_HTTP_TIMEOUT: ${{ vars.MISE_HTTP_TIMEOUT }}
+
 on:
   pull_request:
   merge_group:

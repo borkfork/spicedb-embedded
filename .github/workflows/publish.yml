@@ -29,6 +29,9 @@ concurrency:
   group: publish-${{ inputs.tag_name || github.event.release.tag_name }}
   cancel-in-progress: false
 
+env:
+  MISE_HTTP_TIMEOUT: ${{ vars.MISE_HTTP_TIMEOUT }}
+
 jobs:
   # Only run for main package releases (v* tags), not spicedb-grpc-tonic releases
   check-tag:

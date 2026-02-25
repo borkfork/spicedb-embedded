@@ -38,6 +38,7 @@ concurrency:
 
 env:
   IS_DRY_RUN: ${{ github.event.inputs.actually_publish != 'true' }}
+  MISE_HTTP_TIMEOUT: ${{ vars.MISE_HTTP_TIMEOUT }}
 
 jobs:
   # Replace 0.0.0 with version in package files, commit, push to a release branch, tag, push tag. All other jobs checkout this tag.

@@ -9,6 +9,9 @@ permissions:
   contents: write
   pull-requests: write
 
+env:
+  MISE_HTTP_TIMEOUT: ${{ vars.MISE_HTTP_TIMEOUT }}
+
 jobs:
   release-please:
     runs-on: ubuntu-latest
