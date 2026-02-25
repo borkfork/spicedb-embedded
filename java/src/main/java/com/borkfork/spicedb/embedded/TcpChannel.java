@@ -21,10 +21,17 @@ final class TcpChannel {
         throw new IllegalArgumentException("Invalid TCP address (missing ']'): " + address);
       }
       host = address.substring(1, closeBracket);
+      if (host.isEmpty()) {
+        throw new IllegalArgumentException("Invalid TCP address (empty host): " + address);
+      }
       if (closeBracket + 1 >= address.length() || address.charAt(closeBracket + 1) != ':') {
         throw new IllegalArgumentException("Invalid TCP address (missing port): " + address);
       }
-      port = Integer.parseInt(address.substring(closeBracket + 2));
+      try {
+        port = Integer.parseInt(address.substring(closeBracket + 2));
+      } catch (NumberFormatException e) {
+        throw new IllegalArgumentException("Invalid TCP address (bad port): " + address, e);
+      }
     } else {
       // IPv4 or hostname: host:port
       int colon = address.lastIndexOf(':');
@@ -32,7 +39,11 @@ final class TcpChannel {
         throw new IllegalArgumentException("Invalid TCP address: " + address);
       }
       host = address.substring(0, colon);
-      port = Integer.parseInt(address.substring(colon + 1));
+      try {
+        port = Integer.parseInt(address.substring(colon + 1));
+      } catch (NumberFormatException e) {
+        throw new IllegalArgumentException("Invalid TCP address (bad port): " + address, e);
+      }
     }
     return NettyChannelBuilder.forAddress(new InetSocketAddress(host, port))
         .eventLoopGroup(new NioEventLoopGroup())

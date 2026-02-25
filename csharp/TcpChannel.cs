@@ -23,6 +23,8 @@ internal static class TcpChannel
                     if (closeBracket < 0 || closeBracket + 1 >= address.Length || address[closeBracket + 1] != ':')
                         throw new SpiceDbException("Invalid TCP address: " + address);
                     host = address.Substring(1, closeBracket - 1);
+                    if (string.IsNullOrEmpty(host))
+                        throw new SpiceDbException("Invalid TCP address (empty host): " + address);
                     if (!int.TryParse(address.Substring(closeBracket + 2), out port))
                         throw new SpiceDbException("Invalid TCP address (bad port): " + address);
                 }
