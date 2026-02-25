@@ -36,7 +36,7 @@ public static class Server
     public static (WebApplication App, EmbeddedSpiceDb Spicedb) CreateApp(IReadOnlyList<Relationship>? initialRelationships = null)
     {
         var relationships = initialRelationships ?? SeedRelationships();
-        var spicedb = EmbeddedSpiceDb.Create(Schema.DriveSchema, relationships);
+        var spicedb = EmbeddedSpiceDb.Start(Schema.DriveSchema, relationships);
 
         var builder = WebApplication.CreateBuilder();
         var app = builder.Build();

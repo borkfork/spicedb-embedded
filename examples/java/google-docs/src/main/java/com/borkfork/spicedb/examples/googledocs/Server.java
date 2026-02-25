@@ -46,7 +46,7 @@ public final class Server {
   public static AppAndSpiceDB createApp(List<Relationship> initialRelationships) {
     List<Relationship> relationships =
         initialRelationships != null ? initialRelationships : seedRelationships();
-    EmbeddedSpiceDB spicedb = EmbeddedSpiceDB.create(Schema.DRIVE_SCHEMA, relationships);
+    EmbeddedSpiceDB spicedb = EmbeddedSpiceDB.start(Schema.DRIVE_SCHEMA, relationships);
 
     Javalin app =
         Javalin.create()

@@ -49,7 +49,7 @@ export async function createApp(
   spicedb: EmbeddedSpiceDB;
 }> {
   const relationships = initialRelationships ?? seedRelationships();
-  const spicedb = await EmbeddedSpiceDB.create(DRIVE_SCHEMA, relationships);
+  const spicedb = await EmbeddedSpiceDB.start(DRIVE_SCHEMA, relationships);
 
   const app = express();
 

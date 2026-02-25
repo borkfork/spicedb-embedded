@@ -46,7 +46,7 @@ pub fn create_app(
     initial_relationships: Option<Vec<spicedb_embedded::v1::Relationship>>,
 ) -> Result<(Router<()>, Arc<spicedb_embedded::EmbeddedSpiceDB>), spicedb_embedded::SpiceDBError> {
     let relationships = initial_relationships.unwrap_or_else(seed_relationships);
-    let spicedb = Arc::new(spicedb_embedded::EmbeddedSpiceDB::new(
+    let spicedb = Arc::new(spicedb_embedded::EmbeddedSpiceDB::start_with_schema(
         DRIVE_SCHEMA,
         &relationships,
         None,
