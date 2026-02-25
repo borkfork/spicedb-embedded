@@ -456,20 +456,16 @@ jobs:
           ref: ${{ needs.prepare-release.outputs.tag_name }}
           fetch-depth: 0
 
-      - uses: jdx/mise-action@v3
+      - uses: actions/setup-node@v6
         with:
-          install_args: "node"
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
 
       - uses: actions/cache@v4
         with:
           path: node/node_modules
           key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json', '**/package.json') }}
           restore-keys: ${{ runner.os }}-npm-
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-          registry-url: "https://registry.npmjs.org"
 
       - name: Build Node.js package
         working-directory: node
@@ -600,12 +596,6 @@ jobs:
       - uses: jdx/mise-action@v3
         with:
           install_args: "dotnet"
-
-      - uses: actions/cache@v4
-        with:
-          path: csharp/artifacts
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/bin/Release/SpiceDbEmbedded.nupkg') }}
-          restore-keys: ${{ runner.os }}-nuget-
 
       - name: Build C# package
         run: dotnet build csharp/SpiceDbEmbedded.sln -c Release -p:Version=${{ env.VERSION_NUM }}
