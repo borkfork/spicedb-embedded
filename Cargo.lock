@@ -2182,7 +2182,7 @@ dependencies = [
  "serde",
  "serde_json",
  "spicedb-embedded-sys 0.5.2",
- "spicedb-grpc-tonic 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spicedb-grpc-tonic 0.2.0",
  "thiserror",
  "tokio",
  "tonic 0.12.3",
@@ -2200,7 +2200,7 @@ dependencies = [
  "serde_json",
  "serial_test",
  "spicedb-embedded-sys 0.6.0",
- "spicedb-grpc-tonic 0.2.0",
+ "spicedb-grpc-tonic 1.0.0",
  "testcontainers-modules",
  "thiserror",
  "tokio",
@@ -2217,7 +2217,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b148b6ba97da547107749113b358896670edc7307ef4b4ea8db2da3f48a9c4ff"
 dependencies = [
  "prost 0.13.5",
- "spicedb-grpc-tonic 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spicedb-grpc-tonic 0.2.0",
 ]
 
 [[package]]
@@ -2225,19 +2225,7 @@ name = "spicedb-embedded-sys"
 version = "0.6.0"
 dependencies = [
  "prost 0.14.3",
- "spicedb-grpc-tonic 0.2.0",
-]
-
-[[package]]
-name = "spicedb-grpc-tonic"
-version = "0.2.0"
-dependencies = [
- "prost 0.14.3",
- "prost-types 0.14.3",
- "tonic 0.14.5",
- "tonic-prost",
- "tonic-prost-build",
- "walkdir",
+ "spicedb-grpc-tonic 1.0.0",
 ]
 
 [[package]]
@@ -2250,6 +2238,18 @@ dependencies = [
  "prost-types 0.13.5",
  "tonic 0.12.3",
  "tonic-build 0.12.3",
+ "walkdir",
+]
+
+[[package]]
+name = "spicedb-grpc-tonic"
+version = "1.0.0"
+dependencies = [
+ "prost 0.14.3",
+ "prost-types 0.14.3",
+ "tonic 0.14.5",
+ "tonic-prost",
+ "tonic-prost-build",
  "walkdir",
 ]
 
