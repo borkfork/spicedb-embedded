@@ -48,7 +48,7 @@ def create_app(initial_relationships: list[Relationship] | None = None):
         if initial_relationships is not None
         else seed_relationships()
     )
-    spicedb = EmbeddedSpiceDB(DRIVE_SCHEMA, relationships)
+    spicedb = EmbeddedSpiceDB.start(DRIVE_SCHEMA, relationships)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
