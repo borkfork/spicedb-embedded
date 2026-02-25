@@ -29,7 +29,7 @@
   <ItemGroup>
     <PackageReference Include="Authzed.Net" Version="1.5.0"/>
     <PackageReference Include="Grpc.Net.Client" Version="2.76.0"/>
-    <PackageReference Include="System.Text.Json" Version="8.0.6"/>
+    <PackageReference Include="System.Text.Json" Version="10.0.3"/>
   </ItemGroup>
 
   <Target Name="RenamePackageToNoVersion" AfterTargets="Pack">
