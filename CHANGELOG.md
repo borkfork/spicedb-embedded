@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.6.0](https://github.com/borkfork/spicedb-embedded/compare/v0.5.2...v0.6.0) (2026-02-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **deps:** `trait Debug` was a supertrait of `trait Message`. This is no longer required by `prost`. If your code relies on `trait Debug` being implemented for every `impl Message`, you must now explicitly state that you require both Debug and Message. For example: `where M: Debug + Message`
+
+### Features
+
+* Unified start API across each language ([#98](https://github.com/borkfork/spicedb-embedded/issues/98)) ([be3c413](https://github.com/borkfork/spicedb-embedded/commit/be3c4138aacd966fc54afdcd90f0a8e8612cbb53))
+* Update examples to use latest version ([#79](https://github.com/borkfork/spicedb-embedded/issues/79)) ([c1359b1](https://github.com/borkfork/spicedb-embedded/commit/c1359b1319334aa7d3af05be6f6ce44334d8c8dc))
+
+
+### Bug Fixes
+
+* Address potential security flaws ([#96](https://github.com/borkfork/spicedb-embedded/issues/96)) ([926453b](https://github.com/borkfork/spicedb-embedded/commit/926453b8c9cfb9a7311837bdcc08ecbfd9c93f5a))
+* **deps:** update go modules ([#73](https://github.com/borkfork/spicedb-embedded/issues/73)) ([5df49f8](https://github.com/borkfork/spicedb-embedded/commit/5df49f8251ec95da892a390e9ca4fefa3bb559a7))
+* **deps:** update maven dependencies to v4.1.131.final ([#83](https://github.com/borkfork/spicedb-embedded/issues/83)) ([e76f40f](https://github.com/borkfork/spicedb-embedded/commit/e76f40f4b3b04e1a2872c5f8702264e9ac34ca6f))
+* **deps:** update rust crates ([#68](https://github.com/borkfork/spicedb-embedded/issues/68)) ([d8aeb92](https://github.com/borkfork/spicedb-embedded/commit/d8aeb925c8f4b64ca9ece763b7b45ef3502555ba))
+
 ## [0.5.2](https://github.com/borkfork/spicedb-embedded/compare/v0.5.1...v0.5.2) (2026-02-23)
 
 
