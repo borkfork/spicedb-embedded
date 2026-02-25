@@ -29,6 +29,7 @@ from authzed.api.v1.watch_service_pb2_grpc import WatchServiceStub
 
 from spicedb_embedded.errors import SpiceDBError
 from spicedb_embedded.ffi import (
+    StartOptions,
     spicedb_dispose,
     spicedb_permissions_check_bulk_permissions,
     spicedb_permissions_check_permission,
@@ -63,28 +64,66 @@ class EmbeddedSpiceDB:
         schema: str,
         relationships: list[Relationship] | None = None,
         *,
-        options: dict | None = None,
+        options: StartOptions | None = None,
     ):
-        """
-        Create an embedded SpiceDB instance.
+        """Deprecated: use :meth:`start` instead. Will be removed in a future release."""
+        import warnings
 
-        Args:
-            schema: The SpiceDB schema definition (ZED language).
-            relationships: Initial relationships. Defaults to [].
-            options: Optional config (datastore, datastore_uri, etc.). Instance is always in-memory.
-        """
-        data = spicedb_start(options)
-        self._handle = data["handle"]
-        self._streaming_address = data["streaming_address"]
-        self._streaming_transport = data["streaming_transport"]
-        target = _streaming_target(self._streaming_address, self._streaming_transport)
-        self._channel = grpc.insecure_channel(target)
+        warnings.warn(
+            "EmbeddedSpiceDB() constructor is deprecated, use EmbeddedSpiceDB.start() instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._init_ffi(options)
 
         try:
             self._bootstrap(schema, relationships or [])
         except Exception as e:
             self.close()
             raise SpiceDBError(f"Failed to bootstrap: {e}") from e
+
+    @classmethod
+    def start(
+        cls,
+        schema: str | None = None,
+        relationships: list[Relationship] | None = None,
+        *,
+        options: StartOptions | None = None,
+    ) -> "EmbeddedSpiceDB":
+        """
+        Start an embedded SpiceDB instance.
+
+        If ``schema`` is provided, bootstraps the instance with the schema and
+        optional relationships. Otherwise, starts without bootstrapping — useful
+        when connecting to a pre-existing datastore.
+
+        Args:
+            schema: The SpiceDB schema definition (ZED language). If None, no bootstrap.
+            relationships: Initial relationships. Defaults to [].
+            options: Optional datastore configuration.
+
+        Returns:
+            New EmbeddedSpiceDB instance.
+        """
+        instance = cls.__new__(cls)
+        instance._init_ffi(options)
+
+        if schema is not None:
+            try:
+                instance._bootstrap(schema, relationships or [])
+            except Exception as e:
+                instance.close()
+                raise SpiceDBError(f"Failed to bootstrap: {e}") from e
+
+        return instance
+
+    def _init_ffi(self, options: StartOptions | None = None) -> None:
+        data = spicedb_start(options)
+        self._handle = data["handle"]
+        self._streaming_address = data["streaming_address"]
+        self._streaming_transport = data["streaming_transport"]
+        target = _streaming_target(self._streaming_address, self._streaming_transport)
+        self._channel = grpc.insecure_channel(target)
 
     def _bootstrap(self, schema: str, relationships: list[Relationship]) -> None:
         write_schema_req = WriteSchemaRequest(schema=schema)

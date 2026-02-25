@@ -49,7 +49,7 @@ def test_check_permission():
         rel("document:readme", "writer", "user:bob"),
     ]
 
-    with EmbeddedSpiceDB(TEST_SCHEMA, relationships) as spicedb:
+    with EmbeddedSpiceDB.start(TEST_SCHEMA, relationships) as spicedb:
         consistency = Consistency(fully_consistent=True)
         check_req = CheckPermissionRequest(
             consistency=consistency,
@@ -103,7 +103,7 @@ def test_read_relationships_streaming():
         rel("document:doc1", "reader", "user:alice"),
         rel("document:doc1", "writer", "user:bob"),
     ]
-    with EmbeddedSpiceDB(TEST_SCHEMA, relationships) as spicedb:
+    with EmbeddedSpiceDB.start(TEST_SCHEMA, relationships) as spicedb:
         req = ReadRelationshipsRequest(
             relationship_filter=RelationshipFilter(
                 resource_type="document",
@@ -117,7 +117,7 @@ def test_read_relationships_streaming():
 
 def test_add_relationship():
     """Test adding a relationship after creation."""
-    with EmbeddedSpiceDB(TEST_SCHEMA, []) as spicedb:
+    with EmbeddedSpiceDB.start(TEST_SCHEMA, []) as spicedb:
         spicedb.permissions().WriteRelationships(
             WriteRelationshipsRequest(
                 updates=[

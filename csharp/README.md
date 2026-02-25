@@ -22,7 +22,7 @@ var rel = new Relationship
     Subject = new SubjectReference { Object = new ObjectReference { ObjectType = "user", ObjectId = "alice" } },
 };
 
-using var spicedb = EmbeddedSpiceDb.Create(schema, new[] { rel });
+using var spicedb = EmbeddedSpiceDb.Start(schema, new[] { rel });
 
 var resp = spicedb.Permissions().CheckPermission(new CheckPermissionRequest
 {
@@ -67,7 +67,7 @@ definition document {
 }
 """;
 
-using var spicedb = EmbeddedSpiceDb.Create(schema, Array.Empty<Relationship>(), new StartOptions
+using var spicedb = EmbeddedSpiceDb.Start(schema, Array.Empty<Relationship>(), new StartOptions
 {
     Datastore = "postgres",
     DatastoreUri = "postgres://user:pass@localhost:5432/spicedb",
@@ -126,7 +126,7 @@ var rel = new Relationship
     Subject = new SubjectReference { Object = new ObjectReference { ObjectType = "user", ObjectId = "alice" } },
 };
 
-using var spicedb = EmbeddedSpiceDb.Create(schema, new[] { rel });
+using var spicedb = EmbeddedSpiceDb.Start(schema, new[] { rel });
 
 var req = new CheckPermissionRequest
 {
@@ -142,7 +142,8 @@ var allowed = resp.Permissionship == CheckPermissionResponse.Types.Permissionshi
 
 ## API
 
-- **`EmbeddedSpiceDb.Create(schema, relationships, options?)`** — Create an instance. Pass `null` or `Array.Empty<Relationship>()` for no initial relationships. Pass `StartOptions` for datastore/transport config. Implements `IDisposable`.
+- **`EmbeddedSpiceDb.Start(options?)`** — Start an instance without bootstrapping schema or relationships. Implements `IDisposable`.
+- **`EmbeddedSpiceDb.Start(schema, relationships?, options?)`** — Start an instance and bootstrap it with schema and optional relationships. Implements `IDisposable`.
 - **`Permissions()`** — Permissions service client (CheckPermission, WriteRelationships, ReadRelationships, etc.).
 - **`Schema()`** — Schema service client (ReadSchema, WriteSchema, ReflectSchema, etc.).
 - **`Watch()`** — Watch service client for relationship changes.
@@ -164,7 +165,7 @@ var options = new StartOptions
     MetricsEnabled = false,                        // default; set true to enable Prometheus metrics
 };
 
-using var spicedb = EmbeddedSpiceDb.Create(schema, relationships, options);
+using var spicedb = EmbeddedSpiceDb.Start(schema, relationships, options);
 ```
 
 ## Building & Testing
