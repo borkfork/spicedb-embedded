@@ -76,12 +76,11 @@ class EmbeddedSpiceDB:
         )
         self._init_ffi(options)
 
-        if schema is not None:
-            try:
-                self._bootstrap(schema, relationships or [])
-            except Exception as e:
-                self.close()
-                raise SpiceDBError(f"Failed to bootstrap: {e}") from e
+        try:
+            self._bootstrap(schema, relationships or [])
+        except Exception as e:
+            self.close()
+            raise SpiceDBError(f"Failed to bootstrap: {e}") from e
 
     @classmethod
     def start(

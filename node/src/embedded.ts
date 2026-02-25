@@ -142,15 +142,11 @@ export class EmbeddedSpiceDB {
    * @deprecated Use {@link start} instead. Will be removed in a future release.
    */
   static async create(
-    schemaOrOptions?: string | SpiceDBStartOptions | null,
+    schema: string,
     relationships?: v1.Relationship[],
     options?: SpiceDBStartOptions | null
   ): Promise<EmbeddedSpiceDB> {
-    return EmbeddedSpiceDB.start(
-      schemaOrOptions as string,
-      relationships,
-      options
-    );
+    return EmbeddedSpiceDB.start(schema, relationships, options);
   }
 
   private async bootstrap(
