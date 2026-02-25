@@ -82,18 +82,15 @@ unsafe impl Send for EmbeddedSpiceDB {}
 unsafe impl Sync for EmbeddedSpiceDB {}
 
 impl EmbeddedSpiceDB {
-    /// Create a new embedded `SpiceDB` instance with optional schema and relationships.
+    /// Start an embedded `SpiceDB` instance without bootstrapping schema or relationships.
     ///
-    /// If `schema` is non-empty, writes it via `SchemaService`. If `relationships` is non-empty, writes them via `WriteRelationships`.
+    /// Use this when you want to manage schema/relationships yourself, or when
+    /// connecting to a pre-existing datastore that already has a schema.
     ///
     /// # Errors
     ///
-    /// Returns an error if the C library fails to start, returns invalid JSON, or schema/relationship write fails.
-    pub fn new(
-        schema: &str,
-        relationships: &[spicedb_grpc_tonic::v1::Relationship],
-        options: Option<&StartOptions>,
-    ) -> Result<Self, SpiceDBError> {
+    /// Returns an error if the C library fails to start or returns invalid JSON.
+    pub fn start(options: Option<&StartOptions>) -> Result<Self, SpiceDBError> {
         let opts = options.cloned().unwrap_or_default();
         let json = serde_json::to_string(&opts)
             .map_err(|e| SpiceDBError::Protocol(format!("serialize options: {e}")))?;
@@ -118,11 +115,26 @@ impl EmbeddedSpiceDB {
                 SpiceDBError::Protocol("missing streaming_transport in start response".into())
             })?;
 
-        let db = Self {
+        Ok(Self {
             handle,
             streaming_address,
             streaming_transport,
-        };
+        })
+    }
+
+    /// Start an embedded `SpiceDB` instance and bootstrap it with schema and relationships.
+    ///
+    /// If `schema` is non-empty, writes it via `SchemaService`. If `relationships` is non-empty, writes them via `WriteRelationships`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the C library fails to start, returns invalid JSON, or schema/relationship write fails.
+    pub fn start_with_schema(
+        schema: &str,
+        relationships: &[spicedb_grpc_tonic::v1::Relationship],
+        options: Option<&StartOptions>,
+    ) -> Result<Self, SpiceDBError> {
+        let db = Self::start(options)?;
 
         if !schema.is_empty() {
             memory_transport::write_schema(
@@ -154,6 +166,20 @@ impl EmbeddedSpiceDB {
         }
 
         Ok(db)
+    }
+
+    /// Deprecated: use [`start_with_schema`](Self::start_with_schema) instead.
+    ///
+    /// # Errors
+    ///
+    /// See [`start_with_schema`](Self::start_with_schema).
+    #[deprecated(since = "0.6.0", note = "renamed to start_with_schema")]
+    pub fn new(
+        schema: &str,
+        relationships: &[spicedb_grpc_tonic::v1::Relationship],
+        options: Option<&StartOptions>,
+    ) -> Result<Self, SpiceDBError> {
+        Self::start_with_schema(schema, relationships, options)
     }
 
     /// Permissions service (`CheckPermission`, `WriteRelationships`, `DeleteRelationships`, etc.).
@@ -416,14 +442,14 @@ definition document {
         }
     }
 
-    /// `EmbeddedSpiceDB::new` + `.permissions().check_permission()`. Skipped on bind/streaming proxy errors.
+    /// `EmbeddedSpiceDB::start_with_schema` + `.permissions().check_permission()`. Skipped on bind/streaming proxy errors.
     #[test]
     fn test_check_permission() {
         let relationships = vec![
             rel("document:readme", "reader", "user:alice"),
             rel("document:readme", "writer", "user:bob"),
         ];
-        let spicedb = match EmbeddedSpiceDB::new(TEST_SCHEMA, &relationships, None) {
+        let spicedb = match EmbeddedSpiceDB::start_with_schema(TEST_SCHEMA, &relationships, None) {
             Ok(db) => db,
             Err(e) => {
                 let msg = e.to_string();
@@ -433,7 +459,7 @@ definition document {
                 {
                     return;
                 }
-                panic!("EmbeddedSpiceDB::new failed: {e}");
+                panic!("EmbeddedSpiceDB::start_with_schema failed: {e}");
             }
         };
 
@@ -451,7 +477,7 @@ definition document {
     /// Verifies the streaming proxy: start Watch stream, write a relationship, receive update on stream. Skipped on bind/proxy errors.
     #[test]
     fn test_watch_streaming() {
-        let db = match EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None) {
+        let db = match EmbeddedSpiceDB::start_with_schema(TEST_SCHEMA, &[], None) {
             Ok(d) => d,
             Err(e) => {
                 let msg = e.to_string();
@@ -461,7 +487,7 @@ definition document {
                 {
                     return;
                 }
-                panic!("EmbeddedSpiceDB::new failed: {e}");
+                panic!("EmbeddedSpiceDB::start_with_schema failed: {e}");
             }
         };
 
@@ -525,7 +551,8 @@ definition document {
             rel("document:readme", "writer", "user:bob"),
         ];
 
-        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &relationships, None).unwrap();
+        let spicedb =
+            EmbeddedSpiceDB::start_with_schema(TEST_SCHEMA, &relationships, None).unwrap();
 
         assert_eq!(
             spicedb
@@ -571,7 +598,7 @@ definition document {
 
     #[test]
     fn test_add_relationship() {
-        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None).unwrap();
+        let spicedb = EmbeddedSpiceDB::start_with_schema(TEST_SCHEMA, &[], None).unwrap();
 
         spicedb
             .permissions()
@@ -594,8 +621,8 @@ definition document {
 
     #[test]
     fn test_parallel_instances() {
-        let spicedb1 = EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None).unwrap();
-        let spicedb2 = EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None).unwrap();
+        let spicedb1 = EmbeddedSpiceDB::start_with_schema(TEST_SCHEMA, &[], None).unwrap();
+        let spicedb2 = EmbeddedSpiceDB::start_with_schema(TEST_SCHEMA, &[], None).unwrap();
 
         spicedb1
             .permissions()
@@ -629,7 +656,8 @@ definition document {
             rel("document:doc1", "reader", "user:bob"),
         ];
 
-        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &relationships, None).unwrap();
+        let spicedb =
+            EmbeddedSpiceDB::start_with_schema(TEST_SCHEMA, &relationships, None).unwrap();
         let channel = connect_streaming(spicedb.streaming_address(), spicedb.streaming_transport())
             .await
             .unwrap();
@@ -682,7 +710,8 @@ definition document {
         println!("\n=== Performance: Check with 1000 relationships ===");
 
         let start = Instant::now();
-        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &relationships, None).unwrap();
+        let spicedb =
+            EmbeddedSpiceDB::start_with_schema(TEST_SCHEMA, &relationships, None).unwrap();
         println!(
             "Instance creation with 1000 relationships: {:?}",
             start.elapsed()
@@ -725,7 +754,7 @@ definition document {
         const NUM_ADDS: usize = 50;
         use std::time::Instant;
 
-        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None).unwrap();
+        let spicedb = EmbeddedSpiceDB::start_with_schema(TEST_SCHEMA, &[], None).unwrap();
 
         println!("\n=== Performance: Add individual relationships ===");
 
@@ -764,7 +793,7 @@ definition document {
     fn perf_bulk_write_relationships() {
         use std::time::Instant;
 
-        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None).unwrap();
+        let spicedb = EmbeddedSpiceDB::start_with_schema(TEST_SCHEMA, &[], None).unwrap();
 
         println!("\n=== Performance: Bulk write relationships ===");
 
@@ -809,7 +838,7 @@ definition document {
         // Compare: 10 individual vs 10 bulk
         println!("\n--- Comparison: 10 individual vs 10 bulk ---");
 
-        let spicedb2 = EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None).unwrap();
+        let spicedb2 = EmbeddedSpiceDB::start_with_schema(TEST_SCHEMA, &[], None).unwrap();
 
         let start = Instant::now();
         for i in 0..10 {
@@ -872,7 +901,7 @@ definition document {
         // Create 50,000 relationships in batches (SpiceDB max batch is 1000)
         println!("Creating instance...");
         let start = Instant::now();
-        let spicedb = EmbeddedSpiceDB::new(TEST_SCHEMA, &[], None).unwrap();
+        let spicedb = EmbeddedSpiceDB::start_with_schema(TEST_SCHEMA, &[], None).unwrap();
         println!("Instance creation time: {:?}", start.elapsed());
 
         println!("Adding {TOTAL_RELS} relationships in batches of {BATCH_SIZE}...");
@@ -1014,8 +1043,8 @@ definition document {
             };
 
             let schema = TEST_SCHEMA;
-            let db1 = EmbeddedSpiceDB::new(schema, &[], Some(&opts)).unwrap();
-            let db2 = EmbeddedSpiceDB::new(schema, &[], Some(&opts)).unwrap();
+            let db1 = EmbeddedSpiceDB::start_with_schema(schema, &[], Some(&opts)).unwrap();
+            let db2 = EmbeddedSpiceDB::start_with_schema(schema, &[], Some(&opts)).unwrap();
 
             // Write via server 1
             db1.permissions()
@@ -1113,8 +1142,8 @@ definition document {
             };
 
             let schema = TEST_SCHEMA;
-            let db1 = EmbeddedSpiceDB::new(schema, &[], Some(&opts)).unwrap();
-            let db2 = EmbeddedSpiceDB::new(schema, &[], Some(&opts)).unwrap();
+            let db1 = EmbeddedSpiceDB::start_with_schema(schema, &[], Some(&opts)).unwrap();
+            let db2 = EmbeddedSpiceDB::start_with_schema(schema, &[], Some(&opts)).unwrap();
 
             db1.permissions()
                 .write_relationships(&WriteRelationshipsRequest {

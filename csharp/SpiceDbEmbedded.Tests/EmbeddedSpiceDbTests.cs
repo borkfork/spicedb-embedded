@@ -39,7 +39,7 @@ public class EmbeddedSpiceDbTests
             Rel("document:readme", "writer", "user:bob")
         };
 
-        using var spicedb = EmbeddedSpiceDb.Create(TestSchema, relationships);
+        using var spicedb = EmbeddedSpiceDb.Start(TestSchema, relationships);
 
         var consistency = new Consistency { FullyConsistent = true };
         var checkReq = new CheckPermissionRequest
@@ -82,7 +82,7 @@ public class EmbeddedSpiceDbTests
             Rel("document:doc1", "reader", "user:alice"),
             Rel("document:doc1", "writer", "user:bob")
         };
-        using var spicedb = EmbeddedSpiceDb.Create(TestSchema, relationships);
+        using var spicedb = EmbeddedSpiceDb.Start(TestSchema, relationships);
 
         var req = new ReadRelationshipsRequest
         {
@@ -104,7 +104,7 @@ public class EmbeddedSpiceDbTests
     [Fact]
     public void AddRelationship()
     {
-        using var spicedb = EmbeddedSpiceDb.Create(TestSchema, []);
+        using var spicedb = EmbeddedSpiceDb.Start(TestSchema, []);
 
         _ = spicedb.Permissions().WriteRelationships(new WriteRelationshipsRequest
         {

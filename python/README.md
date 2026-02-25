@@ -28,7 +28,7 @@ rel = Relationship(
     subject=SubjectReference(object=ObjectReference(object_type="user", object_id="alice")),
 )
 
-with EmbeddedSpiceDB(schema, [rel]) as spicedb:
+with EmbeddedSpiceDB.start(schema, [rel]) as spicedb:
     req = CheckPermissionRequest(
         consistency=Consistency(fully_consistent=True),
         resource=ObjectReference(object_type="document", object_id="readme"),
@@ -60,7 +60,7 @@ The default datastore is "memory" (memdb). If you use this datastore, keep in mi
 If you need a longer term storage, you can use any SpiceDB-compatible datastores.
 
 ```python
-from spicedb_embedded import EmbeddedSpiceDB
+from spicedb_embedded import EmbeddedSpiceDB, StartOptions
 
 # Run migrations first: spicedb datastore migrate head --datastore-engine postgres --datastore-conn-uri "postgres://..."
 schema = """
@@ -72,10 +72,12 @@ definition document {
 }
 """
 
-with EmbeddedSpiceDB(schema, [], options={
-    "datastore": "postgres",
-    "datastore_uri": "postgres://user:pass@localhost:5432/spicedb",
-}) as spicedb:
+options = StartOptions(
+    datastore="postgres",
+    datastore_uri="postgres://user:pass@localhost:5432/spicedb",
+)
+
+with EmbeddedSpiceDB.start(schema, [], options=options) as spicedb:
     # Use full Permissions API (writeRelationships, checkPermission, etc.)
     pass
 ```
@@ -135,7 +137,7 @@ rel = Relationship(
     subject=SubjectReference(object=ObjectReference(object_type="user", object_id="alice")),
 )
 
-with EmbeddedSpiceDB(schema, [rel]) as spicedb:
+with EmbeddedSpiceDB.start(schema, [rel]) as spicedb:
     stub = spicedb.permissions()
     req = CheckPermissionRequest(
         consistency=Consistency(fully_consistent=True),
@@ -149,7 +151,8 @@ with EmbeddedSpiceDB(schema, [rel]) as spicedb:
 
 ## API
 
-- **`EmbeddedSpiceDB(schema, relationships, options=None)`** — Create an instance. Pass `[]` for no initial relationships. Pass `options` dict for datastore/transport config. Supports context manager (`with`).
+- **`EmbeddedSpiceDB.start(options=)`** — Start an instance without bootstrapping schema or relationships. Supports context manager (`with`).
+- **`EmbeddedSpiceDB.start(schema, relationships, options=)`** — Start an instance and bootstrap it with schema and optional relationships. Supports context manager (`with`).
 - **`permissions()`** — Permissions service stub (CheckPermission, WriteRelationships, ReadRelationships, etc.).
 - **`schema()`** — Schema service stub (ReadSchema, WriteSchema, ReflectSchema, etc.).
 - **`watch()`** — Watch service stub for relationship changes.
@@ -158,19 +161,21 @@ with EmbeddedSpiceDB(schema, [rel]) as spicedb:
 
 Use types from `authzed.api.v1` (ObjectReference, SubjectReference, Relationship, etc.).
 
-### Options
+### StartOptions
 
 ```python
-options = {
-    "datastore": "memory",          # or "postgres", "cockroachdb", "spanner", "mysql"
-    "datastore_uri": "postgres://user:pass@localhost:5432/spicedb",  # required for remote
-    "spanner_credentials_file": "/path/to/key.json",  # Spanner only
-    "spanner_emulator_host": "localhost:9010",       # Spanner emulator
-    "mysql_table_prefix": "spicedb_",                 # MySQL only (optional)
-    "metrics_enabled": False,                         # default; set True to enable Prometheus metrics
-}
+from spicedb_embedded import EmbeddedSpiceDB, StartOptions
 
-with EmbeddedSpiceDB(schema, [], options=options) as spicedb:
+options = StartOptions(
+    datastore="memory",           # or "postgres", "cockroachdb", "spanner", "mysql"
+    datastore_uri="postgres://user:pass@localhost:5432/spicedb",  # required for remote
+    spanner_credentials_file="/path/to/key.json",  # Spanner only
+    spanner_emulator_host="localhost:9010",       # Spanner emulator
+    mysql_table_prefix="spicedb_",                 # MySQL only (optional)
+    metrics_enabled=False,                         # default; set True to enable Prometheus metrics
+)
+
+with EmbeddedSpiceDB.start(schema, [], options=options) as spicedb:
     ...
 ```
 

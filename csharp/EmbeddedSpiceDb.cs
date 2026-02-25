@@ -45,16 +45,45 @@ public sealed class EmbeddedSpiceDb : IDisposable
     }
 
     /// <summary>
-    ///     Create a new embedded SpiceDB instance (in-memory only).
+    ///     Start an embedded SpiceDB instance without bootstrapping schema or relationships.
+    ///     Use this when connecting to a pre-existing datastore that already has a schema,
+    ///     or when you want to manage schema/relationships yourself.
+    /// </summary>
+    /// <param name="options">Optional datastore options. Pass null for defaults.</param>
+    /// <returns>New EmbeddedSpiceDb instance</returns>
+    public static EmbeddedSpiceDb Start(StartOptions? options = null)
+    {
+        return StartInstance(options);
+    }
+
+    /// <summary>
+    ///     Create a new embedded SpiceDB instance with schema and optional relationships.
     /// </summary>
     /// <param name="schema">The SpiceDB schema definition (ZED language)</param>
     /// <param name="relationships">Initial relationships (empty list or null allowed)</param>
     /// <param name="options">Optional datastore options. Pass null for defaults.</param>
     /// <returns>New EmbeddedSpiceDb instance</returns>
-    public static EmbeddedSpiceDb Create(
+    public static EmbeddedSpiceDb Start(
         string schema,
         IReadOnlyList<Relationship>? relationships = null,
         StartOptions? options = null)
+    {
+        var db = StartInstance(options);
+
+        try
+        {
+            db.Bootstrap(schema, relationships ?? Array.Empty<Relationship>());
+        }
+        catch (Exception ex)
+        {
+            db.Dispose();
+            throw new SpiceDbException("Failed to bootstrap: " + ex.Message, ex);
+        }
+
+        return db;
+    }
+
+    private static EmbeddedSpiceDb StartInstance(StartOptions? options)
     {
         var start = SpiceDbFfi.Start(options);
 
@@ -77,20 +106,16 @@ public sealed class EmbeddedSpiceDb : IDisposable
             throw new SpiceDbException("Failed to connect to streaming proxy: " + ex.Message, ex);
         }
 
-        var db = new EmbeddedSpiceDb(start.Handle, channel, start.StreamingAddress);
-
-        try
-        {
-            db.Bootstrap(schema, relationships ?? Array.Empty<Relationship>());
-        }
-        catch (Exception ex)
-        {
-            db.Dispose();
-            throw new SpiceDbException("Failed to bootstrap: " + ex.Message, ex);
-        }
-
-        return db;
+        return new EmbeddedSpiceDb(start.Handle, channel, start.StreamingAddress);
     }
+
+    /// <summary>Deprecated: use <see cref="Start(string, IReadOnlyList{Relationship}?, StartOptions?)"/> instead.</summary>
+    [Obsolete("Use Start() instead. Will be removed in a future release.")]
+    public static EmbeddedSpiceDb Create(
+        string schema,
+        IReadOnlyList<Relationship>? relationships = null,
+        StartOptions? options = null)
+        => Start(schema, relationships, options);
 
     private static SocketsHttpHandler CreateHandlerForStreaming(string streamingAddress, string streamingTransport)
     {

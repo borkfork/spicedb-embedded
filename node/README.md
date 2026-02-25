@@ -20,7 +20,7 @@ const rel = v1.Relationship.create({
   }),
 });
 
-const spicedb = await EmbeddedSpiceDB.create(schema, [rel]);
+const spicedb = await EmbeddedSpiceDB.start(schema, [rel]);
 const resp = await spicedb.permissions().promises.checkPermission(
   v1.CheckPermissionRequest.create({
     resource: v1.ObjectReference.create({
@@ -64,7 +64,7 @@ import { EmbeddedSpiceDB } from "spicedb-embedded";
 
 // Run migrations first: spicedb datastore migrate head --datastore-engine postgres --datastore-conn-uri "postgres://..."
 const schema = `definition user {} definition document { relation reader: user permission read = reader }`;
-const spicedb = await EmbeddedSpiceDB.create(schema, [], {
+const spicedb = await EmbeddedSpiceDB.start(schema, [], {
   datastore: "postgres",
   datastore_uri: "postgres://user:pass@localhost:5432/spicedb",
 });
@@ -141,7 +141,7 @@ const rel = Relationship.create({
   }),
 });
 
-const spicedb = await EmbeddedSpiceDB.create(schema, [rel]);
+const spicedb = await EmbeddedSpiceDB.start(schema, [rel]);
 
 try {
   const response = await spicedb.permissions().promises.checkPermission(
@@ -173,7 +173,8 @@ try {
 
 ## API
 
-- **`EmbeddedSpiceDB.create(schema, relationships, options?)`** — Create an instance (async). Pass `[]` for no initial relationships. Pass `SpiceDBStartOptions` for datastore/transport config.
+- **`EmbeddedSpiceDB.start(options?)`** — Start an instance without bootstrapping schema or relationships (async).
+- **`EmbeddedSpiceDB.start(schema, relationships?, options?)`** — Start an instance and bootstrap it with schema and optional relationships (async).
 - **`permissions()`** — Permissions service client (CheckPermission, WriteRelationships, ReadRelationships, etc.). Use `.promises` for async/await.
 - **`schema()`** — Schema service client (ReadSchema, WriteSchema, ReflectSchema, etc.).
 - **`watch()`** — Watch service client for relationship changes.
@@ -195,7 +196,7 @@ const options: SpiceDBStartOptions = {
   metrics_enabled: false, // default; set true to enable Prometheus metrics
 };
 
-const spicedb = await EmbeddedSpiceDB.create(schema, [], options);
+const spicedb = await EmbeddedSpiceDB.start(schema, [], options);
 ```
 
 ## Building & Testing

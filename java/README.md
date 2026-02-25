@@ -28,7 +28,7 @@ Relationship rel = Relationship.newBuilder()
         .build())
     .build();
 
-try (var spicedb = EmbeddedSpiceDB.create(schema, List.of(rel))) {
+try (var spicedb = EmbeddedSpiceDB.start(schema, List.of(rel))) {
     var response = spicedb.permissions().checkPermission(
         CheckPermissionRequest.newBuilder()
             .setConsistency(Consistency.newBuilder().setFullyConsistent(true).build())
@@ -88,7 +88,7 @@ var options = StartOptions.builder()
     .datastoreUri("postgres://user:pass@localhost:5432/spicedb")
     .build();
 
-try (var spicedb = EmbeddedSpiceDB.create(schema, List.of(), options)) {
+try (var spicedb = EmbeddedSpiceDB.start(schema, List.of(), options)) {
     // Use full Permissions API (writeRelationships, checkPermission, etc.)
 }
 ```
@@ -156,7 +156,7 @@ Relationship rel = Relationship.newBuilder()
         .build())
     .build();
 
-try (var spicedb = EmbeddedSpiceDB.create(schema, List.of(rel))) {
+try (var spicedb = EmbeddedSpiceDB.start(schema, List.of(rel))) {
     var stub = spicedb.permissions();
     var request = CheckPermissionRequest.newBuilder()
         .setConsistency(Consistency.newBuilder().setFullyConsistent(true).build())
@@ -181,8 +181,8 @@ try (var spicedb = EmbeddedSpiceDB.create(schema, List.of(rel))) {
 
 ## API
 
-- **`EmbeddedSpiceDB.create(schema, relationships)`** — Create an instance. Pass `List.of()` for no initial relationships.
-- **`EmbeddedSpiceDB.create(schema, relationships, options)`** — Create with options (datastore, etc.). Pass `null` for defaults.
+- **`EmbeddedSpiceDB.start()`** / **`EmbeddedSpiceDB.start(options)`** — Start an instance without bootstrapping schema or relationships.
+- **`EmbeddedSpiceDB.start(schema, relationships)`** / **`EmbeddedSpiceDB.start(schema, relationships, options)`** — Start an instance and bootstrap it with schema and relationships.
 - **`permissions()`** — Blocking stub for CheckPermission, WriteRelationships, ReadRelationships, etc.
 - **`schema()`** — Blocking stub for ReadSchema, WriteSchema, ReflectSchema, etc.
 - **`watch()`** — Blocking stub for watching relationship changes.
@@ -201,7 +201,7 @@ var options = StartOptions.builder()
     .datastoreUri("postgres://...")  // required for postgres, cockroachdb, spanner, mysql
     .build();
 
-try (var spicedb = EmbeddedSpiceDB.create(schema, List.of(), options)) {
+try (var spicedb = EmbeddedSpiceDB.start(schema, List.of(), options)) {
     // ...
 }
 ```

@@ -30,7 +30,7 @@
 //!         optional_caveat: None,
 //!     }];
 //!
-//!     let spicedb = EmbeddedSpiceDB::new(schema, &relationships, None)?;
+//!     let spicedb = EmbeddedSpiceDB::start_with_schema(schema, &relationships, None)?;
 //!     let mut permissions = spicedb.permissions();
 //!     // Use the full SpiceDB API via the generated client
 //!     let response = permissions.check_permission(&v1::CheckPermissionRequest {

@@ -29,7 +29,7 @@ let relationships = vec![v1::Relationship {
     optional_caveat: None,
 }];
 
-let spicedb = EmbeddedSpiceDB::new(schema, &relationships, None)?;
+let spicedb = EmbeddedSpiceDB::start_with_schema(schema, &relationships, None)?;
 
 let response = spicedb
     .permissions()
@@ -95,7 +95,7 @@ let options = StartOptions {
     ..Default::default()
 };
 
-let spicedb = EmbeddedSpiceDB::new(schema, &[], Some(&options))?;
+let spicedb = EmbeddedSpiceDB::start_with_schema(schema, &[], Some(&options))?;
 // Use full Permissions API (write_relationships, check_permission, etc.)
 ```
 
@@ -149,7 +149,7 @@ let relationships = vec![v1::Relationship {
     optional_caveat: None,
 }];
 
-let spicedb = EmbeddedSpiceDB::new(schema, &relationships, None)?;
+let spicedb = EmbeddedSpiceDB::start_with_schema(schema, &relationships, None)?;
 
 // Check permission (sync API)
 let response = spicedb
@@ -180,7 +180,8 @@ let allowed = response.permissionship
 
 ## API
 
-- **`EmbeddedSpiceDB::new(schema, relationships, options)`** — Create an instance (sync). Pass `None` for options to use defaults; use `Some(&StartOptions { ... })` for datastore, etc.
+- **`EmbeddedSpiceDB::start(options)`** — Start an instance without bootstrapping schema or relationships. Pass `None` for defaults.
+- **`EmbeddedSpiceDB::start_with_schema(schema, relationships, options)`** — Start an instance and bootstrap it with schema and relationships. Pass `None` for options to use defaults.
 - **`permissions()`** — Sync client for CheckPermission, WriteRelationships, DeleteRelationships, etc.
 - **`schema()`** — Sync client for ReadSchema, WriteSchema.
 - **`streaming_address()`** — Address for streaming RPCs (Watch, ReadRelationships); connect a gRPC client to this address.
@@ -202,7 +203,7 @@ let options = StartOptions {
     ..Default::default()
 };
 
-let spicedb = EmbeddedSpiceDB::new(schema, &relationships, Some(&options))?;
+let spicedb = EmbeddedSpiceDB::start_with_schema(schema, &relationships, Some(&options))?;
 ```
 
 ## Building & Testing

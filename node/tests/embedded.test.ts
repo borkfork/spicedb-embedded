@@ -52,7 +52,7 @@ describe("EmbeddedSpiceDB", () => {
       rel("document:readme", "writer", "user:bob"),
     ];
 
-    const spicedb = await EmbeddedSpiceDB.create(TEST_SCHEMA, relationships);
+    const spicedb = await EmbeddedSpiceDB.start(TEST_SCHEMA, relationships);
 
     try {
       const consistency = Consistency.create({
@@ -84,7 +84,7 @@ describe("EmbeddedSpiceDB", () => {
   });
 
   it("adds relationship after creation", async () => {
-    const spicedb = await EmbeddedSpiceDB.create(TEST_SCHEMA, []);
+    const spicedb = await EmbeddedSpiceDB.start(TEST_SCHEMA, []);
 
     try {
       await spicedb.permissions().promises.writeRelationships(
@@ -133,7 +133,7 @@ describe("EmbeddedSpiceDB", () => {
         rel("document:doc1", "reader", "user:alice"),
         rel("document:doc1", "writer", "user:bob"),
       ];
-      const spicedb = await EmbeddedSpiceDB.create(TEST_SCHEMA, relationships);
+      const spicedb = await EmbeddedSpiceDB.start(TEST_SCHEMA, relationships);
 
       try {
         const req = ReadRelationshipsRequest.create({
