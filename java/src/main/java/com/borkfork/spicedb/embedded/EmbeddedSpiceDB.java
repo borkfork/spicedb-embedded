@@ -30,14 +30,39 @@ public final class EmbeddedSpiceDB implements AutoCloseable {
   }
 
   /**
+   * Start an embedded SpiceDB instance without bootstrapping schema or relationships.
+   *
+   * <p>Use this when connecting to a pre-existing datastore that already has a schema, or when you
+   * want to manage schema/relationships yourself.
+   *
+   * @return New EmbeddedSpiceDB instance
+   */
+  public static EmbeddedSpiceDB start() {
+    return start((StartOptions) null);
+  }
+
+  /**
+   * Start an embedded SpiceDB instance with options, without bootstrapping schema or relationships.
+   *
+   * <p>Use this when connecting to a pre-existing datastore that already has a schema, or when you
+   * want to manage schema/relationships yourself.
+   *
+   * @param options Optional datastore options. Pass null for defaults.
+   * @return New EmbeddedSpiceDB instance
+   */
+  public static EmbeddedSpiceDB start(StartOptions options) {
+    return startInstance(options);
+  }
+
+  /**
    * Create a new embedded SpiceDB instance with a schema and relationships.
    *
    * @param schema The SpiceDB schema definition (ZED language)
    * @param relationships Initial relationships (empty list allowed)
    * @return New EmbeddedSpiceDB instance
    */
-  public static EmbeddedSpiceDB create(String schema, List<Relationship> relationships) {
-    return create(schema, relationships, null);
+  public static EmbeddedSpiceDB start(String schema, List<Relationship> relationships) {
+    return start(schema, relationships, null);
   }
 
   /**
@@ -48,8 +73,38 @@ public final class EmbeddedSpiceDB implements AutoCloseable {
    * @param options Optional datastore options. Pass null for defaults.
    * @return New EmbeddedSpiceDB instance
    */
-  public static EmbeddedSpiceDB create(
+  public static EmbeddedSpiceDB start(
       String schema, List<Relationship> relationships, StartOptions options) {
+    EmbeddedSpiceDB db = startInstance(options);
+
+    try {
+      // Bootstrap via FFI
+      WriteSchemaRequest schemaReq = WriteSchemaRequest.newBuilder().setSchema(schema).build();
+      SpiceDBFfi.writeSchema(db.handle, schemaReq.toByteArray());
+
+      if (relationships != null && !relationships.isEmpty()) {
+        var updates =
+            relationships.stream()
+                .map(
+                    r ->
+                        RelationshipUpdate.newBuilder()
+                            .setOperation(RelationshipUpdate.Operation.OPERATION_TOUCH)
+                            .setRelationship(r)
+                            .build())
+                .toList();
+        WriteRelationshipsRequest relReq =
+            WriteRelationshipsRequest.newBuilder().addAllUpdates(updates).build();
+        SpiceDBFfi.writeRelationships(db.handle, relReq.toByteArray());
+      }
+    } catch (Exception e) {
+      db.close();
+      throw new SpiceDBException("Failed to bootstrap: " + e.getMessage(), e);
+    }
+
+    return db;
+  }
+
+  private static EmbeddedSpiceDB startInstance(StartOptions options) {
     SpiceDB lib = SpiceDB.load();
     StartOptions opts = options != null ? options : new StartOptions();
     String optionsJson = new Gson().toJson(opts);
@@ -88,28 +143,24 @@ public final class EmbeddedSpiceDB implements AutoCloseable {
       throw new SpiceDBException("Failed to connect to streaming proxy: " + e.getMessage(), e);
     }
 
-    EmbeddedSpiceDB db = new EmbeddedSpiceDB(handle, ch, streamingAddr);
+    return new EmbeddedSpiceDB(handle, ch, streamingAddr);
+  }
 
-    // Bootstrap via FFI
-    WriteSchemaRequest schemaReq = WriteSchemaRequest.newBuilder().setSchema(schema).build();
-    SpiceDBFfi.writeSchema(handle, schemaReq.toByteArray());
+  /**
+   * @deprecated Use {@link #start(String, List)} instead.
+   */
+  @Deprecated(forRemoval = true)
+  public static EmbeddedSpiceDB create(String schema, List<Relationship> relationships) {
+    return start(schema, relationships);
+  }
 
-    if (relationships != null && !relationships.isEmpty()) {
-      var updates =
-          relationships.stream()
-              .map(
-                  r ->
-                      RelationshipUpdate.newBuilder()
-                          .setOperation(RelationshipUpdate.Operation.OPERATION_TOUCH)
-                          .setRelationship(r)
-                          .build())
-              .toList();
-      WriteRelationshipsRequest relReq =
-          WriteRelationshipsRequest.newBuilder().addAllUpdates(updates).build();
-      SpiceDBFfi.writeRelationships(handle, relReq.toByteArray());
-    }
-
-    return db;
+  /**
+   * @deprecated Use {@link #start(String, List, StartOptions)} instead.
+   */
+  @Deprecated(forRemoval = true)
+  public static EmbeddedSpiceDB create(
+      String schema, List<Relationship> relationships, StartOptions options) {
+    return start(schema, relationships, options);
   }
 
   /** Permissions service: unary via FFI, ReadRelationships via streaming proxy. */

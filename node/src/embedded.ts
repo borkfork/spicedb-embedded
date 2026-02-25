@@ -78,19 +78,44 @@ export class EmbeddedSpiceDB {
   }
 
   /**
-   * Create a new embedded SpiceDB instance (in-memory only).
+   * Start an embedded SpiceDB instance without bootstrapping schema or relationships.
+   *
+   * Use this when connecting to a pre-existing datastore that already has a schema,
+   * or when you want to manage schema/relationships yourself.
+   */
+  static async start(
+    options?: SpiceDBStartOptions | null
+  ): Promise<EmbeddedSpiceDB>;
+  /**
+   * Create a new embedded SpiceDB instance with schema and optional relationships.
    *
    * @param schema - The SpiceDB schema definition (ZED language)
    * @param relationships - Initial relationships (empty array allowed)
-   * @param options - Optional datastore options (always in-memory)
-   * @returns New EmbeddedSpiceDB instance
+   * @param options - Optional datastore options
    */
-  static async create(
+  static async start(
     schema: string,
-    relationships: v1.Relationship[] = [],
+    relationships?: v1.Relationship[],
+    options?: SpiceDBStartOptions | null
+  ): Promise<EmbeddedSpiceDB>;
+  static async start(
+    schema?: string | SpiceDBStartOptions | null,
+    relationships?: v1.Relationship[],
     options?: SpiceDBStartOptions | null
   ): Promise<EmbeddedSpiceDB> {
-    const data = spicedb_start(options ?? undefined);
+    let bootstrapSchema: string | null = null;
+    let rels: v1.Relationship[] = [];
+    let opts: SpiceDBStartOptions | undefined;
+
+    if (typeof schema === "string") {
+      bootstrapSchema = schema;
+      rels = relationships ?? [];
+      opts = options ?? undefined;
+    } else {
+      opts = schema ?? undefined;
+    }
+
+    const data = spicedb_start(opts);
     const { handle, streaming_address, streaming_transport } = data;
 
     const target = streamingTarget(streaming_address, streaming_transport);
@@ -99,16 +124,29 @@ export class EmbeddedSpiceDB {
 
     const db = new EmbeddedSpiceDB(handle, streaming_address, streamingClient);
 
-    try {
-      await db.bootstrap(schema, relationships);
-    } catch (e) {
-      db.close();
-      throw new SpiceDBError(
-        `Failed to bootstrap: ${e instanceof Error ? e.message : String(e)}`
-      );
+    if (bootstrapSchema !== null) {
+      try {
+        await db.bootstrap(bootstrapSchema, rels);
+      } catch (e) {
+        db.close();
+        throw new SpiceDBError(
+          `Failed to bootstrap: ${e instanceof Error ? e.message : String(e)}`
+        );
+      }
     }
 
     return db;
+  }
+
+  /**
+   * @deprecated Use {@link start} instead. Will be removed in a future release.
+   */
+  static async create(
+    schema: string,
+    relationships?: v1.Relationship[],
+    options?: SpiceDBStartOptions | null
+  ): Promise<EmbeddedSpiceDB> {
+    return EmbeddedSpiceDB.start(schema, relationships, options);
   }
 
   private async bootstrap(

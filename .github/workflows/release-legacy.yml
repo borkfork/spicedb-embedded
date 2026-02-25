@@ -38,6 +38,7 @@ concurrency:
 
 env:
   IS_DRY_RUN: ${{ github.event.inputs.actually_publish != 'true' }}
+  MISE_HTTP_TIMEOUT: ${{ vars.MISE_HTTP_TIMEOUT }}
 
 jobs:
   # Replace 0.0.0 with version in package files, commit, push to a release branch, tag, push tag. All other jobs checkout this tag.
@@ -76,8 +77,9 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Set versions with ecosystem CLI tools
+        env:
+          VERSION_NUM: ${{ steps.version.outputs.version_num }}
         run: |
-          VERSION_NUM="${{ steps.version.outputs.version_num }}"
           # this is a commit that sets the version of everything to PLACEHOLDER_VERSION
           # we need to swap out PLACEHOLDER_VERSION for the actual version
           PATCH_DIFF=$(git format-patch -1 c673b17a356270098f17ed323753c7c89710b9ee --stdout | sed "s/PLACEHOLDER_VERSION/$VERSION_NUM/g")
@@ -88,21 +90,27 @@ jobs:
         run: npm install
 
       - name: Commit version bump
+        env:
+          TAG_NAME: ${{ steps.version.outputs.tag_name }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
-          git diff --staged --quiet || git commit -m "chore: set release version ${{ steps.version.outputs.tag_name }}"
+          git diff --staged --quiet || git commit -m "chore: set release version $TAG_NAME"
 
       - name: Create tag
-        run: git tag "${{ steps.version.outputs.tag_name }}"
+        env:
+          TAG_NAME: ${{ steps.version.outputs.tag_name }}
+        run: git tag "$TAG_NAME"
 
       - name: Push release branch and tag
-        run: |
-          git push origin HEAD:"${{ steps.version.outputs.release_branch }}"
-          git push origin "${{ steps.version.outputs.tag_name }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BRANCH: ${{ steps.version.outputs.release_branch }}
+          TAG_NAME: ${{ steps.version.outputs.tag_name }}
+        run: |
+          git push origin HEAD:"$RELEASE_BRANCH"
+          git push origin "$TAG_NAME"
 
   # Build shared C library per platform for packaging with C#, Node, Java, Python
   build-shared-libs:
@@ -455,20 +463,16 @@ jobs:
           ref: ${{ needs.prepare-release.outputs.tag_name }}
           fetch-depth: 0
 
-      - uses: jdx/mise-action@v3
+      - uses: actions/setup-node@v6
         with:
-          install_args: "node"
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
 
       - uses: actions/cache@v4
         with:
           path: node/node_modules
           key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json', '**/package.json') }}
           restore-keys: ${{ runner.os }}-npm-
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-          registry-url: "https://registry.npmjs.org"
 
       - name: Build Node.js package
         working-directory: node
@@ -599,12 +603,6 @@ jobs:
       - uses: jdx/mise-action@v3
         with:
           install_args: "dotnet"
-
-      - uses: actions/cache@v4
-        with:
-          path: csharp/artifacts
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/bin/Release/SpiceDbEmbedded.nupkg') }}
-          restore-keys: ${{ runner.os }}-nuget-
 
       - name: Build C# package
         run: dotnet build csharp/SpiceDbEmbedded.sln -c Release -p:Version=${{ env.VERSION_NUM }}

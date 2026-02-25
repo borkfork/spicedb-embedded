@@ -9,9 +9,31 @@ import os
 import platform
 import sys
 from ctypes import POINTER, byref, c_char, c_char_p, c_int, c_ulonglong, c_void_p
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from spicedb_embedded.errors import SpiceDBError
+
+
+@dataclass
+class StartOptions:
+    """Options for starting an embedded SpiceDB instance.
+
+    All fields are optional. When omitted, SpiceDB defaults to an in-memory datastore.
+    """
+
+    #: Datastore: "memory" (default), "postgres", "cockroachdb", "spanner", "mysql".
+    datastore: str | None = None
+    #: Connection string for remote datastores. Required for postgres, cockroachdb, spanner, mysql.
+    datastore_uri: str | None = None
+    #: Path to Spanner service account JSON (Spanner only).
+    spanner_credentials_file: str | None = None
+    #: Spanner emulator host, e.g. "localhost:9010" (Spanner only).
+    spanner_emulator_host: str | None = None
+    #: Prefix for all tables (MySQL only).
+    mysql_table_prefix: str | None = None
+    #: Enable datastore Prometheus metrics (default: false).
+    metrics_enabled: bool | None = None
 
 
 def _platform_key() -> str | None:
@@ -132,15 +154,15 @@ def _call_rpc(handle: int, request_bytes: bytes, rpc_name: str) -> bytes:
         lib.spicedb_free_bytes(out_resp.value)
 
 
-def spicedb_start(options: dict | None = None) -> dict:
-    """Start a new SpiceDB instance (in-memory). Returns handle, streaming_address, and streaming_transport.
+def spicedb_start(options: StartOptions | None = None) -> dict:
+    """Start a new SpiceDB instance. Returns handle, streaming_address, and streaming_transport.
 
     Args:
-        options: Optional config. Supported keys: datastore, datastore_uri,
-            spanner_credentials_file, spanner_emulator_host, mysql_table_prefix,
-            metrics_enabled.
+        options: Optional datastore configuration. Defaults to in-memory.
     """
-    opts = dict(options) if options else {}
+    opts = (
+        {k: v for k, v in asdict(options).items() if v is not None} if options else {}
+    )
     lib = _get_lib()
     options_json = json.dumps(opts).encode("utf-8") + b"\0"
     ptr = lib.spicedb_start(options_json)

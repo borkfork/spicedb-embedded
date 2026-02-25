@@ -58,7 +58,7 @@ class EmbeddedSpiceDBTest {
             rel("document:readme", "reader", "user:alice"),
             rel("document:readme", "writer", "user:bob"));
 
-    try (var spicedb = EmbeddedSpiceDB.create(TEST_SCHEMA, relationships)) {
+    try (var spicedb = EmbeddedSpiceDB.start(TEST_SCHEMA, relationships)) {
       var consistency = Consistency.newBuilder().setFullyConsistent(true).build();
 
       var checkReq =
@@ -113,7 +113,7 @@ class EmbeddedSpiceDBTest {
 
   @Test
   void addRelationship() {
-    try (var spicedb = EmbeddedSpiceDB.create(TEST_SCHEMA, List.of())) {
+    try (var spicedb = EmbeddedSpiceDB.start(TEST_SCHEMA, List.of())) {
       spicedb
           .permissions()
           .writeRelationships(
@@ -160,7 +160,7 @@ class EmbeddedSpiceDBTest {
             rel("document:doc1", "writer", "user:bob"),
             rel("document:doc2", "reader", "user:alice"));
 
-    try (var spicedb = EmbeddedSpiceDB.create(TEST_SCHEMA, relationships)) {
+    try (var spicedb = EmbeddedSpiceDB.start(TEST_SCHEMA, relationships)) {
       var req =
           ReadRelationshipsRequest.newBuilder()
               .setConsistency(Consistency.newBuilder().setFullyConsistent(true).build())

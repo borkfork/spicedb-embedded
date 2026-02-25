@@ -24,6 +24,9 @@ concurrency:
   group: publish-grpc-tonic-${{ inputs.tag_name || github.event.release.tag_name }}
   cancel-in-progress: false
 
+env:
+  MISE_HTTP_TIMEOUT: ${{ vars.MISE_HTTP_TIMEOUT }}
+
 jobs:
   check-tag:
     runs-on: ubuntu-latest

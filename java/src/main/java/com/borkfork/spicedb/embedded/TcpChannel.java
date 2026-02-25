@@ -12,16 +12,43 @@ final class TcpChannel {
   private TcpChannel() {}
 
   static ManagedChannel build(String address) {
-    int colon = address.lastIndexOf(':');
-    if (colon > 0) {
-      String host = address.substring(0, colon);
-      int port = Integer.parseInt(address.substring(colon + 1));
-      return NettyChannelBuilder.forAddress(new InetSocketAddress(host, port))
-          .eventLoopGroup(new NioEventLoopGroup())
-          .channelType(NioSocketChannel.class)
-          .usePlaintext()
-          .build();
+    String host;
+    int port;
+    if (address.startsWith("[")) {
+      // IPv6: [host]:port
+      int closeBracket = address.indexOf(']');
+      if (closeBracket < 0) {
+        throw new IllegalArgumentException("Invalid TCP address (missing ']'): " + address);
+      }
+      host = address.substring(1, closeBracket);
+      if (host.isEmpty()) {
+        throw new IllegalArgumentException("Invalid TCP address (empty host): " + address);
+      }
+      if (closeBracket + 1 >= address.length() || address.charAt(closeBracket + 1) != ':') {
+        throw new IllegalArgumentException("Invalid TCP address (missing port): " + address);
+      }
+      try {
+        port = Integer.parseInt(address.substring(closeBracket + 2));
+      } catch (NumberFormatException e) {
+        throw new IllegalArgumentException("Invalid TCP address (bad port): " + address, e);
+      }
+    } else {
+      // IPv4 or hostname: host:port
+      int colon = address.lastIndexOf(':');
+      if (colon <= 0) {
+        throw new IllegalArgumentException("Invalid TCP address: " + address);
+      }
+      host = address.substring(0, colon);
+      try {
+        port = Integer.parseInt(address.substring(colon + 1));
+      } catch (NumberFormatException e) {
+        throw new IllegalArgumentException("Invalid TCP address (bad port): " + address, e);
+      }
     }
-    throw new IllegalArgumentException("Invalid TCP address: " + address);
+    return NettyChannelBuilder.forAddress(new InetSocketAddress(host, port))
+        .eventLoopGroup(new NioEventLoopGroup())
+        .channelType(NioSocketChannel.class)
+        .usePlaintext()
+        .build();
   }
 }

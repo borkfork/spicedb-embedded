@@ -1,5 +1,8 @@
 name: CI
 
+env:
+  MISE_HTTP_TIMEOUT: ${{ vars.MISE_HTTP_TIMEOUT }}
+
 on:
   pull_request:
   merge_group:
@@ -132,15 +135,19 @@ jobs:
         include:
           - runner: ubuntu-latest
             rid: linux-x64
+            extra_tools: "github:authzed/spicedb"
           - runner: ubuntu-24.04-arm
             rid: linux-arm64
+            extra_tools: ""
           - runner: macos-latest
             rid: osx-arm64
+            extra_tools: ""
           - runner: windows-latest
             rid: win-x64
+            extra_tools: ""
     runs-on: ${{ matrix.runner }}
     env:
-      MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,go,github:authzed/spicedb,buf,protoc"
+      MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,buf,protoc${{ matrix.extra_tools != '' && format(',{0}', matrix.extra_tools) || '' }}"
       # Rust tests use testcontainers (postgres, mysql, cockroach); use Linux/amd64 Docker platform.
       DOCKER_DEFAULT_PLATFORM: linux/amd64
     defaults:
@@ -148,9 +155,6 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set GOCACHE (absolute path required by Go)
-        run: echo "GOCACHE=$HOME/.cache/go-build" >> "$GITHUB_ENV"
 
       - name: Login to Docker Hub (testcontainers)
         if: matrix.runner == 'ubuntu-latest' || matrix.runner == 'ubuntu-24.04-arm'
@@ -166,15 +170,7 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "rust github:EmbarkStudios/cargo-deny go github:authzed/spicedb buf protoc"
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod', 'shared/c/*.go') }}
-          restore-keys: ${{ runner.os }}-go-
+          install_args: "rust github:EmbarkStudios/cargo-deny buf protoc ${{ matrix.extra_tools }}"
 
       - uses: Swatinem/rust-cache@v2
         with:
