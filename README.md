@@ -1,3 +1,11 @@
+<div align="center">
+
+![GitHub License](https://img.shields.io/github/license/borkfork/spicedb-embedded?style=plastic)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/borkfork/spicedb-embedded/ci.yml?branch=main&style=plastic&label=CI)
+![GitHub Release](https://img.shields.io/github/v/release/borkfork/spicedb-embedded?filter=!*grpc*&style=plastic)
+
+</div>
+
 # spicedb-embedded - SpiceDB as a library
 
 Sometimes you need a simple way to run access checks without spinning up a new service. This library provides an embedded version of [SpiceDB](https://authzed.com/spicedb) in various languages. Each implementation is based on a C-shared library (compiled from the SpiceDB source code) with a very thin FFI binding on top of it. This means that it runs the native SpiceDB code within your already-running process.
