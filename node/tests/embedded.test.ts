@@ -137,7 +137,12 @@ describe("EmbeddedSpiceDB", () => {
 
       try {
         const req = ReadRelationshipsRequest.create({
-          consistency: Consistency.create({ requirement: { oneofKind: "fullyConsistent", fullyConsistent: true } }),
+          consistency: Consistency.create({
+            requirement: {
+              oneofKind: "fullyConsistent",
+              fullyConsistent: true,
+            },
+          }),
           relationshipFilter: RelationshipFilter.create({
             resourceType: "document",
             optionalResourceId: "doc1",

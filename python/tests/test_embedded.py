@@ -109,7 +109,7 @@ def test_read_relationships_streaming():
             relationship_filter=RelationshipFilter(
                 resource_type="document",
                 optional_resource_id="doc1",
-            )
+            ),
         )
         results = list(spicedb.permissions().ReadRelationships(req))
         assert len(results) >= 2
