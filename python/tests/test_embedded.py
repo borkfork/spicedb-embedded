@@ -105,6 +105,7 @@ def test_read_relationships_streaming():
     ]
     with EmbeddedSpiceDB.start(TEST_SCHEMA, relationships) as spicedb:
         req = ReadRelationshipsRequest(
+            consistency=Consistency(fully_consistent=True),
             relationship_filter=RelationshipFilter(
                 resource_type="document",
                 optional_resource_id="doc1",
