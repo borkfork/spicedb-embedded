@@ -86,6 +86,7 @@ public class EmbeddedSpiceDbTests
 
         var req = new ReadRelationshipsRequest
         {
+            Consistency = new Consistency { FullyConsistent = true },
             RelationshipFilter = new RelationshipFilter
             {
                 ResourceType = "document",
