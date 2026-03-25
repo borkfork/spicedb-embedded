@@ -45,7 +45,7 @@
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- Must match the Netty version used by grpc-netty (4.1.x, NOT 4.2.x which is breaking). -->
-        <netty.version>4.1.131.Final</netty.version>
+        <netty.version>4.1.132.Final</netty.version>
     </properties>
 
     <dependencies>
