@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.2](https://github.com/borkfork/spicedb-embedded/compare/v0.6.1...v0.6.2) (2026-04-01)
+
+
+### Bug Fixes
+
+* **deps:** update go modules ([#114](https://github.com/borkfork/spicedb-embedded/issues/114)) ([022f909](https://github.com/borkfork/spicedb-embedded/commit/022f909827b5a5f00c24abf67d3a452fe05aa486))
+* **deps:** update maven dependencies ([#115](https://github.com/borkfork/spicedb-embedded/issues/115)) ([a5d8341](https://github.com/borkfork/spicedb-embedded/commit/a5d8341decedd67759d40de44b45d1d47bbae041))
+* **deps:** update maven dependencies to v4.1.132.final ([#124](https://github.com/borkfork/spicedb-embedded/issues/124)) ([ca76acb](https://github.com/borkfork/spicedb-embedded/commit/ca76acbd6c37dd1b16a2a8995aefda9e8905f278))
+* **deps:** update module github.com/authzed/spicedb to v1.51.0 ([#121](https://github.com/borkfork/spicedb-embedded/issues/121)) ([d6b4f28](https://github.com/borkfork/spicedb-embedded/commit/d6b4f28a1c904aabc84c5a5241f4f6116b96de28))
+* **deps:** update module google.golang.org/grpc to v1.80.0 ([#127](https://github.com/borkfork/spicedb-embedded/issues/127)) ([d758629](https://github.com/borkfork/spicedb-embedded/commit/d758629c66e988aea2b8a6b522195ecbc12acb50))
+* Set fully_consistent to true for unit tests ([#119](https://github.com/borkfork/spicedb-embedded/issues/119)) ([4fe01b9](https://github.com/borkfork/spicedb-embedded/commit/4fe01b9c22f34b29786c4817dd34db64a11d8ad8))
+
 ## [0.6.1](https://github.com/borkfork/spicedb-embedded/compare/v0.6.0...v0.6.1) (2026-03-14)
 
 
