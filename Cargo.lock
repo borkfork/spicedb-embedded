@@ -245,9 +245,9 @@ checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
 name = "cc"
-version = "1.2.58"
+version = "1.2.59"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1e928d4b69e3077709075a938a05ffbedfa53a84c8f766efbf8220bb1ff60e1"
+checksum = "b7a4d3ec6524d28a329fc53654bbadc9bdd7b0431f5d65f1a56ffb28a1ee5283"
 dependencies = [
  "find-msvc-tools",
  "shlex",
@@ -412,9 +412,9 @@ dependencies = [
 
 [[package]]
 name = "fastrand"
-version = "2.3.0"
+version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
+checksum = "a043dc74da1e37d6afe657061213aa6f425f855399a11d3463c6ecccc4dfda1f"
 
 [[package]]
 name = "ferroid"
@@ -617,7 +617,7 @@ dependencies = [
  "axum",
  "reqwest",
  "serde_json",
- "spicedb-embedded 0.6.2",
+ "spicedb-embedded 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio",
  "tower",
 ]
@@ -1849,9 +1849,9 @@ dependencies = [
 
 [[package]]
 name = "semver"
-version = "1.0.27"
+version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d767eb0aabc880b29956c35734170f26ed551a859dbd361d140cdbeca61ab1e2"
+checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
 
 [[package]]
 name = "serde"
@@ -2027,24 +2027,6 @@ dependencies = [
 
 [[package]]
 name = "spicedb-embedded"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6066f444d3b57929758fa8f2fafecba2fe46a967f643ce815a4522227f0ba2c4"
-dependencies = [
- "hyper-util",
- "serde",
- "serde_json",
- "spicedb-embedded-sys 0.6.2",
- "spicedb-grpc-tonic 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "thiserror",
- "tokio",
- "tonic",
- "tower",
- "tracing",
-]
-
-[[package]]
-name = "spicedb-embedded"
 version = "0.7.0"
 dependencies = [
  "hyper-util",
@@ -2064,13 +2046,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "spicedb-embedded-sys"
-version = "0.6.2"
+name = "spicedb-embedded"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1216e759e3440d543a2145b204fc7afc78e09b377577ebc6714c1d81058d510b"
+checksum = "5851c2c9f0045f279887919492d7d0d1c8b1ea27401a1a6d546fd20a4cc6a879"
 dependencies = [
- "prost",
+ "hyper-util",
+ "serde",
+ "serde_json",
+ "spicedb-embedded-sys 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "spicedb-grpc-tonic 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thiserror",
+ "tokio",
+ "tonic",
+ "tower",
+ "tracing",
 ]
 
 [[package]]
@@ -2079,6 +2069,16 @@ version = "0.7.0"
 dependencies = [
  "prost",
  "spicedb-grpc-tonic 1.0.0",
+]
+
+[[package]]
+name = "spicedb-embedded-sys"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2a15d42a1a9f70e17be2351a91b1ea47b461486cde1eae7d4b07b3d0c5776dc9"
+dependencies = [
+ "prost",
+ "spicedb-grpc-tonic 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
