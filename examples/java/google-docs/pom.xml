@@ -21,13 +21,13 @@
         <dependency>
             <groupId>com.borkfork</groupId>
             <artifactId>spicedb-embedded</artifactId>
-            <version>0.6.2</version>
+            <version>0.7.0</version>
         </dependency>
         <!-- Platform native library (use one: linux-x86_64, linux-aarch_64, osx-aarch_64, windows-x86_64) -->
         <dependency>
             <groupId>com.borkfork</groupId>
             <artifactId>spicedb-embedded</artifactId>
-            <version>0.6.2</version>
+            <version>0.7.0</version>
             <classifier>${os.detected.classifier}</classifier>
         </dependency>
         <dependency>
