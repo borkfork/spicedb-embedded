@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.0](https://github.com/borkfork/spicedb-embedded/compare/v0.6.2...v0.7.0) (2026-04-06)
+
+
+### Features
+
+* Expose prometheus metric endpoint and add oltp endpoint as a start option ([#133](https://github.com/borkfork/spicedb-embedded/issues/133)) ([8ab7d1a](https://github.com/borkfork/spicedb-embedded/commit/8ab7d1aed6ac9f8698a59a6c40cc601605058dac))
+
+
+### Bug Fixes
+
+* **deps:** update npm dependencies ([#130](https://github.com/borkfork/spicedb-embedded/issues/130)) ([dbfd996](https://github.com/borkfork/spicedb-embedded/commit/dbfd996cd37c70e2d5c2a60a1a0fbba4bf87bb19))
+* **deps:** update rust crate tokio to 1.51.0 ([#131](https://github.com/borkfork/spicedb-embedded/issues/131)) ([09a89d4](https://github.com/borkfork/spicedb-embedded/commit/09a89d4f333b9d1a974c4bda3cf84a88933f7746))
+
 ## [0.6.2](https://github.com/borkfork/spicedb-embedded/compare/v0.6.1...v0.6.2) (2026-04-01)
 
 
