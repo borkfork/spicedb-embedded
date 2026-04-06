@@ -617,7 +617,7 @@ dependencies = [
  "axum",
  "reqwest",
  "serde_json",
- "spicedb-embedded 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spicedb-embedded 0.6.2",
  "tokio",
  "tower",
 ]
@@ -2028,13 +2028,31 @@ dependencies = [
 [[package]]
 name = "spicedb-embedded"
 version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6066f444d3b57929758fa8f2fafecba2fe46a967f643ce815a4522227f0ba2c4"
+dependencies = [
+ "hyper-util",
+ "serde",
+ "serde_json",
+ "spicedb-embedded-sys 0.6.2",
+ "spicedb-grpc-tonic 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thiserror",
+ "tokio",
+ "tonic",
+ "tower",
+ "tracing",
+]
+
+[[package]]
+name = "spicedb-embedded"
+version = "0.7.0"
 dependencies = [
  "hyper-util",
  "prost",
  "serde",
  "serde_json",
  "serial_test",
- "spicedb-embedded-sys 0.6.2",
+ "spicedb-embedded-sys 0.7.0",
  "spicedb-grpc-tonic 1.0.0",
  "testcontainers-modules",
  "thiserror",
@@ -2046,32 +2064,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "spicedb-embedded"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6066f444d3b57929758fa8f2fafecba2fe46a967f643ce815a4522227f0ba2c4"
-dependencies = [
- "hyper-util",
- "serde",
- "serde_json",
- "spicedb-embedded-sys 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "spicedb-grpc-tonic 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "thiserror",
- "tokio",
- "tonic",
- "tower",
- "tracing",
-]
-
-[[package]]
-name = "spicedb-embedded-sys"
-version = "0.6.2"
-dependencies = [
- "prost",
- "spicedb-grpc-tonic 1.0.0",
-]
-
-[[package]]
 name = "spicedb-embedded-sys"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2079,6 +2071,14 @@ checksum = "1216e759e3440d543a2145b204fc7afc78e09b377577ebc6714c1d81058d510b"
 dependencies = [
  "prost",
  "spicedb-grpc-tonic 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "spicedb-embedded-sys"
+version = "0.7.0"
+dependencies = [
+ "prost",
+ "spicedb-grpc-tonic 1.0.0",
 ]
 
 [[package]]
