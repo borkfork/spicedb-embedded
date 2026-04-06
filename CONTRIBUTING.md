@@ -1,5 +1,33 @@
 # Contributing to spicedb-embedded
 
+## Architecture
+
+```
+┌───────────────────────────────────────────────────────────────────────┐
+│  Your Application (Rust, Java, Python, C#, TypeScript, etc.)          │
+├───────────────────────────────────────────────────────────────────────┤
+│  Language bindings (rust/, java/, python/, csharp/, node/)            │
+│  - FFI/cbindgen to shared/c                                           │
+│  - Native gRPC (protobuf) over Unix socket / tcp                      │
+├───────────────────────────────────────────────────────────────────────┤
+│  shared/c: C-shared library (Go/CGO)                                  │
+│  - Embeds SpiceDB server                                              │
+│  - Datastore: memory (default), postgres, cockroachdb, spanner, mysql │
+│  - Listens on unique Unix socket or TCP per instance                  │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+All language bindings build on top of **shared/c** via C FFI. Each instance is independent, enabling parallel testing.
+
+## Building shared/c
+
+```bash
+mise run shared-c-build
+# or manually:
+cd shared/c && CGO_ENABLED=1 go build -buildmode=c-shared -o libspicedb.dylib .  # macOS
+cd shared/c && CGO_ENABLED=1 go build -buildmode=c-shared -o libspicedb.so .      # Linux
+```
+
 ## Prerequisites
 
 1. Install [mise](https://mise.jdx.dev/installing-mise.html) for managing tools.

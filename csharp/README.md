@@ -46,8 +46,6 @@ If you have a schema and set of permissions that are static / readonly, this mig
 
 If you live in a world of microservices that each need to perform permission checks, you should almost certainly spin up a centralized SpiceDB deployment.
 
-If you want visibility into metrics for SpiceDB, you should avoid this.
-
 ## How does storage work?
 
 The default datastore is "memory" (memdb). If you use this datastore, keep in mind that it will reset on each app startup. This is a great option if you can easily provide your schema and relationships at runtime. This way, there are no external network calls to check relationships at runtime.
@@ -157,24 +155,36 @@ Use types from `Authzed.Api.V1` (ObjectReference, SubjectReference, Relationship
 ```csharp
 var options = new StartOptions
 {
-    Datastore = "memory",           // or "postgres", "cockroachdb", "spanner", "mysql"
+    Datastore = "memory",            // or "postgres", "cockroachdb", "spanner", "mysql"
     DatastoreUri = "postgres://...", // required for postgres, cockroachdb, spanner, mysql
-    SpannerCredentialsFile = "/path/to/key.json",  // Spanner only
-    SpannerEmulatorHost = "localhost:9010",       // Spanner emulator
-    MySqlTablePrefix = "spicedb_",                 // MySQL only (optional)
-    MetricsEnabled = false,                        // default; set true to enable Prometheus metrics
 };
 
 using var spicedb = EmbeddedSpiceDb.Start(schema, relationships, options);
 ```
 
-## Building & Testing
+## Metrics & Tracing
 
-```bash
-mise run shared-c-build
-cd csharp
-dotnet build
-dotnet test
+Metrics are disabled by default. Set `MetricsEnabled = true` to turn them on.
+
+**Prometheus** — exposes `http://localhost:9090/metrics` for scraping:
+
+```csharp
+var options = new StartOptions
+{
+    MetricsEnabled = true,
+    MetricsPort = 9090,
+};
 ```
 
-Or from the repo root: `mise run csharp-test`
+**OpenTelemetry traces** — pushes to an OTLP gRPC collector (insecure):
+
+```csharp
+var options = new StartOptions
+{
+    MetricsEnabled = true,
+    OtlpEndpoint = "localhost:4317",
+};
+```
+
+Both can be combined. `DatastoreMetricsEnabled` and `CacheMetricsEnabled` default to `true` when `MetricsEnabled` is set; set either to `false` to opt out.
+

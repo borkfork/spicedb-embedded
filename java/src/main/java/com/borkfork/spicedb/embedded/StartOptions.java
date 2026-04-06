@@ -38,11 +38,46 @@ public final class StartOptions {
   public String mysqlTablePrefix;
 
   /**
-   * Enable datastore Prometheus metrics (default: false). Disabled allows multiple instances in
-   * same process.
+   * Primary switch for all metrics and tracing (default: false). When false, all other
+   * observability options are ignored.
    */
   @SerializedName("metrics_enabled")
   public Boolean metricsEnabled;
+
+  /**
+   * Enable datastore Prometheus metrics (default: true when metricsEnabled=true). Only takes effect
+   * when metricsEnabled=true.
+   */
+  @SerializedName("datastore_metrics_enabled")
+  public Boolean datastoreMetricsEnabled;
+
+  /**
+   * Enable cache Prometheus metrics for dispatch/namespace/cluster caches (default: true when
+   * metricsEnabled=true). Only takes effect when metricsEnabled=true.
+   */
+  @SerializedName("cache_metrics_enabled")
+  public Boolean cacheMetricsEnabled;
+
+  /**
+   * OTLP gRPC endpoint for OpenTelemetry traces, e.g. {@code "localhost:4317"} (insecure). Only
+   * used when metricsEnabled=true.
+   */
+  @SerializedName("otlp_endpoint")
+  public String otlpEndpoint;
+
+  /**
+   * If set, starts a Prometheus HTTP server on this port at {@code /metrics}. Only used when
+   * metricsEnabled=true.
+   */
+  @SerializedName("metrics_port")
+  public Integer metricsPort;
+
+  /**
+   * Host/IP the Prometheus HTTP server binds to (default: {@code "0.0.0.0"}). Only used when
+   * metricsEnabled=true and metricsPort is set.
+   */
+  @SerializedName("metrics_host")
+  public String metricsHost;
 
   /** Create with defaults. Use setters or builder pattern. */
   public StartOptions() {}
@@ -82,6 +117,31 @@ public final class StartOptions {
 
     public Builder metricsEnabled(boolean enabled) {
       opts.metricsEnabled = enabled;
+      return this;
+    }
+
+    public Builder datastoreMetricsEnabled(boolean enabled) {
+      opts.datastoreMetricsEnabled = enabled;
+      return this;
+    }
+
+    public Builder cacheMetricsEnabled(boolean enabled) {
+      opts.cacheMetricsEnabled = enabled;
+      return this;
+    }
+
+    public Builder otlpEndpoint(String endpoint) {
+      opts.otlpEndpoint = endpoint;
+      return this;
+    }
+
+    public Builder metricsPort(int port) {
+      opts.metricsPort = port;
+      return this;
+    }
+
+    public Builder metricsHost(String host) {
+      opts.metricsHost = host;
       return this;
     }
 

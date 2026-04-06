@@ -21,7 +21,7 @@ export interface SpiceDBStartResult {
   streaming_transport: string;
 }
 
-/** Options for starting an embedded instance. Only datastore-related options are used. */
+/** Options for starting an embedded instance. */
 export interface SpiceDBStartOptions {
   /** Datastore: "memory" (default), "postgres", "cockroachdb", "spanner", "mysql" */
   datastore?: string;
@@ -33,8 +33,37 @@ export interface SpiceDBStartOptions {
   spanner_emulator_host?: string;
   /** Prefix for all tables (MySQL only) */
   mysql_table_prefix?: string;
-  /** Enable datastore Prometheus metrics (default: false) */
+  /**
+   * Primary switch for all metrics and tracing (default: false).
+   * When false, all other observability options are ignored.
+   */
   metrics_enabled?: boolean;
+  /**
+   * Enable datastore Prometheus metrics (default: true when metrics_enabled=true).
+   * Only takes effect when metrics_enabled=true.
+   */
+  datastore_metrics_enabled?: boolean;
+  /**
+   * Enable cache Prometheus metrics for dispatch/namespace/cluster caches
+   * (default: true when metrics_enabled=true).
+   * Only takes effect when metrics_enabled=true.
+   */
+  cache_metrics_enabled?: boolean;
+  /**
+   * OTLP gRPC endpoint for OpenTelemetry traces, e.g. "localhost:4317" (insecure).
+   * Only used when metrics_enabled=true.
+   */
+  otlp_endpoint?: string;
+  /**
+   * If set, starts a Prometheus HTTP server on this port at /metrics.
+   * Only used when metrics_enabled=true.
+   */
+  metrics_port?: number;
+  /**
+   * Host/IP the Prometheus HTTP server binds to (default: "0.0.0.0").
+   * Only used when metrics_enabled=true and metrics_port is set.
+   */
+  metrics_host?: string;
 }
 
 function findLibrary(): string {

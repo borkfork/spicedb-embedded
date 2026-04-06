@@ -69,8 +69,6 @@ If you have a schema and set of permissions that are static / readonly, this mig
 
 If you live in a world of microservices that each need to perform permission checks, you should almost certainly spin up a centralized SpiceDB deployment.
 
-If you want visibility into metrics for SpiceDB, you should avoid this.
-
 ## How does storage work?
 
 The default datastore is "memory" (memdb). If you use this datastore, keep in mind that it will reset on each app startup. This is a great option if you can easily provide your schema and relationships at runtime. This way, there are no external network calls to check relationships at runtime.
@@ -191,27 +189,40 @@ All types are re-exported from `spicedb_grpc_tonic::v1` (generated from buf.buil
 ### StartOptions
 
 ```rust
-use spicedb_embedded::{v1, EmbeddedSpiceDB, StartOptions};
+use spicedb_embedded::{EmbeddedSpiceDB, StartOptions};
 
 let options = StartOptions {
-    datastore: Some("memory".into()),           // or "postgres", "cockroachdb", "spanner", "mysql"
+    datastore: Some("memory".into()), // or "postgres", "cockroachdb", "spanner", "mysql"
     datastore_uri: Some("postgres://...".into()), // required for remote
-    spanner_credentials_file: None,
-    spanner_emulator_host: None,
-    mysql_table_prefix: None,
-    metrics_enabled: None, // default false; set Some(true) to enable Prometheus metrics
     ..Default::default()
 };
 
 let spicedb = EmbeddedSpiceDB::start_with_schema(schema, &relationships, Some(&options))?;
 ```
 
-## Building & Testing
+## Metrics & Tracing
 
-```bash
-cd rust
-cargo build
-cargo test
+Metrics are disabled by default. Set `metrics_enabled: Some(true)` to turn them on.
+
+**Prometheus** — exposes `http://localhost:9090/metrics` for scraping:
+
+```rust
+let options = StartOptions {
+    metrics_enabled: Some(true),
+    metrics_port: Some(9090),
+    ..Default::default()
+};
 ```
 
-Or from the repo root: `mise run check`
+**OpenTelemetry traces** — pushes to an OTLP gRPC collector (insecure):
+
+```rust
+let options = StartOptions {
+    metrics_enabled: Some(true),
+    otlp_endpoint: Some("localhost:4317".into()),
+    ..Default::default()
+};
+```
+
+Both can be combined. `datastore_metrics_enabled` and `cache_metrics_enabled` default to `true` when `metrics_enabled` is set; set them to `Some(false)` to opt out of either.
+

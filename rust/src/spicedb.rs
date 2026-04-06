@@ -40,9 +40,31 @@ pub struct StartOptions {
     /// Prefix for all tables (`MySQL` only)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mysql_table_prefix: Option<String>,
-    /// Enable datastore Prometheus metrics (default: false; disabled allows multiple instances in same process)
+    /// Primary switch for all metrics and tracing (default: false).
+    /// When false, all other observability options are ignored.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metrics_enabled: Option<bool>,
+    /// Enable datastore Prometheus metrics (default: true when `metrics_enabled=true`).
+    /// Only takes effect when `metrics_enabled=true`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub datastore_metrics_enabled: Option<bool>,
+    /// Enable cache Prometheus metrics for dispatch/namespace/cluster caches
+    /// (default: true when `metrics_enabled=true`).
+    /// Only takes effect when `metrics_enabled=true`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_metrics_enabled: Option<bool>,
+    /// OTLP gRPC endpoint for OpenTelemetry traces, e.g. `"localhost:4317"` (insecure).
+    /// Only used when `metrics_enabled=true`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub otlp_endpoint: Option<String>,
+    /// If set, starts a Prometheus HTTP server on this port at `/metrics`.
+    /// Only used when `metrics_enabled=true`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metrics_port: Option<u16>,
+    /// Host/IP the Prometheus HTTP server binds to (default: `"0.0.0.0"`).
+    /// Only used when `metrics_enabled=true` and `metrics_port` is set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metrics_host: Option<String>,
 }
 
 /// Parses the JSON response string from the C library (start/dispose) into the inner data or error.

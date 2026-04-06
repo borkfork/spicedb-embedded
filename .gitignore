@@ -44,6 +44,8 @@ shared/c/libspicedb.dylib
 shared/c/libspicedb.h
 shared/c/spicedb.dll
 shared/c/spicedb.h
+# accidental `go build` without -buildmode=c-shared outputs a binary named after the directory
+shared/c/c
 
 # IDE
 .idea/

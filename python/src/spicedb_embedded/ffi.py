@@ -32,8 +32,25 @@ class StartOptions:
     spanner_emulator_host: str | None = None
     #: Prefix for all tables (MySQL only).
     mysql_table_prefix: str | None = None
-    #: Enable datastore Prometheus metrics (default: false).
+    #: Primary switch for all metrics and tracing (default: False).
+    #: When False, all other observability options are ignored.
     metrics_enabled: bool | None = None
+    #: Enable datastore Prometheus metrics (default: True when metrics_enabled=True).
+    #: Only takes effect when metrics_enabled=True.
+    datastore_metrics_enabled: bool | None = None
+    #: Enable cache Prometheus metrics for dispatch/namespace/cluster caches
+    #: (default: True when metrics_enabled=True).
+    #: Only takes effect when metrics_enabled=True.
+    cache_metrics_enabled: bool | None = None
+    #: OTLP gRPC endpoint for OpenTelemetry traces, e.g. "localhost:4317" (insecure).
+    #: Only used when metrics_enabled=True.
+    otlp_endpoint: str | None = None
+    #: If set, starts a Prometheus HTTP server on this port at /metrics.
+    #: Only used when metrics_enabled=True.
+    metrics_port: int | None = None
+    #: Host/IP the Prometheus HTTP server binds to (default: "0.0.0.0").
+    #: Only used when metrics_enabled=True and metrics_port is set.
+    metrics_host: str | None = None
 
 
 def _platform_key() -> str | None:
