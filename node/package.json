@@ -32,11 +32,11 @@
   "dependencies": {
     "@authzed/authzed-node": "^1.6.1",
     "@grpc/grpc-js": "^1.14.3",
-    "koffi": "^2.15.2"
+    "koffi": "^2.15.5"
   },
   "devDependencies": {
-    "@types/node": "^24.12.0",
-    "eslint": "^10.1.0",
+    "@types/node": "^24.12.2",
+    "eslint": "^10.2.0",
     "prettier": "^3.8.1",
     "typescript": "^6.0.2",
     "vitest": "^4.1.2"
