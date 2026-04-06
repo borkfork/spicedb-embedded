@@ -72,6 +72,13 @@ public final class StartOptions {
   @SerializedName("metrics_port")
   public Integer metricsPort;
 
+  /**
+   * Host/IP the Prometheus HTTP server binds to (default: {@code "0.0.0.0"}). Only used when
+   * metricsEnabled=true and metricsPort is set.
+   */
+  @SerializedName("metrics_host")
+  public String metricsHost;
+
   /** Create with defaults. Use setters or builder pattern. */
   public StartOptions() {}
 
@@ -130,6 +137,11 @@ public final class StartOptions {
 
     public Builder metricsPort(int port) {
       opts.metricsPort = port;
+      return this;
+    }
+
+    public Builder metricsHost(String host) {
+      opts.metricsHost = host;
       return this;
     }
 

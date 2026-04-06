@@ -37,6 +37,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	oteltrace "go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -44,16 +45,17 @@ import (
 
 // Instance holds a SpiceDB server instance (in-memory + streaming proxy).
 type Instance struct {
-	server            server.RunnableServer
-	transport         string // always "memory"
-	clientConn        *grpc.ClientConn
-	streamingAddr     string
-	streamingListener net.Listener
-	streamingServer   *grpc.Server
-	cancel            context.CancelFunc
-	wg                *errgroup.Group
-	tracerProvider    *sdktrace.TracerProvider
-	metricsServer     *http.Server
+	server             server.RunnableServer
+	transport          string // always "memory"
+	clientConn         *grpc.ClientConn
+	streamingAddr      string
+	streamingListener  net.Listener
+	streamingServer    *grpc.Server
+	cancel             context.CancelFunc
+	wg                 *errgroup.Group
+	tracerProvider     *sdktrace.TracerProvider
+	prevTracerProvider oteltrace.TracerProvider
+	metricsServer      *http.Server
 }
 
 // Instance management
@@ -138,6 +140,9 @@ type StartOptions struct {
 	// MetricsPort, if > 0, starts a Prometheus HTTP server at /metrics on this port.
 	// Only used when MetricsEnabled=true.
 	MetricsPort             int    `json:"metrics_port,omitempty"`
+	// MetricsHost is the host/IP the Prometheus HTTP server binds to (default: "0.0.0.0").
+	// Only used when MetricsEnabled=true and MetricsPort > 0.
+	MetricsHost             string `json:"metrics_host,omitempty"`
 }
 
 // spicedb_start creates a new SpiceDB instance (empty server).
@@ -181,16 +186,27 @@ func spicedb_start(optionsJSON *C.char) *C.char {
 	instance.transport = "memory"
 
 	if opts.MetricsEnabled && opts.OTLPEndpoint != "" {
-		tp, err := setupOTelTracing(ctx, opts.OTLPEndpoint)
+		prev, tp, err := setupOTelTracing(ctx, opts.OTLPEndpoint)
 		if err != nil {
 			cancel()
 			return makeError(fmt.Sprintf("failed to configure OTLP tracing: %v", err))
 		}
 		instance.tracerProvider = tp
+		instance.prevTracerProvider = prev
 	}
 
 	if opts.MetricsEnabled && opts.MetricsPort > 0 {
-		instance.metricsServer = startMetricsServer(opts.MetricsPort)
+		host := opts.MetricsHost
+		if host == "" {
+			host = "0.0.0.0"
+		}
+		srv, err := startMetricsServer(host, opts.MetricsPort)
+		if err != nil {
+			cancel()
+			cleanupObservability(instance)
+			return makeError(fmt.Sprintf("failed to start metrics server: %v", err))
+		}
+		instance.metricsServer = srv
 	}
 
 	var wg errgroup.Group
@@ -215,12 +231,14 @@ func spicedb_start(optionsJSON *C.char) *C.char {
 	if instance.clientConn == nil {
 		cancel()
 		_ = wg.Wait()
+		cleanupObservability(instance)
 		return makeError("failed to dial in-memory server")
 	}
 	proxyAddr, err := startStreamingProxy(ctx, instance, id, &wg)
 	if err != nil {
 		cancel()
 		_ = wg.Wait()
+		cleanupObservability(instance)
 		return makeError(fmt.Sprintf("failed to start streaming proxy: %v", err))
 	}
 	instance.streamingAddr = proxyAddr
@@ -327,29 +345,53 @@ func boolPtrOrDefault(b *bool, def bool) bool {
 
 // setupOTelTracing configures the global OpenTelemetry TracerProvider to export via OTLP gRPC.
 // endpoint should be "host:port" (e.g. "localhost:4317"). Uses insecure transport.
-func setupOTelTracing(ctx context.Context, endpoint string) (*sdktrace.TracerProvider, error) {
+// Returns the previous global TracerProvider so it can be restored on shutdown.
+func setupOTelTracing(ctx context.Context, endpoint string) (prev oteltrace.TracerProvider, tp *sdktrace.TracerProvider, err error) {
 	exporter, err := otlptracegrpc.New(ctx,
 		otlptracegrpc.WithEndpoint(endpoint),
 		otlptracegrpc.WithInsecure(),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("creating OTLP gRPC exporter: %w", err)
+		return nil, nil, fmt.Errorf("creating OTLP gRPC exporter: %w", err)
 	}
-	tp := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exporter))
+	prev = otel.GetTracerProvider()
+	tp = sdktrace.NewTracerProvider(sdktrace.WithBatcher(exporter))
 	otel.SetTracerProvider(tp)
-	return tp, nil
+	return prev, tp, nil
 }
 
-// startMetricsServer starts an HTTP server on the given port serving Prometheus metrics at /metrics.
-func startMetricsServer(port int) *http.Server {
+// startMetricsServer binds to host:port and serves Prometheus metrics at /metrics.
+// Returns an error immediately if the port cannot be bound.
+func startMetricsServer(host string, port int) (*http.Server, error) {
+	addr := fmt.Sprintf("%s:%d", host, port)
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("binding metrics port %d: %w", port, err)
+	}
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
+		Addr:    addr,
 		Handler: mux,
 	}
-	go func() { _ = srv.ListenAndServe() }()
-	return srv
+	go func() { _ = srv.Serve(ln) }()
+	return srv, nil
+}
+
+// cleanupObservability shuts down the metrics HTTP server and tracer provider, restoring the
+// previous global TracerProvider. Safe to call when either field is nil.
+func cleanupObservability(instance *Instance) {
+	if instance.metricsServer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = instance.metricsServer.Shutdown(ctx)
+	}
+	if instance.tracerProvider != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = instance.tracerProvider.Shutdown(ctx)
+		otel.SetTracerProvider(instance.prevTracerProvider)
+	}
 }
 
 // spicedb_dispose disposes of a SpiceDB instance.
@@ -385,16 +427,8 @@ func spicedb_dispose(handle C.ulonglong) *C.char {
 
 	_ = instance.wg.Wait()
 
-	if instance.metricsServer != nil {
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer shutdownCancel()
-		_ = instance.metricsServer.Shutdown(shutdownCtx)
-	}
-	if instance.tracerProvider != nil {
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer shutdownCancel()
-		_ = instance.tracerProvider.Shutdown(shutdownCtx)
-	}
+	cleanupObservability(instance)
+
 	// Clean up streaming proxy socket file (Unix only)
 	if instance.streamingAddr != "" && runtime.GOOS != "windows" {
 		os.Remove(instance.streamingAddr)

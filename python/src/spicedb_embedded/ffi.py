@@ -48,6 +48,9 @@ class StartOptions:
     #: If set, starts a Prometheus HTTP server on this port at /metrics.
     #: Only used when metrics_enabled=True.
     metrics_port: int | None = None
+    #: Host/IP the Prometheus HTTP server binds to (default: "0.0.0.0").
+    #: Only used when metrics_enabled=True and metrics_port is set.
+    metrics_host: str | None = None
 
 
 def _platform_key() -> str | None:

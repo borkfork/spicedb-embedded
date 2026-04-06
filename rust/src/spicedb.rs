@@ -61,6 +61,10 @@ pub struct StartOptions {
     /// Only used when `metrics_enabled=true`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metrics_port: Option<u16>,
+    /// Host/IP the Prometheus HTTP server binds to (default: `"0.0.0.0"`).
+    /// Only used when `metrics_enabled=true` and `metrics_port` is set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metrics_host: Option<String>,
 }
 
 /// Parses the JSON response string from the C library (start/dispose) into the inner data or error.

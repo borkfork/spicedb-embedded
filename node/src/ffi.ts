@@ -59,6 +59,11 @@ export interface SpiceDBStartOptions {
    * Only used when metrics_enabled=true.
    */
   metrics_port?: number;
+  /**
+   * Host/IP the Prometheus HTTP server binds to (default: "0.0.0.0").
+   * Only used when metrics_enabled=true and metrics_port is set.
+   */
+  metrics_host?: string;
 }
 
 function findLibrary(): string {

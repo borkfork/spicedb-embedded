@@ -300,4 +300,11 @@ public record struct StartOptions
     /// </summary>
     [JsonPropertyName("metrics_port")]
     public int? MetricsPort { get; init; }
+
+    /// <summary>
+    /// Host/IP the Prometheus HTTP server binds to (default: "0.0.0.0").
+    /// Only used when MetricsEnabled=true and MetricsPort is set.
+    /// </summary>
+    [JsonPropertyName("metrics_host")]
+    public string? MetricsHost { get; init; }
 }
