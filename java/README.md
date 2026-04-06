@@ -62,8 +62,6 @@ If you have a schema and set of permissions that are static / readonly, this mig
 
 If you live in a world of microservices that each need to perform permission checks, you should almost certainly spin up a centralized SpiceDB deployment.
 
-If you want visibility into metrics for SpiceDB, you should avoid this.
-
 ## How does storage work?
 
 The default datastore is "memory" (memdb). If you use this datastore, keep in mind that it will reset on each app startup. This is a great option if you can easily provide your schema and relationships at runtime. This way, there are no external network calls to check relationships at runtime.
@@ -207,10 +205,33 @@ try (var spicedb = EmbeddedSpiceDB.start(schema, List.of(), options)) {
 ```
 
 - **datastore**: `"memory"` (default), `"postgres"`, `"cockroachdb"`, `"spanner"`, `"mysql"`
-- **datastore_uri**: Connection string (required for remote datastores)
-- **spanner_credentials_file**, **spanner_emulator_host**: Spanner-only
-- **mysql_table_prefix**: MySQL-only (optional)
-- **metrics_enabled**: Enable datastore Prometheus metrics (default: false)
+- **datastoreUri**: Connection string (required for remote datastores)
+- **spannerCredentialsFile**, **spannerEmulatorHost**: Spanner-only
+- **mysqlTablePrefix**: MySQL-only (optional)
+
+## Metrics & Tracing
+
+Metrics are disabled by default. Call `.metricsEnabled(true)` to turn them on.
+
+**Prometheus** — exposes `http://localhost:9090/metrics` for scraping:
+
+```java
+var options = StartOptions.builder()
+    .metricsEnabled(true)
+    .metricsPort(9090)
+    .build();
+```
+
+**OpenTelemetry traces** — pushes to an OTLP gRPC collector (insecure):
+
+```java
+var options = StartOptions.builder()
+    .metricsEnabled(true)
+    .otlpEndpoint("localhost:4317")
+    .build();
+```
+
+Both can be combined. `datastoreMetricsEnabled` and `cacheMetricsEnabled` default to `true` when `metricsEnabled` is set; call `.datastoreMetricsEnabled(false)` or `.cacheMetricsEnabled(false)` to opt out of either.
 
 ## JVM Warnings
 
@@ -240,12 +261,3 @@ java -Djava.library.path=path/to/shared/c \
 
 Maven/Gradle: set these in your run configuration or `MAVEN_OPTS` / `GRADLE_OPTS` when running tests.
 
-## Building & Testing
-
-```bash
-mise run shared-c-build
-cd java
-mvn test
-```
-
-Or from the repo root: `mise run java-test`

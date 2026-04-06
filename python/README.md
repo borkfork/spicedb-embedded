@@ -51,8 +51,6 @@ If you have a schema and set of permissions that are static / readonly, this mig
 
 If you live in a world of microservices that each need to perform permission checks, you should almost certainly spin up a centralized SpiceDB deployment.
 
-If you want visibility into metrics for SpiceDB, you should avoid this.
-
 ## How does storage work?
 
 The default datastore is "memory" (memdb). If you use this datastore, keep in mind that it will reset on each app startup. This is a great option if you can easily provide your schema and relationships at runtime. This way, there are no external network calls to check relationships at runtime.
@@ -167,25 +165,35 @@ Use types from `authzed.api.v1` (ObjectReference, SubjectReference, Relationship
 from spicedb_embedded import EmbeddedSpiceDB, StartOptions
 
 options = StartOptions(
-    datastore="memory",           # or "postgres", "cockroachdb", "spanner", "mysql"
+    datastore="memory",  # or "postgres", "cockroachdb", "spanner", "mysql"
     datastore_uri="postgres://user:pass@localhost:5432/spicedb",  # required for remote
-    spanner_credentials_file="/path/to/key.json",  # Spanner only
-    spanner_emulator_host="localhost:9010",       # Spanner emulator
-    mysql_table_prefix="spicedb_",                 # MySQL only (optional)
-    metrics_enabled=False,                         # default; set True to enable Prometheus metrics
 )
 
 with EmbeddedSpiceDB.start(schema, [], options=options) as spicedb:
     ...
 ```
 
-## Building & Testing
+## Metrics & Tracing
 
-```bash
-mise run shared-c-build
-cd python
-pip install -e ".[dev]"
-pytest
+Metrics are disabled by default. Set `metrics_enabled=True` to turn them on.
+
+**Prometheus** — exposes `http://localhost:9090/metrics` for scraping:
+
+```python
+options = StartOptions(
+    metrics_enabled=True,
+    metrics_port=9090,
+)
 ```
 
-Or from the repo root: `mise run python-test`
+**OpenTelemetry traces** — pushes to an OTLP gRPC collector (insecure):
+
+```python
+options = StartOptions(
+    metrics_enabled=True,
+    otlp_endpoint="localhost:4317",
+)
+```
+
+Both can be combined. `datastore_metrics_enabled` and `cache_metrics_enabled` default to `True` when `metrics_enabled` is set; pass `False` to opt out of either.
+

@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"runtime"
 	"sync"
@@ -32,6 +33,10 @@ import (
 	"github.com/authzed/spicedb/pkg/cmd/server"
 	"github.com/authzed/spicedb/pkg/cmd/util"
 	spicedbdatastore "github.com/authzed/spicedb/pkg/datastore"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -47,6 +52,8 @@ type Instance struct {
 	streamingServer   *grpc.Server
 	cancel            context.CancelFunc
 	wg                *errgroup.Group
+	tracerProvider    *sdktrace.TracerProvider
+	metricsServer     *http.Server
 }
 
 // Instance management
@@ -89,7 +96,7 @@ func spicedb_free(ptr *C.char) {
 	}
 }
 
-// StartOptions configures the datastore. Passed as JSON to spicedb_start.
+// StartOptions configures the datastore and observability. Passed as JSON to spicedb_start.
 // Supported fields:
 //   - datastore: "memory" (default), "postgres", "cockroachdb", "spanner", "mysql"
 //   - datastore_uri: connection string for remote datastores (required for postgres, cockroachdb, spanner, mysql)
@@ -100,14 +107,37 @@ func spicedb_free(ptr *C.char) {
 //
 // MySQL-specific (when datastore=mysql):
 //   - mysql_table_prefix: prefix for all SpiceDB tables (optional, for multi-tenant)
-//   - metrics_enabled: enable datastore Prometheus metrics (default: false; disabled allows multiple instances in same process)
+//
+// Observability (all disabled by default):
+//   - metrics_enabled: primary switch for all metrics and tracing (default: false). When false, all
+//     other metric/tracing options are ignored.
+//   - datastore_metrics_enabled: enable datastore Prometheus metrics (default: true when metrics_enabled=true).
+//   - cache_metrics_enabled: enable cache Prometheus metrics for dispatch/namespace/cluster caches
+//     (default: true when metrics_enabled=true).
+//   - otlp_endpoint: OTLP gRPC endpoint for OpenTelemetry traces, e.g. "localhost:4317". Insecure.
+//     Only used when metrics_enabled=true.
+//   - metrics_port: if > 0, starts a Prometheus HTTP server on this port at /metrics.
+//     Only used when metrics_enabled=true.
 type StartOptions struct {
 	Datastore              string `json:"datastore"`
 	DatastoreURI           string `json:"datastore_uri"`
 	SpannerCredentialsFile string `json:"spanner_credentials_file"`
 	SpannerEmulatorHost    string `json:"spanner_emulator_host"`
 	MySQLTablePrefix       string `json:"mysql_table_prefix"`
-	MetricsEnabled         bool   `json:"metrics_enabled"`
+	// MetricsEnabled is the primary switch. All other observability options are ignored when false.
+	MetricsEnabled          bool   `json:"metrics_enabled"`
+	// DatastoreMetricsEnabled enables datastore Prometheus metrics. Defaults to true when MetricsEnabled=true.
+	// A null/absent value means "use the default" (true).
+	DatastoreMetricsEnabled *bool  `json:"datastore_metrics_enabled,omitempty"`
+	// CacheMetricsEnabled enables Prometheus metrics for internal caches. Defaults to true when MetricsEnabled=true.
+	// A null/absent value means "use the default" (true).
+	CacheMetricsEnabled     *bool  `json:"cache_metrics_enabled,omitempty"`
+	// OTLPEndpoint, if non-empty, configures OpenTelemetry tracing to push to this OTLP gRPC endpoint.
+	// Only used when MetricsEnabled=true. Example: "localhost:4317" (insecure).
+	OTLPEndpoint            string `json:"otlp_endpoint,omitempty"`
+	// MetricsPort, if > 0, starts a Prometheus HTTP server at /metrics on this port.
+	// Only used when MetricsEnabled=true.
+	MetricsPort             int    `json:"metrics_port,omitempty"`
 }
 
 // spicedb_start creates a new SpiceDB instance (empty server).
@@ -142,13 +172,26 @@ func spicedb_start(optionsJSON *C.char) *C.char {
 		cancel()
 		return makeError(fmt.Sprintf("failed to create datastore: %v", err))
 	}
-	srv, err := newSpiceDBServerFromDatastore(ctx, "", "memory", ds)
+	srv, err := newSpiceDBServerFromDatastore(ctx, "", "memory", ds, opts.MetricsEnabled && boolPtrOrDefault(opts.CacheMetricsEnabled, true))
 	if err != nil {
 		cancel()
 		return makeError(fmt.Sprintf("failed to create server: %v", err))
 	}
 	instance.server = srv
 	instance.transport = "memory"
+
+	if opts.MetricsEnabled && opts.OTLPEndpoint != "" {
+		tp, err := setupOTelTracing(ctx, opts.OTLPEndpoint)
+		if err != nil {
+			cancel()
+			return makeError(fmt.Sprintf("failed to configure OTLP tracing: %v", err))
+		}
+		instance.tracerProvider = tp
+	}
+
+	if opts.MetricsEnabled && opts.MetricsPort > 0 {
+		instance.metricsServer = startMetricsServer(opts.MetricsPort)
+	}
 
 	var wg errgroup.Group
 	wg.Go(func() error {
@@ -218,11 +261,12 @@ func newDatastoreFromOpts(ctx context.Context, opts StartOptions) (spicedbdatast
 	if engine == "" {
 		engine = datastore.MemoryEngine
 	}
+	datastoreMetrics := opts.MetricsEnabled && boolPtrOrDefault(opts.DatastoreMetricsEnabled, true)
 	dsOpts := []datastore.ConfigOption{
 		datastore.DefaultDatastoreConfig().ToOption(),
 		datastore.WithEngine(engine),
 		datastore.WithRequestHedgingEnabled(false),
-		datastore.WithEnableDatastoreMetrics(opts.MetricsEnabled),
+		datastore.WithEnableDatastoreMetrics(datastoreMetrics),
 	}
 	if opts.DatastoreURI != "" {
 		dsOpts = append(dsOpts, datastore.WithURI(opts.DatastoreURI))
@@ -243,7 +287,8 @@ func newDatastoreFromOpts(ctx context.Context, opts StartOptions) (spicedbdatast
 
 // newSpiceDBServerFromDatastore creates a server that uses an existing datastore.
 // transport: "memory" (bufconn), "unix", or "tcp". For memory, addr is ignored.
-func newSpiceDBServerFromDatastore(ctx context.Context, addr string, transport string, ds spicedbdatastore.Datastore) (server.RunnableServer, error) {
+// cacheMetricsEnabled controls whether internal cache metrics are registered.
+func newSpiceDBServerFromDatastore(ctx context.Context, addr string, transport string, ds spicedbdatastore.Datastore, cacheMetricsEnabled bool) (server.RunnableServer, error) {
 	grpcConfig := util.GRPCServerConfig{Enabled: true}
 	if transport == "memory" {
 		grpcConfig.Network = util.BufferedNetwork
@@ -264,12 +309,47 @@ func newSpiceDBServerFromDatastore(ctx context.Context, addr string, transport s
 		}),
 		server.WithHTTPGateway(util.HTTPServerConfig{HTTPEnabled: false}),
 		server.WithMetricsAPI(util.HTTPServerConfig{HTTPEnabled: false}),
-		server.WithDispatchCacheConfig(server.CacheConfig{Enabled: false, Metrics: false}),
-		server.WithNamespaceCacheConfig(server.CacheConfig{Enabled: false, Metrics: false}),
-		server.WithClusterDispatchCacheConfig(server.CacheConfig{Enabled: false, Metrics: false}),
+		server.WithDispatchCacheConfig(server.CacheConfig{Enabled: false, Metrics: cacheMetricsEnabled}),
+		server.WithNamespaceCacheConfig(server.CacheConfig{Enabled: false, Metrics: cacheMetricsEnabled}),
+		server.WithClusterDispatchCacheConfig(server.CacheConfig{Enabled: false, Metrics: cacheMetricsEnabled}),
 		server.WithDatastore(ds),
 	}
 	return server.NewConfigWithOptionsAndDefaults(configOpts...).Complete(ctx)
+}
+
+// boolPtrOrDefault returns *b if non-nil, otherwise def.
+func boolPtrOrDefault(b *bool, def bool) bool {
+	if b == nil {
+		return def
+	}
+	return *b
+}
+
+// setupOTelTracing configures the global OpenTelemetry TracerProvider to export via OTLP gRPC.
+// endpoint should be "host:port" (e.g. "localhost:4317"). Uses insecure transport.
+func setupOTelTracing(ctx context.Context, endpoint string) (*sdktrace.TracerProvider, error) {
+	exporter, err := otlptracegrpc.New(ctx,
+		otlptracegrpc.WithEndpoint(endpoint),
+		otlptracegrpc.WithInsecure(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating OTLP gRPC exporter: %w", err)
+	}
+	tp := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exporter))
+	otel.SetTracerProvider(tp)
+	return tp, nil
+}
+
+// startMetricsServer starts an HTTP server on the given port serving Prometheus metrics at /metrics.
+func startMetricsServer(port int) *http.Server {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%d", port),
+		Handler: mux,
+	}
+	go func() { _ = srv.ListenAndServe() }()
+	return srv
 }
 
 // spicedb_dispose disposes of a SpiceDB instance.
@@ -304,6 +384,17 @@ func spicedb_dispose(handle C.ulonglong) *C.char {
 	}
 
 	_ = instance.wg.Wait()
+
+	if instance.metricsServer != nil {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		_ = instance.metricsServer.Shutdown(shutdownCtx)
+	}
+	if instance.tracerProvider != nil {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		_ = instance.tracerProvider.Shutdown(shutdownCtx)
+	}
 	// Clean up streaming proxy socket file (Unix only)
 	if instance.streamingAddr != "" && runtime.GOOS != "windows" {
 		os.Remove(instance.streamingAddr)

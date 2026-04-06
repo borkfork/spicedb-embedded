@@ -266,6 +266,38 @@ public record struct StartOptions
     [JsonPropertyName("mysql_table_prefix")]
     public string? MySqlTablePrefix { get; init; }
 
-    /// <summary>Enable datastore Prometheus metrics (default: false).</summary>
+    /// <summary>
+    /// Primary switch for all metrics and tracing (default: false).
+    /// When false, all other observability options are ignored.
+    /// </summary>
     public bool? MetricsEnabled { get; init; }
+
+    /// <summary>
+    /// Enable datastore Prometheus metrics (default: true when MetricsEnabled=true).
+    /// Only takes effect when MetricsEnabled=true.
+    /// </summary>
+    [JsonPropertyName("datastore_metrics_enabled")]
+    public bool? DatastoreMetricsEnabled { get; init; }
+
+    /// <summary>
+    /// Enable cache Prometheus metrics for dispatch/namespace/cluster caches
+    /// (default: true when MetricsEnabled=true).
+    /// Only takes effect when MetricsEnabled=true.
+    /// </summary>
+    [JsonPropertyName("cache_metrics_enabled")]
+    public bool? CacheMetricsEnabled { get; init; }
+
+    /// <summary>
+    /// OTLP gRPC endpoint for OpenTelemetry traces, e.g. "localhost:4317" (insecure).
+    /// Only used when MetricsEnabled=true.
+    /// </summary>
+    [JsonPropertyName("otlp_endpoint")]
+    public string? OtlpEndpoint { get; init; }
+
+    /// <summary>
+    /// If set, starts a Prometheus HTTP server on this port at /metrics.
+    /// Only used when MetricsEnabled=true.
+    /// </summary>
+    [JsonPropertyName("metrics_port")]
+    public int? MetricsPort { get; init; }
 }
