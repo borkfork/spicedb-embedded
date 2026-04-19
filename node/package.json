@@ -32,17 +32,17 @@
   "dependencies": {
     "@authzed/authzed-node": "^1.6.1",
     "@grpc/grpc-js": "^1.14.3",
-    "koffi": "^2.15.5"
+    "koffi": "^2.16.1"
   },
   "devDependencies": {
     "@types/node": "^24.12.2",
-    "eslint": "^10.2.0",
-    "prettier": "^3.8.1",
-    "typescript": "^6.0.2",
-    "vitest": "^4.1.2"
+    "eslint": "^10.2.1",
+    "prettier": "^3.8.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.4"
   },
   "engines": {
-    "node": ">=24.14.1"
+    "node": ">=24.15.0"
   },
   "license": "Apache-2.0",
   "repository": {
