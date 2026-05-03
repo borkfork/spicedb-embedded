@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.7.1](https://github.com/borkfork/spicedb-embedded/compare/v0.7.0...v0.7.1) (2026-05-03)
+
+
+### Bug Fixes
+
+* **deps:** update maven dependencies ([#142](https://github.com/borkfork/spicedb-embedded/issues/142)) ([3e1c862](https://github.com/borkfork/spicedb-embedded/commit/3e1c862b6b39e557c9b6d87ef2a7dcd8e2fd29ec))
+* **deps:** update npm dependencies ([#135](https://github.com/borkfork/spicedb-embedded/issues/135)) ([da3d883](https://github.com/borkfork/spicedb-embedded/commit/da3d8834c3ea2d577f586349048fae6c9008ef5b))
+* **deps:** update rust crate tokio to 1.52.1 ([#136](https://github.com/borkfork/spicedb-embedded/issues/136)) ([7a44606](https://github.com/borkfork/spicedb-embedded/commit/7a446065bda20b050ca887fd48e1ae574dacfe94))
+
 ## [0.7.0](https://github.com/borkfork/spicedb-embedded/compare/v0.6.2...v0.7.0) (2026-04-06)
 
 
