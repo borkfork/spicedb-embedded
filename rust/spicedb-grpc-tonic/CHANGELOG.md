@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/borkfork/spicedb-embedded/compare/spicedb-grpc-tonic-v1.0.0...spicedb-grpc-tonic-v1.1.0) (2026-05-03)
+
+
+### Features
+
+* Expose prometheus metric endpoint and add oltp endpoint as a start option ([#133](https://github.com/borkfork/spicedb-embedded/issues/133)) ([8ab7d1a](https://github.com/borkfork/spicedb-embedded/commit/8ab7d1aed6ac9f8698a59a6c40cc601605058dac))
+
 ## [1.0.0](https://github.com/borkfork/spicedb-embedded/compare/spicedb-grpc-tonic-v0.2.0...spicedb-grpc-tonic-v1.0.0) (2026-02-25)
 
 
