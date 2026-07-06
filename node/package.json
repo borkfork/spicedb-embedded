@@ -32,7 +32,7 @@
   "dependencies": {
     "@authzed/authzed-node": "^1.6.1",
     "@grpc/grpc-js": "^1.14.4",
-    "koffi": "^2.16.2"
+    "koffi": "^3.1.0"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",
