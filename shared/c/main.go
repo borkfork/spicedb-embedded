@@ -218,22 +218,14 @@ func spicedb_start(optionsJSON *C.char) *C.char {
 	})
 	instance.wg = &wg
 
-	dialCtx, dialCancel := context.WithTimeout(ctx, 5*time.Second)
-	defer dialCancel()
-	for i := 0; i < 20; i++ {
-		conn, err := instance.server.GRPCDialContext(dialCtx, grpc.WithTransportCredentials(insecure.NewCredentials()))
-		if err == nil {
-			instance.clientConn = conn
-			break
-		}
-		time.Sleep(25 * time.Millisecond)
-	}
-	if instance.clientConn == nil {
+	conn, err := instance.server.NewClient(grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
 		cancel()
 		_ = wg.Wait()
 		cleanupObservability(instance)
-		return makeError("failed to dial in-memory server")
+		return makeError(fmt.Sprintf("failed to create in-memory client: %v", err))
 	}
+	instance.clientConn = conn
 	proxyAddr, err := startStreamingProxy(ctx, instance, id, &wg)
 	if err != nil {
 		cancel()
