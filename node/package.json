@@ -31,18 +31,18 @@
   },
   "dependencies": {
     "@authzed/authzed-node": "^1.6.1",
-    "@grpc/grpc-js": "^1.14.3",
+    "@grpc/grpc-js": "^1.14.4",
     "koffi": "^2.16.2"
   },
   "devDependencies": {
-    "@types/node": "^24.12.4",
-    "eslint": "^10.3.0",
-    "prettier": "^3.8.3",
+    "@types/node": "^24.13.2",
+    "eslint": "^10.6.0",
+    "prettier": "^3.9.4",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.10"
   },
   "engines": {
-    "node": ">=24.15.0"
+    "node": ">=24.18.0"
   },
   "license": "Apache-2.0",
   "repository": {
