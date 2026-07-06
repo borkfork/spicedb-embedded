@@ -22,8 +22,8 @@ include = ["Cargo.toml", "README.md", "src/**", "build.rs", "proto/**"]
 path = "src/lib.rs"
 
 [dependencies]
-prost = "0.14.3"
-prost-types = "0.14.3"
+prost = "0.14.4"
+prost-types = "0.14.4"
 tonic = "0.14.6"
 tonic-prost = "0.14.6"
 
