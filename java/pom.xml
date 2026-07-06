@@ -45,7 +45,7 @@
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- Must match the Netty version used by grpc-netty (4.1.x, NOT 4.2.x which is breaking). -->
-        <netty.version>4.1.133.Final</netty.version>
+        <netty.version>4.1.135.Final</netty.version>
     </properties>
 
     <dependencies>
@@ -53,26 +53,26 @@
         <dependency>
             <groupId>net.java.dev.jna</groupId>
             <artifactId>jna</artifactId>
-            <version>5.18.1</version>
+            <version>5.19.1</version>
         </dependency>
 
         <!-- Authzed gRPC stubs (PermissionsService, SchemaService, WatchService) -->
         <dependency>
             <groupId>com.authzed.api</groupId>
             <artifactId>authzed</artifactId>
-            <version>1.5.4</version>
+            <version>1.6.0</version>
         </dependency>
 
         <!-- gRPC (align versions with authzed) -->
         <dependency>
             <groupId>io.grpc</groupId>
             <artifactId>grpc-stub</artifactId>
-            <version>1.81.0</version>
+            <version>1.82.1</version>
         </dependency>
         <dependency>
             <groupId>io.grpc</groupId>
             <artifactId>grpc-netty</artifactId>
-            <version>1.81.0</version>
+            <version>1.82.1</version>
         </dependency>
 
         <!-- Netty native transport for Unix sockets: Linux -->
@@ -114,13 +114,13 @@
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
-            <version>6.0.3</version>
+            <version>6.1.1</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
-            <version>1.5.32</version>
+            <version>1.5.37</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -147,7 +147,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.5.5</version>
+                <version>3.5.6</version>
                 <configuration>
                     <!-- Natives on classpath: src/main/resources/natives/ (stage script and CI populate it; release job copies from natives-layout) -->
                     <additionalClasspathElements>
@@ -163,7 +163,7 @@
             <plugin>
                 <groupId>com.diffplug.spotless</groupId>
                 <artifactId>spotless-maven-plugin</artifactId>
-                <version>3.4.0</version>
+                <version>3.8.0</version>
                 <configuration>
                     <java>
                         <googleJavaFormat/>
@@ -225,7 +225,7 @@
             <plugin>
                 <groupId>org.sonatype.central</groupId>
                 <artifactId>central-publishing-maven-plugin</artifactId>
-                <version>0.10.0</version>
+                <version>0.11.0</version>
                 <configuration>
                     <autoPublish>true</autoPublish>
                     <deploymentName>${project.artifactId}:${project.version}</deploymentName>
