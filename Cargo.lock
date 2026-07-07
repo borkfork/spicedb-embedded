@@ -1992,7 +1992,7 @@ dependencies = [
 
 [[package]]
 name = "spicedb-embedded"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "hyper-util",
  "prost",
@@ -2012,7 +2012,7 @@ dependencies = [
 
 [[package]]
 name = "spicedb-embedded-sys"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "prost",
  "spicedb-grpc-tonic",
