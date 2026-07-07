@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.7.1](https://github.com/borkfork/spicedb-embedded/compare/v0.7.0...v0.7.1) (2026-07-07)
+
+
+### Bug Fixes
+
+* **deps:** update dependency koffi to v3 ([#151](https://github.com/borkfork/spicedb-embedded/issues/151)) ([8e82736](https://github.com/borkfork/spicedb-embedded/commit/8e82736fd132e103391e90a8e47b9cc14c15f5ed))
+* **deps:** update maven dependencies ([#142](https://github.com/borkfork/spicedb-embedded/issues/142)) ([3e1c862](https://github.com/borkfork/spicedb-embedded/commit/3e1c862b6b39e557c9b6d87ef2a7dcd8e2fd29ec))
+* **deps:** update maven dependencies ([#149](https://github.com/borkfork/spicedb-embedded/issues/149)) ([91f69c4](https://github.com/borkfork/spicedb-embedded/commit/91f69c4e18db6fc8c284cb3bb105a205bf0c72b2))
+* **deps:** update maven dependencies to v4.1.133.final ([#144](https://github.com/borkfork/spicedb-embedded/issues/144)) ([05e55ee](https://github.com/borkfork/spicedb-embedded/commit/05e55eef1430720b1ab1eb50e67be9e963e700ce))
+* **deps:** update npm dependencies ([#135](https://github.com/borkfork/spicedb-embedded/issues/135)) ([da3d883](https://github.com/borkfork/spicedb-embedded/commit/da3d8834c3ea2d577f586349048fae6c9008ef5b))
+* **deps:** update npm dependencies ([#145](https://github.com/borkfork/spicedb-embedded/issues/145)) ([fc18a72](https://github.com/borkfork/spicedb-embedded/commit/fc18a728fab397288e199bcbd4e7a0ed82ee85f3))
+* **deps:** update npm dependencies ([#150](https://github.com/borkfork/spicedb-embedded/issues/150)) ([928b582](https://github.com/borkfork/spicedb-embedded/commit/928b5820262a841519a1e2d28e9a229862ade163))
+* **deps:** update rust crate tokio to 1.52.1 ([#136](https://github.com/borkfork/spicedb-embedded/issues/136)) ([7a44606](https://github.com/borkfork/spicedb-embedded/commit/7a446065bda20b050ca887fd48e1ae574dacfe94))
+* **deps:** update rust crates ([#146](https://github.com/borkfork/spicedb-embedded/issues/146)) ([cf6c53a](https://github.com/borkfork/spicedb-embedded/commit/cf6c53aaa2beb92f98704646c28b80750cacb82a))
+* **deps:** update rust crates ([#152](https://github.com/borkfork/spicedb-embedded/issues/152)) ([df598f6](https://github.com/borkfork/spicedb-embedded/commit/df598f6c403a05aa123a9da1aa7dc46daa1c3fd2))
+
 ## [0.7.0](https://github.com/borkfork/spicedb-embedded/compare/v0.6.2...v0.7.0) (2026-04-06)
 
 
