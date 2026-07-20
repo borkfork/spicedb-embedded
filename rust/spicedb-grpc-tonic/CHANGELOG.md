@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.0](https://github.com/borkfork/spicedb-embedded/compare/spicedb-grpc-tonic-v1.0.0...spicedb-grpc-tonic-v1.1.0) (2026-07-20)
+
+
+### Features
+
+* Expose prometheus metric endpoint and add oltp endpoint as a start option ([#133](https://github.com/borkfork/spicedb-embedded/issues/133)) ([8ab7d1a](https://github.com/borkfork/spicedb-embedded/commit/8ab7d1aed6ac9f8698a59a6c40cc601605058dac))
+
+
+### Bug Fixes
+
+* **deps:** update rust crates ([#146](https://github.com/borkfork/spicedb-embedded/issues/146)) ([cf6c53a](https://github.com/borkfork/spicedb-embedded/commit/cf6c53aaa2beb92f98704646c28b80750cacb82a))
+* **deps:** update rust crates ([#152](https://github.com/borkfork/spicedb-embedded/issues/152)) ([df598f6](https://github.com/borkfork/spicedb-embedded/commit/df598f6c403a05aa123a9da1aa7dc46daa1c3fd2))
+
 ## [1.0.0](https://github.com/borkfork/spicedb-embedded/compare/spicedb-grpc-tonic-v0.2.0...spicedb-grpc-tonic-v1.0.0) (2026-02-25)
 
 
