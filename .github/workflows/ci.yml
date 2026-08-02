@@ -200,25 +200,29 @@ jobs:
             rid: linux-x64
             quality: true
             docker: true
-            extra_tools: "github:authzed/spicedb github:EmbarkStudios/cargo-deny"
+            extra_install_args: "github:authzed/spicedb github:EmbarkStudios/cargo-deny"
+            extra_enabled_tools: "github:authzed/spicedb,github:EmbarkStudios/cargo-deny"
           - runner: ubuntu-24.04-arm
             rid: linux-arm64
             quality: false
             docker: true
-            extra_tools: ""
+            extra_install_args: ""
+            extra_enabled_tools: ""
           - runner: macos-latest
             rid: osx-arm64
             quality: false
             docker: false
-            extra_tools: ""
+            extra_install_args: ""
+            extra_enabled_tools: ""
           - runner: windows-latest
             rid: win-x64
             quality: false
             docker: false
-            extra_tools: ""
+            extra_install_args: ""
+            extra_enabled_tools: ""
     runs-on: ${{ matrix.runner }}
     env:
-      MISE_ENABLE_TOOLS: "rust,buf,protoc${{ matrix.extra_tools != '' && format(',{0}', matrix.extra_tools) || '' }}"
+      MISE_ENABLE_TOOLS: "rust,buf,protoc${{ matrix.extra_enabled_tools != '' && format(',{0}', matrix.extra_enabled_tools) || '' }}"
       DOCKER_DEFAULT_PLATFORM: linux/amd64
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     defaults:
@@ -245,7 +249,7 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "rust buf protoc ${{ matrix.extra_tools }}"
+          install_args: "rust buf protoc ${{ matrix.extra_install_args }}"
           cache_save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
       - uses: Swatinem/rust-cache@v2
