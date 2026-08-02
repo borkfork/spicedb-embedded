@@ -55,8 +55,18 @@ depends = [
 
 [tasks.csharp-resharper-check]
 description = "Run ReSharper InspectCode (C#) and fail if issues found"
+depends = ["csharp-format-check"]
 dir = "csharp"
-run = "dotnet tool restore && dotnet tool run jb -- inspectcode SpiceDbEmbedded.sln -o=resharper-inspect.sarif && (jq -e '.runs[0].results | length == 0' resharper-inspect.sarif >/dev/null) || (echo 'ReSharper found issues; see resharper-inspect.sarif' && exit 1)"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+dotnet tool restore
+dotnet tool run jb -- inspectcode SpiceDbEmbedded.sln -o=resharper-inspect.sarif
+if ! jq -e '.runs[0].results | length == 0' resharper-inspect.sarif >/dev/null; then
+  echo 'ReSharper found issues; see resharper-inspect.sarif'
+  exit 1
+fi
+"""
 
 [tasks.bash-format-check]
 description = "Lint and verify Bash script format (check only, no writes)"
@@ -100,6 +110,7 @@ run = "dotnet format SpiceDbEmbedded.sln --verify-no-changes"
 
 [tasks.node-format-check]
 description = "Verify Node.js package format"
+depends = ["node-install"]
 dir = "node"
 run = "npm run format:check"
 
@@ -144,13 +155,14 @@ run = "dotnet format SpiceDbEmbedded.sln"
 
 [tasks.csharp-reformat-resharper]
 description = "Apply ReSharper CleanupCode (C#); excludes files that trigger ReSharper CLI HTML-injection bug"
+depends = ["csharp-reformat"]
 dir = "csharp"
 run = "dotnet tool restore && dotnet tool run jb -- cleanupcode SpiceDbEmbedded.sln --profile=\"Built-in: Reformat Code\" --exclude=\"**/EmbeddedSpiceDb.cs;**/SpiceDbException.cs;**/SpiceDbFfi.cs;**/TcpChannel.cs;**/UnixSocketChannel.cs;**/EmbeddedSpiceDbTests.cs\""
 
 [tasks.node-install]
-description = "Run npm install"
+description = "Install Node.js dependencies from the lockfile"
 dir = "node"
-run = "npm install"
+run = "npm ci"
 
 [tasks.node-reformat]
 description = "Reformat Node.js package"
@@ -203,7 +215,7 @@ run = "bash ./scripts/stage-java-prebuild.sh"
 [tasks.python-stage-prebuild]
 description = "Stage prebuilds for python"
 depends = ["shared-c-build"]
-run = "bash ./scripts/stage-rust-prebuild.sh"
+run = "bash ./scripts/stage-python-prebuild.sh"
 
 [tasks.csharp-stage-prebuild]
 description = "Stage prebuilds for C#"
@@ -259,9 +271,9 @@ run = "pip install -e ."
 
 [tasks.python-test]
 description = "Build and test the Python package"
-depends = ["python-stage-prebuild"]
+depends = ["python-install", "python-stage-prebuild"]
 dir = "python"
-run = "pip install -e \".[dev]\" && pytest"
+run = "pytest"
 
 # ============================================================================
 # C# / .NET tasks
@@ -285,7 +297,7 @@ run = "dotnet build SpiceDbEmbedded.sln && dotnet test SpiceDbEmbedded.Tests/Spi
 
 [tasks.node-build]
 description = "Build the Node.js package"
-depends = ["node-stage-prebuild"]
+depends = ["node-install", "node-stage-prebuild"]
 dir = "node"
 run = "npm run build"
 

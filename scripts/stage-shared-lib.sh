@@ -44,4 +44,7 @@ fi
 
 mkdir -p "$staging/$rid/native"
 cp "$lib_src" "$staging/$rid/native/$libname"
+if [ -f "$root/shared/c/spicedb.def" ]; then
+	cp "$root/shared/c/spicedb.def" "$staging/$rid/native/"
+fi
 echo "$rid"

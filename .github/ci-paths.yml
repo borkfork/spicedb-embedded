@@ -1,0 +1,92 @@
+rust:
+  - "Cargo.toml"
+  - "Cargo.lock"
+  - "rust-toolchain.toml"
+  - ".cargo/**"
+  - "deny.toml"
+  - "rust/**"
+  - "examples/rust/**"
+  - "shared/c/**"
+  - "scripts/**"
+  - "mise.toml"
+  - ".github/ci-paths.yml"
+  - ".github/workflows/ci.yml"
+
+java:
+  - "java/**"
+  - "examples/java/**"
+  - "shared/c/**"
+  - "scripts/**"
+  - "mise.toml"
+  - ".github/ci-paths.yml"
+  - ".github/workflows/ci.yml"
+
+python:
+  - "python/**"
+  - "examples/python/**"
+  - "shared/c/**"
+  - "scripts/**"
+  - "mise.toml"
+  - ".github/ci-paths.yml"
+  - ".github/workflows/ci.yml"
+
+csharp:
+  - "csharp/**"
+  - "examples/csharp/**"
+  - ".config/dotnet-tools.json"
+  - "shared/c/**"
+  - "scripts/**"
+  - "mise.toml"
+  - ".github/ci-paths.yml"
+  - ".github/workflows/ci.yml"
+
+node:
+  - "node/**"
+  - "examples/node/**"
+  - "shared/c/**"
+  - "scripts/**"
+  - "mise.toml"
+  - ".github/ci-paths.yml"
+  - ".github/workflows/ci.yml"
+
+native:
+  - "Cargo.toml"
+  - "Cargo.lock"
+  - "rust-toolchain.toml"
+  - ".cargo/**"
+  - "deny.toml"
+  - "rust/**"
+  - "java/**"
+  - "python/**"
+  - "csharp/**"
+  - "node/**"
+  - "examples/**"
+  - "shared/c/**"
+  - "scripts/**"
+  - "mise.toml"
+  - ".config/dotnet-tools.json"
+  - ".github/ci-paths.yml"
+  - ".github/workflows/ci.yml"
+
+format:
+  - "**/*.toml"
+  - "scripts/**/*.sh"
+  - ".github/**/*.yml"
+  - ".github/**/*.yaml"
+
+docs-rs:
+  - "Cargo.toml"
+  - "Cargo.lock"
+  - "rust-toolchain.toml"
+  - ".cargo/**"
+  - "rust/**"
+  - "shared/c/**"
+  - "scripts/**"
+  - "mise.toml"
+  - ".github/ci-paths.yml"
+  - ".github/workflows/ci.yml"
+
+renovate:
+  - "renovate.json"
+  - ".github/ci-paths.yml"
+  - ".github/workflows/ci.yml"

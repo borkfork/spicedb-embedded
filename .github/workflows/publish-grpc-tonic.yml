@@ -58,11 +58,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.check-tag.outputs.tag_name }}
-          fetch-depth: 0
 
       - uses: jdx/mise-action@v3
         with:
           install_args: "rust buf protoc"
+          cache_save: false
 
       - name: Publish spicedb-grpc-tonic to crates.io
         run: |
