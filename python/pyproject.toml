@@ -31,7 +31,7 @@ Repository = "https://github.com/borkfork/spicedb-embedded"
 Documentation = "https://github.com/borkfork/spicedb-embedded/tree/main/python"
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0.0", "ruff>=0.8.0"]
+dev = ["pytest>=7.0.0", "ruff==0.16.0"]
 
 [build-system]
 requires = ["hatchling"]

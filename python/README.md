@@ -25,7 +25,9 @@ definition document {
 rel = Relationship(
     resource=ObjectReference(object_type="document", object_id="readme"),
     relation="reader",
-    subject=SubjectReference(object=ObjectReference(object_type="user", object_id="alice")),
+    subject=SubjectReference(
+        object=ObjectReference(object_type="user", object_id="alice")
+    ),
 )
 
 with EmbeddedSpiceDB.start(schema, [rel]) as spicedb:
@@ -33,10 +35,14 @@ with EmbeddedSpiceDB.start(schema, [rel]) as spicedb:
         consistency=Consistency(fully_consistent=True),
         resource=ObjectReference(object_type="document", object_id="readme"),
         permission="read",
-        subject=SubjectReference(object=ObjectReference(object_type="user", object_id="alice")),
+        subject=SubjectReference(
+            object=ObjectReference(object_type="user", object_id="alice")
+        ),
     )
     resp = spicedb.permissions().CheckPermission(req)
-    allowed = resp.permissionship == CheckPermissionResponse.PERMISSIONSHIP_HAS_PERMISSION
+    allowed = (
+        resp.permissionship == CheckPermissionResponse.PERMISSIONSHIP_HAS_PERMISSION
+    )
 ```
 
 ## Who should consider using this?
@@ -132,7 +138,9 @@ definition document {
 rel = Relationship(
     resource=ObjectReference(object_type="document", object_id="readme"),
     relation="reader",
-    subject=SubjectReference(object=ObjectReference(object_type="user", object_id="alice")),
+    subject=SubjectReference(
+        object=ObjectReference(object_type="user", object_id="alice")
+    ),
 )
 
 with EmbeddedSpiceDB.start(schema, [rel]) as spicedb:
@@ -141,10 +149,14 @@ with EmbeddedSpiceDB.start(schema, [rel]) as spicedb:
         consistency=Consistency(fully_consistent=True),
         resource=ObjectReference(object_type="document", object_id="readme"),
         permission="read",
-        subject=SubjectReference(object=ObjectReference(object_type="user", object_id="alice")),
+        subject=SubjectReference(
+            object=ObjectReference(object_type="user", object_id="alice")
+        ),
     )
     resp = stub.CheckPermission(req)
-    allowed = resp.permissionship == CheckPermissionResponse.PERMISSIONSHIP_HAS_PERMISSION
+    allowed = (
+        resp.permissionship == CheckPermissionResponse.PERMISSIONSHIP_HAS_PERMISSION
+    )
 ```
 
 ## API
