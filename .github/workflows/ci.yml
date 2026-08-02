@@ -9,13 +9,41 @@ on:
   push:
     branches: [main, "release-please--**"]
 
+permissions:
+  contents: read
+  pull-requests: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # Build shared C library per platform; each runner uploads prebuilds for that platform (all languages).
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      java: ${{ steps.filter.outputs.java }}
+      python: ${{ steps.filter.outputs.python }}
+      csharp: ${{ steps.filter.outputs.csharp }}
+      node: ${{ steps.filter.outputs.node }}
+      native: ${{ steps.filter.outputs.native }}
+      format: ${{ steps.filter.outputs.format }}
+      docs_rs: ${{ steps.filter.outputs['docs-rs'] }}
+      renovate: ${{ steps.filter.outputs.renovate }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: .github/ci-paths.yml
+
+  # Build one canonical shared library artifact per platform for selected language tests.
   shared-c-lib:
+    needs: changes
+    if: needs.changes.outputs.native == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -37,57 +65,85 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Reuse staged prebuilds when go.mod/go.sum and shared/c Go source unchanged (shared across branches/PRs by key).
-      - uses: actions/cache@v4
-        id: prebuild-cache
+      - uses: actions/cache/restore@v4
+        id: native-cache
         with:
-          path: |
-            node/prebuilds
-            csharp/runtimes
-            java/src/main/resources/natives
-            python/src/spicedb_embedded/natives
-            rust/spicedb-embedded-sys/prebuilds
-          key: shared-c-prebuilds-${{ matrix.rid }}-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod', 'shared/c/*.go') }}
+          path: out
+          key: shared-c-native-v2-${{ matrix.rid }}-${{ hashFiles('mise.toml', 'shared/c/go.mod', 'shared/c/go.sum', 'shared/c/**/*.go', 'shared/c/spicedb.def', 'scripts/shared-c-build.sh', 'scripts/lib-path.sh', 'scripts/generate-dll-import-lib.sh', 'scripts/stage-shared-lib.sh') }}
 
       - uses: jdx/mise-action@v3
-        if: steps.prebuild-cache.outputs.cache-hit != 'true'
+        if: steps.native-cache.outputs.cache-hit != 'true'
         with:
           install_args: "go"
+          cache_save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
-      - name: Set GOCACHE (absolute path required by Go)
-        if: steps.prebuild-cache.outputs.cache-hit != 'true'
+      - name: Set GOCACHE
+        if: steps.native-cache.outputs.cache-hit != 'true'
         run: echo "GOCACHE=$HOME/.cache/go-build" >> "$GITHUB_ENV"
 
-      - uses: actions/cache@v4
-        if: steps.prebuild-cache.outputs.cache-hit != 'true'
+      - uses: actions/cache/restore@v4
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        id: go-mod-cache
         with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod', 'shared/c/*.go') }}
-          restore-keys: ${{ runner.os }}-go-
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('shared/c/go.sum') }}
+
+      - uses: actions/cache/restore@v4
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        id: go-build-cache
+        with:
+          path: ~/.cache/go-build
+          key: ${{ matrix.rid }}-go-build-${{ hashFiles('mise.toml', 'shared/c/go.mod', 'shared/c/go.sum', 'shared/c/**/*.go') }}
 
       - name: Build shared C library
-        if: steps.prebuild-cache.outputs.cache-hit != 'true'
+        if: steps.native-cache.outputs.cache-hit != 'true'
         run: mise run shared-c-build
 
-      - name: Stage prebuilds for all languages
-        if: steps.prebuild-cache.outputs.cache-hit != 'true'
-        run: bash ./scripts/stage-all-prebuilds.sh
+      - name: Stage canonical native artifact
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        run: bash ./scripts/stage-shared-lib.sh out
 
-      - name: Upload prebuilds for this platform (all languages)
+      - uses: actions/cache/save@v4
+        if: >-
+          steps.native-cache.outputs.cache-hit != 'true' &&
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main'
+        with:
+          path: out
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
+
+      - uses: actions/cache/save@v4
+        if: >-
+          steps.native-cache.outputs.cache-hit != 'true' &&
+          steps.go-mod-cache.outputs.cache-hit != 'true' &&
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main'
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ steps.go-mod-cache.outputs.cache-primary-key }}
+
+      - uses: actions/cache/save@v4
+        if: >-
+          steps.native-cache.outputs.cache-hit != 'true' &&
+          steps.go-build-cache.outputs.cache-hit != 'true' &&
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main'
+        with:
+          path: ~/.cache/go-build
+          key: ${{ steps.go-build-cache.outputs.cache-primary-key }}
+
+      - name: Upload shared library
         uses: actions/upload-artifact@v4
         with:
-          name: prebuilds-${{ matrix.rid }}
-          path: |
-            node/prebuilds
-            csharp/runtimes
-            java/src/main/resources/natives
-            python/src/spicedb_embedded/natives
-            rust/spicedb-embedded-sys/prebuilds
+          name: shared-lib-${{ matrix.rid }}
+          path: out
+          if-no-files-found: error
           retention-days: 1
+          compression-level: 0
 
   docs-rs:
+    needs: changes
+    if: needs.changes.outputs.docs_rs == 'true'
     runs-on: ubuntu-latest
     env:
       MISE_ENABLE_TOOLS: "rust"
@@ -97,14 +153,17 @@ jobs:
       - uses: jdx/mise-action@v3
         with:
           install_args: "rust"
+          cache_save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
       - name: Install nightly toolchain
         run: rustup toolchain install nightly
 
-      - name: Verify docs.rs build (offline, like real docs.rs)
+      - name: Verify docs.rs build
         run: mise run rust-docsrs
 
   format-toml-shell:
+    needs: changes
+    if: needs.changes.outputs.format == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -115,11 +174,14 @@ jobs:
       - uses: jdx/mise-action@v3
         with:
           install_args: "taplo shellcheck shfmt"
+          cache_save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
       - name: TOML, shell, and Actions format check
         run: mise run toml-format-check && mise run bash-format-check && mise run actions-format-check
 
   renovate-config:
+    needs: changes
+    if: needs.changes.outputs.renovate == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -128,64 +190,82 @@ jobs:
         run: npx --yes --package renovate -- renovate-config-validator
 
   rust:
-    needs: shared-c-lib
+    needs: [changes, shared-c-lib]
+    if: needs.changes.outputs.rust == 'true'
     strategy:
       fail-fast: false
       matrix:
         include:
           - runner: ubuntu-latest
             rid: linux-x64
-            extra_tools: "github:authzed/spicedb"
+            quality: true
+            docker: true
+            extra_install_args: "github:authzed/spicedb github:EmbarkStudios/cargo-deny"
+            extra_enabled_tools: "github:authzed/spicedb,github:EmbarkStudios/cargo-deny"
           - runner: ubuntu-24.04-arm
             rid: linux-arm64
-            extra_tools: ""
+            quality: false
+            docker: true
+            extra_install_args: ""
+            extra_enabled_tools: ""
           - runner: macos-latest
             rid: osx-arm64
-            extra_tools: ""
+            quality: false
+            docker: false
+            extra_install_args: ""
+            extra_enabled_tools: ""
           - runner: windows-latest
             rid: win-x64
-            extra_tools: ""
+            quality: false
+            docker: false
+            extra_install_args: ""
+            extra_enabled_tools: ""
     runs-on: ${{ matrix.runner }}
     env:
-      MISE_ENABLE_TOOLS: "rust,github:EmbarkStudios/cargo-deny,buf,protoc${{ matrix.extra_tools != '' && format(',{0}', matrix.extra_tools) || '' }}"
-      # Rust tests use testcontainers (postgres, mysql, cockroach); use Linux/amd64 Docker platform.
+      MISE_ENABLE_TOOLS: "rust,buf,protoc${{ matrix.extra_enabled_tools != '' && format(',{0}', matrix.extra_enabled_tools) || '' }}"
       DOCKER_DEFAULT_PLATFORM: linux/amd64
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
 
-      - name: Login to Docker Hub (testcontainers)
-        if: matrix.runner == 'ubuntu-latest' || matrix.runner == 'ubuntu-24.04-arm'
+      - name: Login to Docker Hub
+        if: matrix.docker && env.DOCKERHUB_TOKEN != ''
         uses: docker/login-action@v3
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
 
-      - name: Download prebuilds for this platform
+      - name: Download shared library
         uses: actions/download-artifact@v4
         with:
-          name: prebuilds-${{ matrix.rid }}
+          name: shared-lib-${{ matrix.rid }}
+          path: out
+
+      - name: Stage Rust prebuild
+        run: bash ./scripts/stage-downloaded-prebuild.sh rust out "${{ matrix.rid }}"
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "rust github:EmbarkStudios/cargo-deny buf protoc ${{ matrix.extra_tools }}"
+          install_args: "rust buf protoc ${{ matrix.extra_install_args }}"
+          cache_save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: . -> target
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
       - name: Format check
+        if: matrix.quality
         run: mise run rust-format-check
-
-      - name: Install clippy
-        run: rustup component add clippy
 
       - name: Clippy
         run: mise run rust-clippy
 
       - name: Cargo deny
+        if: matrix.quality
         run: mise run rust-cargo-deny
 
       - name: Test
@@ -195,19 +275,24 @@ jobs:
         run: mise run example-rust-test
 
   java:
-    needs: shared-c-lib
+    needs: [changes, shared-c-lib]
+    if: needs.changes.outputs.java == 'true'
     strategy:
       fail-fast: false
       matrix:
         include:
           - runner: ubuntu-latest
             rid: linux-x64
+            quality: true
           - runner: ubuntu-24.04-arm
             rid: linux-arm64
+            quality: false
           - runner: macos-latest
             rid: osx-arm64
+            quality: false
           - runner: windows-latest
             rid: win-x64
+            quality: false
     runs-on: ${{ matrix.runner }}
     env:
       MISE_ENABLE_TOOLS: "java,maven"
@@ -217,52 +302,69 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download prebuilds for this platform
+      - name: Download shared library
         uses: actions/download-artifact@v4
         with:
-          name: prebuilds-${{ matrix.rid }}
+          name: shared-lib-${{ matrix.rid }}
+          path: out
+
+      - name: Stage Java prebuild
+        run: bash ./scripts/stage-downloaded-prebuild.sh java out "${{ matrix.rid }}"
 
       - uses: jdx/mise-action@v3
         with:
           install_args: "java maven"
+          cache_save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
+        id: maven-cache
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-maven-
+          key: ${{ matrix.rid }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ matrix.rid }}-maven-
 
-      - name: Set library path (Windows)
-        if: matrix.runner == 'windows-latest'
+      - name: Set library path
+        if: runner.os == 'Windows'
         run: |
           # shellcheck disable=SC2016
           eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
 
       - name: Format check
+        if: matrix.quality
         run: mise run java-format-check
-
-      - name: Compile
-        working-directory: java
-        run: mvn compile -q
 
       - name: Test
         working-directory: java
         run: mvn test
 
+      - uses: actions/cache/save@v4
+        if: >-
+          steps.maven-cache.outputs.cache-hit != 'true' &&
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main'
+        with:
+          path: ~/.m2/repository
+          key: ${{ steps.maven-cache.outputs.cache-primary-key }}
+
   python:
-    needs: shared-c-lib
+    needs: [changes, shared-c-lib]
+    if: needs.changes.outputs.python == 'true'
     strategy:
       fail-fast: false
       matrix:
         include:
           - runner: ubuntu-latest
             rid: linux-x64
+            quality: true
           - runner: ubuntu-24.04-arm
             rid: linux-arm64
+            quality: false
           - runner: macos-latest
             rid: osx-arm64
+            quality: false
           - runner: windows-latest
             rid: win-x64
+            quality: false
     runs-on: ${{ matrix.runner }}
     env:
       MISE_ENABLE_TOOLS: "python"
@@ -272,32 +374,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download prebuilds for this platform
+      - name: Download shared library
         uses: actions/download-artifact@v4
         with:
-          name: prebuilds-${{ matrix.rid }}
+          name: shared-lib-${{ matrix.rid }}
+          path: out
+
+      - name: Stage Python prebuild
+        run: bash ./scripts/stage-downloaded-prebuild.sh python out "${{ matrix.rid }}"
 
       - uses: jdx/mise-action@v3
         with:
           install_args: "python"
+          cache_save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
+        id: pip-cache
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml', '**/requirements*.txt') }}
-          restore-keys: ${{ runner.os }}-pip-
+          key: ${{ matrix.rid }}-pip-${{ hashFiles('**/pyproject.toml', '**/requirements*.txt') }}
+          restore-keys: ${{ matrix.rid }}-pip-
 
-      - name: Set library path (Windows)
-        if: matrix.runner == 'windows-latest'
+      - name: Set library path
+        if: runner.os == 'Windows'
         run: |
           # shellcheck disable=SC2016
           eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
 
-      - name: pip install
+      - name: Install package and test dependencies
         working-directory: python
         run: pip install -e '.[dev]'
 
       - name: Format check
+        if: matrix.quality
         working-directory: python
         run: ruff format --check .
 
@@ -305,63 +414,96 @@ jobs:
         working-directory: python
         run: pytest
 
-      - name: pip install (example project)
+      - name: Install example project
         working-directory: examples/python/google-docs
         run: |
           pip install -e '.[dev]'
-          # Reinstall local library editably (pip may have replaced it with PyPI version)
           pip install -e ../../../python
 
       - name: Example tests
         working-directory: examples/python/google-docs
         run: pytest tests/ -v
 
+      - uses: actions/cache/save@v4
+        if: >-
+          steps.pip-cache.outputs.cache-hit != 'true' &&
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main'
+        with:
+          path: ~/.cache/pip
+          key: ${{ steps.pip-cache.outputs.cache-primary-key }}
+
   csharp:
-    needs: shared-c-lib
+    needs: [changes, shared-c-lib]
+    if: needs.changes.outputs.csharp == 'true'
     strategy:
       fail-fast: false
       matrix:
         include:
           - runner: ubuntu-latest
             rid: linux-x64
+            quality: true
+            extra_tools: "jq"
           - runner: ubuntu-24.04-arm
             rid: linux-arm64
+            quality: false
+            extra_tools: ""
           - runner: macos-latest
             rid: osx-arm64
+            quality: false
+            extra_tools: ""
           - runner: windows-latest
             rid: win-x64
+            quality: false
+            extra_tools: ""
     runs-on: ${{ matrix.runner }}
     env:
-      MISE_ENABLE_TOOLS: "dotnet"
+      MISE_ENABLE_TOOLS: "dotnet${{ matrix.extra_tools != '' && format(',{0}', matrix.extra_tools) || '' }}"
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download prebuilds for this platform
+      - name: Download shared library
         uses: actions/download-artifact@v4
         with:
-          name: prebuilds-${{ matrix.rid }}
+          name: shared-lib-${{ matrix.rid }}
+          path: out
+
+      - name: Stage C# prebuild
+        run: bash ./scripts/stage-downloaded-prebuild.sh csharp out "${{ matrix.rid }}"
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "dotnet"
+          install_args: "dotnet ${{ matrix.extra_tools }}"
+          cache_save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
+        id: nuget-cache
         with:
           path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-          restore-keys: ${{ runner.os }}-nuget-
+          key: ${{ matrix.rid }}-nuget-${{ hashFiles('**/*.csproj', '.config/dotnet-tools.json') }}
+          restore-keys: ${{ matrix.rid }}-nuget-
 
-      - name: Set library path (Windows)
-        if: matrix.runner == 'windows-latest'
+      - name: Set library path
+        if: runner.os == 'Windows'
         run: |
           # shellcheck disable=SC2016
           eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
 
-      - name: Format check
-        run: mise run csharp-format-check
+      - name: Format and ReSharper check
+        if: matrix.quality
+        run: mise run csharp-resharper-check
+
+      - name: Upload ReSharper report
+        if: always() && matrix.quality
+        uses: actions/upload-artifact@v4
+        with:
+          name: resharper-inspect
+          path: csharp/resharper-inspect.sarif
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Test
         run: |
@@ -371,20 +513,34 @@ jobs:
       - name: Example tests
         run: mise run example-csharp-test
 
+      - uses: actions/cache/save@v4
+        if: >-
+          steps.nuget-cache.outputs.cache-hit != 'true' &&
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main'
+        with:
+          path: ~/.nuget/packages
+          key: ${{ steps.nuget-cache.outputs.cache-primary-key }}
+
   node:
-    needs: shared-c-lib
+    needs: [changes, shared-c-lib]
+    if: needs.changes.outputs.node == 'true'
     strategy:
       fail-fast: false
       matrix:
         include:
           - runner: ubuntu-latest
             rid: linux-x64
+            quality: true
           - runner: ubuntu-24.04-arm
             rid: linux-arm64
+            quality: false
           - runner: macos-latest
             rid: osx-arm64
+            quality: false
           - runner: windows-latest
             rid: win-x64
+            quality: false
     runs-on: ${{ matrix.runner }}
     env:
       MISE_ENABLE_TOOLS: "node"
@@ -394,23 +550,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download prebuilds for this platform
+      - name: Download shared library
         uses: actions/download-artifact@v4
         with:
-          name: prebuilds-${{ matrix.rid }}
+          name: shared-lib-${{ matrix.rid }}
+          path: out
+
+      - name: Stage Node prebuild
+        run: bash ./scripts/stage-downloaded-prebuild.sh node out "${{ matrix.rid }}"
 
       - uses: jdx/mise-action@v3
         with:
           install_args: "node"
+          cache_save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
+        id: npm-cache
         with:
-          path: node/node_modules
-          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json', '**/package.json') }}
-          restore-keys: ${{ runner.os }}-npm-
+          path: ~/.npm
+          key: ${{ matrix.rid }}-npm-${{ hashFiles('node/package-lock.json', 'examples/node/google-docs/package-lock.json') }}
+          restore-keys: ${{ matrix.rid }}-npm-
 
-      - name: Set library path (Windows)
-        if: matrix.runner == 'windows-latest'
+      - name: Set library path
+        if: runner.os == 'Windows'
         run: |
           # shellcheck disable=SC2016
           eval "$(mise activate bash | sed 's|eval "$(mise hook-env -s bash)";|& export PATH="$(/usr/bin/cygpath -u -p "$PATH")";|')"
@@ -420,14 +582,92 @@ jobs:
         run: npm ci
 
       - name: Format check
-        run: mise run node-format-check
+        if: matrix.quality
+        working-directory: node
+        run: npm run format:check
 
       - name: Test
         working-directory: node
         run: |
-          npm ci
           npm run build
           npm test
 
       - name: Example tests
         run: mise run example-node-test
+
+      - uses: actions/cache/save@v4
+        if: >-
+          steps.npm-cache.outputs.cache-hit != 'true' &&
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main'
+        with:
+          path: ~/.npm
+          key: ${{ steps.npm-cache.outputs.cache-primary-key }}
+
+  ci-gate:
+    name: ci-gate
+    if: always()
+    needs:
+      [
+        changes,
+        shared-c-lib,
+        docs-rs,
+        format-toml-shell,
+        renovate-config,
+        rust,
+        java,
+        python,
+        csharp,
+        node,
+      ]
+    runs-on: ubuntu-latest
+    env:
+      NEEDS_JSON: ${{ toJSON(needs) }}
+      NATIVE_SELECTED: ${{ needs.changes.outputs.native }}
+      RUST_SELECTED: ${{ needs.changes.outputs.rust }}
+      JAVA_SELECTED: ${{ needs.changes.outputs.java }}
+      PYTHON_SELECTED: ${{ needs.changes.outputs.python }}
+      CSHARP_SELECTED: ${{ needs.changes.outputs.csharp }}
+      NODE_SELECTED: ${{ needs.changes.outputs.node }}
+      DOCS_RS_SELECTED: ${{ needs.changes.outputs.docs_rs }}
+      FORMAT_SELECTED: ${{ needs.changes.outputs.format }}
+      RENOVATE_SELECTED: ${{ needs.changes.outputs.renovate }}
+      SHARED_C_RESULT: ${{ needs.shared-c-lib.result }}
+      RUST_RESULT: ${{ needs.rust.result }}
+      JAVA_RESULT: ${{ needs.java.result }}
+      PYTHON_RESULT: ${{ needs.python.result }}
+      CSHARP_RESULT: ${{ needs.csharp.result }}
+      NODE_RESULT: ${{ needs.node.result }}
+      DOCS_RS_RESULT: ${{ needs.docs-rs.result }}
+      FORMAT_RESULT: ${{ needs.format-toml-shell.result }}
+      RENOVATE_RESULT: ${{ needs.renovate-config.result }}
+    steps:
+      - name: Verify selected jobs
+        run: |
+          set -euo pipefail
+          echo "$NEEDS_JSON" | jq -e '
+            all(.[];
+              .result == "success" or
+              .result == "skipped"
+            )
+          '
+
+          check_selected() {
+            selected="$1"
+            result="$2"
+            job="$3"
+            if [ "$selected" = "true" ] && [ "$result" != "success" ]; then
+              echo "::error::$job was selected but finished with result: $result"
+              exit 1
+            fi
+          }
+
+          check_selected "$NATIVE_SELECTED" "$SHARED_C_RESULT" "shared-c-lib"
+          check_selected "$RUST_SELECTED" "$RUST_RESULT" "rust"
+          check_selected "$JAVA_SELECTED" "$JAVA_RESULT" "java"
+          check_selected "$PYTHON_SELECTED" "$PYTHON_RESULT" "python"
+          check_selected "$CSHARP_SELECTED" "$CSHARP_RESULT" "csharp"
+          check_selected "$NODE_SELECTED" "$NODE_RESULT" "node"
+          check_selected "$DOCS_RS_SELECTED" "$DOCS_RS_RESULT" "docs-rs"
+          check_selected "$FORMAT_SELECTED" "$FORMAT_RESULT" "format-toml-shell"
+          check_selected "$RENOVATE_SELECTED" "$RENOVATE_RESULT" "renovate-config"

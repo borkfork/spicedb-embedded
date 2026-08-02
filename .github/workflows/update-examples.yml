@@ -38,6 +38,7 @@ jobs:
       - uses: jdx/mise-action@v3
         with:
           install_args: "rust node"
+          cache_save: false
 
       - name: Update example version pins
         env:

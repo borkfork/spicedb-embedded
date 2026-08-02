@@ -79,19 +79,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.check-tag.outputs.tag_name }}
-          fetch-depth: 0
 
-      # Reuse staged prebuilds when go.mod/go.sum and shared/c Go source unchanged (same key as CI; shared across branches/runs).
-      - uses: actions/cache@v4
-        id: prebuild-cache
+      - uses: actions/cache/restore@v4
+        id: native-cache
         with:
-          path: |
-            node/prebuilds
-            csharp/runtimes
-            java/src/main/resources/natives
-            python/src/spicedb_embedded/natives
-            rust/spicedb-embedded-sys/prebuilds
-          key: shared-c-prebuilds-${{ matrix.rid }}-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod', 'shared/c/*.go') }}
+          path: out
+          key: shared-c-native-v2-${{ matrix.rid }}-${{ hashFiles('mise.toml', 'shared/c/go.mod', 'shared/c/go.sum', 'shared/c/**/*.go', 'shared/c/spicedb.def', 'scripts/shared-c-build.sh', 'scripts/lib-path.sh', 'scripts/generate-dll-import-lib.sh', 'scripts/stage-shared-lib.sh') }}
 
       - name: "Set RID from runner (macOS: we only publish osx-arm64; Intel Mac not supported)"
         id: set_rid
@@ -108,59 +101,47 @@ jobs:
           echo "rid=$rid" >> "$GITHUB_OUTPUT"
 
       - uses: jdx/mise-action@v3
-        if: steps.prebuild-cache.outputs.cache-hit != 'true'
+        if: steps.native-cache.outputs.cache-hit != 'true'
         with:
           install_args: "go"
+          cache_save: false
 
-      - name: Set GOCACHE (absolute path required by Go)
-        if: steps.prebuild-cache.outputs.cache-hit != 'true'
+      - name: Set GOCACHE
+        if: steps.native-cache.outputs.cache-hit != 'true'
         run: echo "GOCACHE=$HOME/.cache/go-build" >> "$GITHUB_ENV"
 
-      - uses: actions/cache@v4
-        if: steps.prebuild-cache.outputs.cache-hit != 'true'
+      - uses: actions/cache/restore@v4
+        if: steps.native-cache.outputs.cache-hit != 'true'
         with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('shared/c/go.sum', 'shared/c/go.mod', 'shared/c/*.go') }}
-          restore-keys: ${{ runner.os }}-go-
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('shared/c/go.sum') }}
 
-      - name: Copy cached prebuilds to out
-        if: steps.prebuild-cache.outputs.cache-hit == 'true'
-        run: |
-          rid="${{ steps.set_rid.outputs.rid }}"
-          mkdir -p "out/$rid/native"
-          cp -r "rust/spicedb-embedded-sys/prebuilds/$rid/"* "out/$rid/native/"
+      - uses: actions/cache/restore@v4
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        with:
+          path: ~/.cache/go-build
+          key: ${{ matrix.rid }}-go-build-${{ hashFiles('mise.toml', 'shared/c/go.mod', 'shared/c/go.sum', 'shared/c/**/*.go') }}
 
       - name: Build shared C library
-        if: steps.prebuild-cache.outputs.cache-hit != 'true'
+        if: steps.native-cache.outputs.cache-hit != 'true'
         run: mise run shared-c-build
 
-      - name: Stage and upload shared lib
-        if: steps.prebuild-cache.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p "out/${{ steps.set_rid.outputs.rid }}/native"
-          case "${{ matrix.runner }}" in
-            ubuntu*) cp shared/c/libspicedb.so "out/${{ steps.set_rid.outputs.rid }}/native/" ;;
-            macos*)  cp shared/c/libspicedb.dylib "out/${{ steps.set_rid.outputs.rid }}/native/" ;;
-            windows*)
-              cp shared/c/spicedb.dll "out/${{ steps.set_rid.outputs.rid }}/native/"
-              if [ -f shared/c/spicedb.def ]; then
-                cp shared/c/spicedb.def "out/${{ steps.set_rid.outputs.rid }}/native/"
-              fi
-              ;;
-          esac
+      - name: Stage canonical native artifact
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        run: bash ./scripts/stage-shared-lib.sh out
 
       - name: Upload shared lib
         uses: actions/upload-artifact@v4
         with:
           name: shared-lib-${{ steps.set_rid.outputs.rid }}
           path: out
+          if-no-files-found: error
+          compression-level: 0
 
   # Publish spicedb-grpc-tonic first; spicedb-embedded-sys depends on it (version from crates.io when publishing).
   # This is idempotent: if the version already exists on crates.io, it succeeds silently.
   publish-rust-api:
-    needs: [build-shared-libs, check-tag]
+    needs: [check-tag]
     if: needs.check-tag.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     env:
@@ -172,11 +153,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.check-tag.outputs.tag_name }}
-          fetch-depth: 0
 
       - uses: jdx/mise-action@v3
         with:
           install_args: "rust buf protoc"
+          cache_save: false
 
       - name: Publish spicedb-grpc-tonic to crates.io
         run: |
@@ -205,7 +186,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.check-tag.outputs.tag_name }}
-          fetch-depth: 0
 
       - name: Download shared lib for this platform (linux-x64)
         uses: actions/download-artifact@v4
@@ -230,6 +210,7 @@ jobs:
       - uses: jdx/mise-action@v3
         with:
           install_args: "rust buf protoc"
+          cache_save: false
 
       - name: Publish spicedb-embedded-sys to crates.io
         run: |
@@ -249,15 +230,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.check-tag.outputs.tag_name }}
-          fetch-depth: 0
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: . -> target
 
       - uses: jdx/mise-action@v3
         with:
           install_args: "rust buf protoc"
+          cache_save: false
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          save-if: false
 
       - name: Update Cargo.lock to use published spicedb-embedded-sys
         run: cargo update -p spicedb-embedded-sys@${{ needs.check-tag.outputs.version_num }}
@@ -284,7 +266,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.check-tag.outputs.tag_name }}
-          fetch-depth: 0
 
       - name: Download shared libs for all platforms
         uses: actions/download-artifact@v4
@@ -309,31 +290,35 @@ jobs:
         run: |
           for plat in linux-x86_64 linux-aarch_64 osx-aarch_64 windows-x86_64; do
             dir="java/target/natives-layout/$plat/natives/$plat"
-            count=$(find "$dir" -type f 2>/dev/null | wc -l)
-            if [ "$count" -eq 0 ]; then
-              echo "::error::No native files in $dir (shared-libs layout may be wrong)"
+            case "$plat" in
+              osx-*) lib="libspicedb.dylib" ;;
+              windows-*) lib="spicedb.dll" ;;
+              *) lib="libspicedb.so" ;;
+            esac
+            if [ ! -s "$dir/$lib" ]; then
+              echo "::error::Missing or empty native library: $dir/$lib"
               exit 1
             fi
-            echo "$plat: $count file(s)"
+            echo "$plat: $lib"
           done
-
-      - uses: jdx/mise-action@v3
-        with:
-          install_args: "java maven"
-
-      - uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-m2-
 
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
-          java-version: "21"
-          cache: maven
+          java-version: "17"
           gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: "maven"
+          cache_save: false
+
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.m2/repository
+          key: linux-x64-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: linux-x64-maven-
 
       - name: Configure Maven Central credentials
         run: |
@@ -357,10 +342,6 @@ jobs:
           </settings>
           EOF
 
-      - name: Build Java library
-        working-directory: java
-        run: mvn -B -ntp compile
-
       - name: Prepare test classpath natives (src/main/resources/natives so Surefire uses same path as CI/local)
         run: |
           mkdir -p java/src/main/resources/natives
@@ -375,7 +356,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           cd java
-          mvn -B -ntp -P release package deploy
+          mvn -B -ntp -P release deploy
           echo "Published Java $VERSION_NUM to Maven Central (main + linux-x86_64, linux-aarch_64, osx-aarch_64, windows-x86_64 classifier JARs)" >> "$GITHUB_STEP_SUMMARY"
 
   # Publish platform-specific optional packages (only that platform's binary).
@@ -408,7 +389,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.check-tag.outputs.tag_name }}
-          fetch-depth: 0
 
       - name: Download shared lib for this platform
         uses: actions/download-artifact@v4
@@ -450,24 +430,21 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.check-tag.outputs.tag_name }}
-          fetch-depth: 0
 
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         with:
-          path: node/node_modules
-          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json', '**/package.json') }}
-          restore-keys: ${{ runner.os }}-npm-
+          path: ~/.npm
+          key: linux-x64-npm-${{ hashFiles('node/package-lock.json', 'examples/node/google-docs/package-lock.json') }}
+          restore-keys: linux-x64-npm-
 
-      - name: Build Node.js package
+      - name: Install Node.js dependencies
         working-directory: node
-        run: |
-          npm install
-          npm run build
+        run: npm ci
 
       - name: Publish to npm
         working-directory: node
@@ -487,7 +464,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.check-tag.outputs.tag_name }}
-          fetch-depth: 0
 
       - name: Download shared libs for all platforms
         uses: actions/download-artifact@v4
@@ -508,13 +484,20 @@ jobs:
       - uses: jdx/mise-action@v3
         with:
           install_args: "dotnet"
+          cache_save: false
+
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.nuget/packages
+          key: linux-x64-nuget-${{ hashFiles('**/*.csproj', '.config/dotnet-tools.json') }}
+          restore-keys: linux-x64-nuget-
 
       - name: Build C# package
         run: dotnet build csharp/SpiceDbEmbedded.sln -c Release -p:Version=${{ env.VERSION_NUM }}
 
       - name: Build NuGet package
         working-directory: csharp
-        run: dotnet pack -c Release -p:Version=${{ env.VERSION_NUM }}
+        run: dotnet pack -c Release --no-build -p:Version=${{ env.VERSION_NUM }}
 
       - name: NuGet login
         uses: NuGet/login@v1
@@ -560,7 +543,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.check-tag.outputs.tag_name }}
-          fetch-depth: 0
 
       - name: Download shared lib for this platform
         uses: actions/download-artifact@v4
@@ -569,19 +551,13 @@ jobs:
 
       - name: Stage native lib into package
         run: |
-          mkdir -p python/src/spicedb_embedded/natives/${{ matrix.natives_key }}
-          NATIVE_SRC="${{ matrix.artifact_rid }}/native"
-          [ ! -d "$NATIVE_SRC" ] && NATIVE_SRC="out/${{ matrix.artifact_rid }}/native"
-          cp "$NATIVE_SRC"/* python/src/spicedb_embedded/natives/${{ matrix.natives_key }}/
+          bash ./scripts/stage-downloaded-prebuild.sh python . "${{ matrix.artifact_rid }}"
           ls -R python/src/spicedb_embedded/natives
 
       - uses: jdx/mise-action@v3
         with:
           install_args: "python"
-
-      - name: Build Python package
-        working-directory: python
-        run: pip install -e .
+          cache_save: false
 
       - name: Build wheel
         working-directory: python
@@ -652,7 +628,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.check-tag.outputs.tag_name }}
-          fetch-depth: 0
 
       - name: Download shared libs for Rust release tarballs
         uses: actions/download-artifact@v4
