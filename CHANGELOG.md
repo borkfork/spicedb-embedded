@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.7.2](https://github.com/borkfork/spicedb-embedded/compare/v0.7.1...v0.7.2) (2026-08-10)
+
+
+### Bug Fixes
+
+* **deps:** update go modules ([#162](https://github.com/borkfork/spicedb-embedded/issues/162)) ([47801f2](https://github.com/borkfork/spicedb-embedded/commit/47801f23a0defe7cd878d4c3d8846e8f0c10dc98))
+* **deps:** update maven dependencies ([#155](https://github.com/borkfork/spicedb-embedded/issues/155)) ([5092a39](https://github.com/borkfork/spicedb-embedded/commit/5092a3915d436e1cf6199c0971cb754a6be9ba36))
+* **deps:** update maven dependencies ([#163](https://github.com/borkfork/spicedb-embedded/issues/163)) ([24658a0](https://github.com/borkfork/spicedb-embedded/commit/24658a01def65b0a0d96e8e72e8db3a884f01516))
+* **deps:** update npm dependencies ([#156](https://github.com/borkfork/spicedb-embedded/issues/156)) ([7c6359a](https://github.com/borkfork/spicedb-embedded/commit/7c6359a11bf50ab5296b28270c8b61fa4b161d89))
+* **deps:** update npm dependencies ([#166](https://github.com/borkfork/spicedb-embedded/issues/166)) ([b66be07](https://github.com/borkfork/spicedb-embedded/commit/b66be07ea0e70f3a10c7e3e201888dc49b6ad37a))
+* **deps:** update rust crate thiserror to 2.0.20 ([#170](https://github.com/borkfork/spicedb-embedded/issues/170)) ([3f22582](https://github.com/borkfork/spicedb-embedded/commit/3f225823d8d1c5297d4bdb21847d369ccb95473c))
+* **deps:** update rust crates ([#158](https://github.com/borkfork/spicedb-embedded/issues/158)) ([4922706](https://github.com/borkfork/spicedb-embedded/commit/49227060b72162f2f437a68a0a44aa64b168b884))
+* **deps:** update rust crates ([#160](https://github.com/borkfork/spicedb-embedded/issues/160)) ([5f968ae](https://github.com/borkfork/spicedb-embedded/commit/5f968ae26ad8952012e206c5474d2f36e431f459))
+* **python:** pin Ruff formatter version ([#164](https://github.com/borkfork/spicedb-embedded/issues/164)) ([a08d6e2](https://github.com/borkfork/spicedb-embedded/commit/a08d6e27e6caba7fde022ca8b524e647ece6f584))
+
 ## [0.7.1](https://github.com/borkfork/spicedb-embedded/compare/v0.7.0...v0.7.1) (2026-07-07)
 
 
