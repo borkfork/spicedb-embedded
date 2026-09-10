@@ -2000,7 +2000,7 @@ dependencies = [
 
 [[package]]
 name = "spicedb-embedded"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "hyper-util",
  "prost",
@@ -2020,7 +2020,7 @@ dependencies = [
 
 [[package]]
 name = "spicedb-embedded-sys"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "prost",
  "spicedb-grpc-tonic",
