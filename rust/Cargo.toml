@@ -46,7 +46,7 @@ spicedb-embedded-sys = { version = "0.7.1", path = "spicedb-embedded-sys" } # x-
 
 [dev-dependencies]
 prost = "0.14.4"
-serial_test = "3.5.0"
+serial_test = "4.0.1"
 tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread"] }
 tokio-stream = "0.1.19"
 testcontainers-modules = { version = "0.15.0", features = [
