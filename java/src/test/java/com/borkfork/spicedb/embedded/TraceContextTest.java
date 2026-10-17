@@ -1,6 +1,7 @@
 package com.borkfork.spicedb.embedded;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -11,6 +12,7 @@ import io.opentelemetry.api.trace.TraceFlags;
 import io.opentelemetry.api.trace.TraceState;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiFunction;
 import org.junit.jupiter.api.Test;
 
 class TraceContextTest {
@@ -47,6 +49,29 @@ class TraceContextTest {
         var scope = span().makeCurrent()) {
       var schema = spicedb.schema().readSchema(ReadSchemaRequest.getDefaultInstance());
       assertTrue(schema.getSchemaText().contains("definition document"));
+    }
+  }
+
+  @Test
+  void everyUnaryMethodNameIsKnown() {
+    List<BiFunction<Long, byte[], byte[]>> calls =
+        List.of(
+            SpiceDBFfi::checkPermission,
+            SpiceDBFfi::writeSchema,
+            SpiceDBFfi::writeRelationships,
+            SpiceDBFfi::deleteRelationships,
+            SpiceDBFfi::checkBulkPermissions,
+            SpiceDBFfi::expandPermissionTree,
+            SpiceDBFfi::readSchema);
+    try (var spicedb = EmbeddedSpiceDB.start(EmbeddedSpiceDBTest.TEST_SCHEMA, List.of())) {
+      for (var call : calls) {
+        try {
+          call.apply(spicedb.handle(), new byte[0]);
+        } catch (SpiceDBException e) {
+          // An empty request may fail validation, but its method must be one spicedb_rpc accepts.
+          assertFalse(e.getMessage().startsWith("unsupported method"), e.getMessage());
+        }
+      }
     }
   }
 

@@ -120,8 +120,9 @@ func spicedb_free(ptr *C.char) {
 //   - cache_metrics_enabled: enable cache Prometheus metrics for dispatch/namespace/cluster caches
 //     (default: true when metrics_enabled=true).
 //   - otlp_endpoint: OTLP gRPC endpoint for OpenTelemetry traces, e.g. "localhost:4317". Insecure.
-//   - otlp_service_name: service.name on exported traces. Default "spicedb".
 //     Only used when metrics_enabled=true.
+//   - otlp_service_name: service.name on exported traces. Default "spicedb", which overrides
+//     OTEL_SERVICE_NAME.
 //   - metrics_port: if > 0, starts a Prometheus HTTP server on this port at /metrics.
 //     Only used when metrics_enabled=true.
 type StartOptions struct {
