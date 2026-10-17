@@ -41,6 +41,7 @@ from spicedb_embedded.ffi import (
     spicedb_start,
 )
 from spicedb_embedded.tcp_channel import get_target as get_tcp_target
+from spicedb_embedded.trace_context import TraceContextInterceptor
 from spicedb_embedded.unix_socket_channel import get_target as get_unix_socket_target
 
 
@@ -123,7 +124,10 @@ class EmbeddedSpiceDB:
         self._streaming_address = data["streaming_address"]
         self._streaming_transport = data["streaming_transport"]
         target = _streaming_target(self._streaming_address, self._streaming_transport)
-        self._channel = grpc.insecure_channel(target)
+        self._base_channel = grpc.insecure_channel(target)
+        self._channel = grpc.intercept_channel(
+            self._base_channel, TraceContextInterceptor()
+        )
 
     def _bootstrap(self, schema: str, relationships: list[Relationship]) -> None:
         write_schema_req = WriteSchemaRequest(schema=schema)
@@ -169,7 +173,7 @@ class EmbeddedSpiceDB:
     def close(self) -> None:
         """Dispose the instance and close the channel."""
         spicedb_dispose(self._handle)
-        self._channel.close()
+        self._base_channel.close()
 
     def __enter__(self) -> "EmbeddedSpiceDB":
         return self

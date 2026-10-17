@@ -9,6 +9,11 @@ import { accessSync } from "fs";
 import { platform } from "os";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
+import {
+  currentTraceContext,
+  TRACEPARENT,
+  TRACESTATE,
+} from "./trace_context.js";
 
 /** Result of starting an embedded instance (memory transport). */
 export interface SpiceDBStartResult {
@@ -54,6 +59,8 @@ export interface SpiceDBStartOptions {
    * Only used when metrics_enabled=true.
    */
   otlp_endpoint?: string;
+  /** service.name on exported traces (default: "spicedb"). */
+  otlp_service_name?: string;
   /**
    * If set, starts a Prometheus HTTP server on this port at /metrics.
    * Only used when metrics_enabled=true.
@@ -77,6 +84,22 @@ function findLibrary(): string {
         : "libspicedb.so";
 
   const platformKey = `${currentPlatform}-${process.arch}`;
+  // A local build (scripts/stage-node-prebuild.sh) wins over the published platform package,
+  // which may predate symbols the source needs.
+  const prebuildsDir = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "prebuilds",
+    platformKey
+  );
+  const localPath = resolve(prebuildsDir, libName);
+  try {
+    accessSync(localPath);
+    return localPath;
+  } catch {
+    // no local build; the published package ships only dist
+  }
+
   const optionalPkgName = `spicedb-embedded-${platformKey}`;
   try {
     const req = createRequire(import.meta.url);
@@ -86,20 +109,6 @@ function findLibrary(): string {
     return bundledPath;
   } catch {
     // optional dep not installed or no bundled lib for this platform
-  }
-
-  const prebuildsDir = resolve(
-    dirname(fileURLToPath(import.meta.url)),
-    "..",
-    "prebuilds",
-    platformKey
-  );
-  const legacyPath = resolve(prebuildsDir, libName);
-  try {
-    accessSync(legacyPath);
-    return legacyPath;
-  } catch {
-    // no bundled lib for this platform
   }
 
   const explicit = process.env.SPICEDB_LIBRARY_PATH;
@@ -128,56 +137,11 @@ interface SpiceDBLib {
   spicedb_dispose: (handle: number) => string;
   spicedb_free: (ptr: unknown) => void;
   spicedb_free_bytes: (ptr: unknown) => void;
-  spicedb_permissions_check_permission: (
+  spicedb_rpc: (
     handle: number,
-    requestBytes: Buffer,
-    requestLen: number,
-    outResponseBytes: [unknown],
-    outResponseLen: [number],
-    outError: [string | null]
-  ) => void;
-  spicedb_schema_write_schema: (
-    handle: number,
-    requestBytes: Buffer,
-    requestLen: number,
-    outResponseBytes: [unknown],
-    outResponseLen: [number],
-    outError: [string | null]
-  ) => void;
-  spicedb_permissions_write_relationships: (
-    handle: number,
-    requestBytes: Buffer,
-    requestLen: number,
-    outResponseBytes: [unknown],
-    outResponseLen: [number],
-    outError: [string | null]
-  ) => void;
-  spicedb_permissions_delete_relationships: (
-    handle: number,
-    requestBytes: Buffer,
-    requestLen: number,
-    outResponseBytes: [unknown],
-    outResponseLen: [number],
-    outError: [string | null]
-  ) => void;
-  spicedb_permissions_check_bulk_permissions: (
-    handle: number,
-    requestBytes: Buffer,
-    requestLen: number,
-    outResponseBytes: [unknown],
-    outResponseLen: [number],
-    outError: [string | null]
-  ) => void;
-  spicedb_permissions_expand_permission_tree: (
-    handle: number,
-    requestBytes: Buffer,
-    requestLen: number,
-    outResponseBytes: [unknown],
-    outResponseLen: [number],
-    outError: [string | null]
-  ) => void;
-  spicedb_schema_read_schema: (
-    handle: number,
+    method: string,
+    traceparent: string | null,
+    tracestate: string | null,
     requestBytes: Buffer,
     requestLen: number,
     outResponseBytes: [unknown],
@@ -249,41 +213,17 @@ function getLib(): SpiceDBLib {
     ),
     spicedb_free: spicedb_free as (ptr: unknown) => void,
     spicedb_free_bytes,
-    spicedb_permissions_check_permission: loaded.func(
-      "spicedb_permissions_check_permission",
-      "void",
-      ["ulonglong", inBytes, "int", outUcharPtrPtr, outIntPtr, outCharPtrPtr]
-    ),
-    spicedb_schema_write_schema: loaded.func(
-      "spicedb_schema_write_schema",
-      "void",
-      ["ulonglong", inBytes, "int", outUcharPtrPtr, outIntPtr, outCharPtrPtr]
-    ),
-    spicedb_permissions_write_relationships: loaded.func(
-      "spicedb_permissions_write_relationships",
-      "void",
-      ["ulonglong", inBytes, "int", outUcharPtrPtr, outIntPtr, outCharPtrPtr]
-    ),
-    spicedb_permissions_delete_relationships: loaded.func(
-      "spicedb_permissions_delete_relationships",
-      "void",
-      ["ulonglong", inBytes, "int", outUcharPtrPtr, outIntPtr, outCharPtrPtr]
-    ),
-    spicedb_permissions_check_bulk_permissions: loaded.func(
-      "spicedb_permissions_check_bulk_permissions",
-      "void",
-      ["ulonglong", inBytes, "int", outUcharPtrPtr, outIntPtr, outCharPtrPtr]
-    ),
-    spicedb_permissions_expand_permission_tree: loaded.func(
-      "spicedb_permissions_expand_permission_tree",
-      "void",
-      ["ulonglong", inBytes, "int", outUcharPtrPtr, outIntPtr, outCharPtrPtr]
-    ),
-    spicedb_schema_read_schema: loaded.func(
-      "spicedb_schema_read_schema",
-      "void",
-      ["ulonglong", inBytes, "int", outUcharPtrPtr, outIntPtr, outCharPtrPtr]
-    ),
+    spicedb_rpc: loaded.func("spicedb_rpc", "void", [
+      "ulonglong",
+      "const char*",
+      "const char*",
+      "const char*",
+      inBytes,
+      "int",
+      outUcharPtrPtr,
+      outIntPtr,
+      outCharPtrPtr,
+    ]),
   };
 
   return lib;
@@ -328,15 +268,11 @@ export function spicedb_dispose(handle: number): void {
   }
 }
 
-function callRpc(
-  fn: (
-    handle: number,
-    requestBytes: Buffer,
-    requestLen: number,
-    outResponseBytes: [unknown],
-    outResponseLen: [number],
-    outError: [string | null]
-  ) => void,
+const PERMISSIONS = "/authzed.api.v1.PermissionsService/";
+const SCHEMA = "/authzed.api.v1.SchemaService/";
+/** Invokes a unary method by its full gRPC name under the active trace context. */
+export function callRpc(
+  method: string,
   handle: number,
   requestBytes: Uint8Array
 ): Uint8Array {
@@ -345,84 +281,65 @@ function callRpc(
   const outResp: [unknown] = [null];
   const outLen: [number] = [0];
   const outErr: [string | null] = [null];
-
-  fn(handle, buf, buf.length, outResp, outLen, outErr);
-
+  const trace = currentTraceContext();
+  l.spicedb_rpc(
+    handle,
+    method,
+    trace[TRACEPARENT] ?? null,
+    trace[TRACESTATE] ?? null,
+    buf,
+    buf.length,
+    outResp,
+    outLen,
+    outErr
+  );
   const errMsg = outErr[0];
   if (errMsg != null && errMsg !== "") {
     throw new Error(errMsg);
   }
-
   const ptr = outResp[0];
   const len = outLen[0];
   return copyOutAndFree(ptr, len, (p) => l.spicedb_free_bytes(p));
 }
-
 export function spicedb_permissions_check_permission(
   handle: number,
   requestBytes: Uint8Array
 ): Uint8Array {
-  return callRpc(
-    getLib().spicedb_permissions_check_permission,
-    handle,
-    requestBytes
-  );
+  return callRpc(PERMISSIONS + "CheckPermission", handle, requestBytes);
 }
-
 export function spicedb_schema_write_schema(
   handle: number,
   requestBytes: Uint8Array
 ): Uint8Array {
-  return callRpc(getLib().spicedb_schema_write_schema, handle, requestBytes);
+  return callRpc(SCHEMA + "WriteSchema", handle, requestBytes);
 }
-
 export function spicedb_permissions_write_relationships(
   handle: number,
   requestBytes: Uint8Array
 ): Uint8Array {
-  return callRpc(
-    getLib().spicedb_permissions_write_relationships,
-    handle,
-    requestBytes
-  );
+  return callRpc(PERMISSIONS + "WriteRelationships", handle, requestBytes);
 }
-
 export function spicedb_permissions_delete_relationships(
   handle: number,
   requestBytes: Uint8Array
 ): Uint8Array {
-  return callRpc(
-    getLib().spicedb_permissions_delete_relationships,
-    handle,
-    requestBytes
-  );
+  return callRpc(PERMISSIONS + "DeleteRelationships", handle, requestBytes);
 }
-
 export function spicedb_permissions_check_bulk_permissions(
   handle: number,
   requestBytes: Uint8Array
 ): Uint8Array {
-  return callRpc(
-    getLib().spicedb_permissions_check_bulk_permissions,
-    handle,
-    requestBytes
-  );
+  return callRpc(PERMISSIONS + "CheckBulkPermissions", handle, requestBytes);
 }
-
 export function spicedb_permissions_expand_permission_tree(
   handle: number,
   requestBytes: Uint8Array
 ): Uint8Array {
-  return callRpc(
-    getLib().spicedb_permissions_expand_permission_tree,
-    handle,
-    requestBytes
-  );
+  return callRpc(PERMISSIONS + "ExpandPermissionTree", handle, requestBytes);
 }
-
 export function spicedb_schema_read_schema(
   handle: number,
   requestBytes: Uint8Array
 ): Uint8Array {
-  return callRpc(getLib().spicedb_schema_read_schema, handle, requestBytes);
+  return callRpc(SCHEMA + "ReadSchema", handle, requestBytes);
 }

@@ -12,6 +12,7 @@ from ctypes import POINTER, byref, c_char, c_char_p, c_int, c_ulonglong, c_void_
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from spicedb_embedded import trace_context
 from spicedb_embedded.errors import SpiceDBError
 
 
@@ -45,6 +46,8 @@ class StartOptions:
     #: OTLP gRPC endpoint for OpenTelemetry traces, e.g. "localhost:4317" (insecure).
     #: Only used when metrics_enabled=True.
     otlp_endpoint: str | None = None
+    #: service.name on exported traces (default: "spicedb").
+    otlp_service_name: str | None = None
     #: If set, starts a Prometheus HTTP server on this port at /metrics.
     #: Only used when metrics_enabled=True.
     metrics_port: int | None = None
@@ -112,43 +115,47 @@ def _get_lib():
         _lib.spicedb_start.argtypes = [c_char_p]
         _lib.spicedb_dispose.restype = POINTER(c_char)
         _lib.spicedb_dispose.argtypes = [c_ulonglong]
-        _lib.spicedb_free.argtypes = [c_char_p]
+        _lib.spicedb_free.argtypes = [c_void_p]
         _lib.spicedb_free_bytes.argtypes = [c_void_p]
 
-        # RPC signatures: handle, request_bytes, request_len, out_response_bytes, out_response_len, out_error
-        _rpc_argtypes = [
+        # spicedb_rpc: handle, method, traceparent, tracestate, request_bytes, request_len,
+        _lib.spicedb_rpc.restype = None
+        _lib.spicedb_rpc.argtypes = [
             c_ulonglong,
+            c_char_p,
+            c_char_p,
+            c_char_p,
             c_void_p,  # const uchar*
             c_int,
             POINTER(c_void_p),
             POINTER(c_int),
             POINTER(c_void_p),
         ]
-        for name in (
-            "spicedb_permissions_check_permission",
-            "spicedb_schema_write_schema",
-            "spicedb_permissions_write_relationships",
-            "spicedb_permissions_delete_relationships",
-            "spicedb_permissions_check_bulk_permissions",
-            "spicedb_permissions_expand_permission_tree",
-            "spicedb_schema_read_schema",
-        ):
-            getattr(_lib, name).restype = None
-            getattr(_lib, name).argtypes = _rpc_argtypes
     return _lib
 
 
-def _call_rpc(handle: int, request_bytes: bytes, rpc_name: str) -> bytes:
-    """Call an RPC by name; return response bytes or raise."""
+_PERMISSIONS = "/authzed.api.v1.PermissionsService/"
+_SCHEMA = "/authzed.api.v1.SchemaService/"
+
+
+def _encode(value: str | None) -> bytes | None:
+    return value.encode("ascii") if value is not None else None
+
+
+def _call_rpc(handle: int, request_bytes: bytes, method: str) -> bytes:
+    """Invoke a unary method by its full gRPC name under the current trace context."""
     lib = _get_lib()
-    rpc = getattr(lib, rpc_name)
     out_resp = c_void_p()
     out_len = c_int()
     out_err = c_void_p()
+    trace = trace_context.current()
 
     buf = ctypes.create_string_buffer(request_bytes)
-    rpc(
+    lib.spicedb_rpc(
         c_ulonglong(handle),
+        method.encode("ascii"),
+        _encode(trace.get(trace_context.TRACEPARENT)),
+        _encode(trace.get(trace_context.TRACESTATE)),
         buf,
         len(request_bytes),
         byref(out_resp),
@@ -223,44 +230,40 @@ def spicedb_dispose(handle: int) -> None:
 
 def spicedb_permissions_check_permission(handle: int, request_bytes: bytes) -> bytes:
     """FFI: CheckPermission. Returns marshalled CheckPermissionResponse."""
-    return _call_rpc(handle, request_bytes, "spicedb_permissions_check_permission")
+    return _call_rpc(handle, request_bytes, _PERMISSIONS + "CheckPermission")
 
 
 def spicedb_schema_write_schema(handle: int, request_bytes: bytes) -> bytes:
     """FFI: WriteSchema. Returns marshalled WriteSchemaResponse."""
-    return _call_rpc(handle, request_bytes, "spicedb_schema_write_schema")
+    return _call_rpc(handle, request_bytes, _SCHEMA + "WriteSchema")
 
 
 def spicedb_permissions_write_relationships(handle: int, request_bytes: bytes) -> bytes:
     """FFI: WriteRelationships. Returns marshalled WriteRelationshipsResponse."""
-    return _call_rpc(handle, request_bytes, "spicedb_permissions_write_relationships")
+    return _call_rpc(handle, request_bytes, _PERMISSIONS + "WriteRelationships")
 
 
 def spicedb_permissions_delete_relationships(
     handle: int, request_bytes: bytes
 ) -> bytes:
     """FFI: DeleteRelationships. Returns marshalled DeleteRelationshipsResponse."""
-    return _call_rpc(handle, request_bytes, "spicedb_permissions_delete_relationships")
+    return _call_rpc(handle, request_bytes, _PERMISSIONS + "DeleteRelationships")
 
 
 def spicedb_permissions_check_bulk_permissions(
     handle: int, request_bytes: bytes
 ) -> bytes:
     """FFI: CheckBulkPermissions. Returns marshalled CheckBulkPermissionsResponse."""
-    return _call_rpc(
-        handle, request_bytes, "spicedb_permissions_check_bulk_permissions"
-    )
+    return _call_rpc(handle, request_bytes, _PERMISSIONS + "CheckBulkPermissions")
 
 
 def spicedb_permissions_expand_permission_tree(
     handle: int, request_bytes: bytes
 ) -> bytes:
     """FFI: ExpandPermissionTree. Returns marshalled ExpandPermissionTreeResponse."""
-    return _call_rpc(
-        handle, request_bytes, "spicedb_permissions_expand_permission_tree"
-    )
+    return _call_rpc(handle, request_bytes, _PERMISSIONS + "ExpandPermissionTree")
 
 
 def spicedb_schema_read_schema(handle: int, request_bytes: bytes) -> bytes:
     """FFI: ReadSchema. Returns marshalled ReadSchemaResponse."""
-    return _call_rpc(handle, request_bytes, "spicedb_schema_read_schema")
+    return _call_rpc(handle, request_bytes, _SCHEMA + "ReadSchema")
