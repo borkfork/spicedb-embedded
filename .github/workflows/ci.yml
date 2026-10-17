@@ -8,6 +8,9 @@ on:
   merge_group:
   push:
     branches: [main, "release-please--**"]
+  # update-examples.yml dispatches CI on its PR branch: a push made with
+  # GITHUB_TOKEN starts no workflows, so the PR would never get ci-gate.
+  workflow_dispatch:
 
 permissions:
   contents: read
