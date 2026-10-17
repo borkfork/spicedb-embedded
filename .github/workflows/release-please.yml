@@ -62,11 +62,14 @@ jobs:
           # Only update lockfiles for the root package PR; grpc-tonic uses the rust
           # release type which manages its own Cargo.toml, and its version bumps are
           # incompatible with the workspace until the consuming crates adopt them.
-          BRANCH=$(echo '${{ needs.release-please.outputs.prs }}' | jq -r '.[] | select(.headBranchName | contains("grpc-tonic") | not) | .headBranchName' | head -n1)
+          BRANCH=$(printf '%s' "$PRS" | jq -r '.[] | select(.headBranchName | contains("grpc-tonic") | not) | .headBranchName' | head -n1)
           if [ -n "$BRANCH" ]; then
             echo "Dispatching lockfile update for branch: $BRANCH"
             gh workflow run update-lockfiles.yml -f branch="$BRANCH"
           fi
         env:
+          # The PR bodies hold commit titles, so they go through the environment, not
+          # into the script, where a quote in a title broke it.
+          PRS: ${{ needs.release-please.outputs.prs }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
