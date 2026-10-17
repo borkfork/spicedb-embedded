@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
 
 class EmbeddedSpiceDBTest {
 
-  private static final String TEST_SCHEMA =
+  static final String TEST_SCHEMA =
       """
             definition user {}
 

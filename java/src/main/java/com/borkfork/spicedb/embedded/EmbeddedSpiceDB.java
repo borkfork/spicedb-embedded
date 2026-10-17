@@ -183,6 +183,11 @@ public final class EmbeddedSpiceDB implements AutoCloseable {
     return channel;
   }
 
+  /** The native instance handle. */
+  long handle() {
+    return handle;
+  }
+
   /** Streaming proxy address (Unix path or host:port). */
   public String streamingAddress() {
     return streamingAddress;

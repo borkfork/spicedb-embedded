@@ -13,6 +13,7 @@ import (
 	pb "github.com/authzed/authzed-go/proto/authzed/api/v1"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
 // streamingProxyAddr returns the address for the streaming proxy (Unix or TCP).
@@ -23,6 +24,23 @@ func streamingProxyAddr(id uint64) string {
 	return filepath.Join(os.TempDir(), fmt.Sprintf("spicedb-streaming-%d-%d.sock", os.Getpid(), id))
 }
 
+// forwardTraceContext copies the caller's W3C trace headers from the incoming request to the outgoing
+// call, so the backend's server spans join the caller's trace.
+func forwardTraceContext(ctx context.Context) context.Context {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ctx
+	}
+	var traceparent, tracestate string
+	if v := md.Get("traceparent"); len(v) > 0 {
+		traceparent = v[0]
+	}
+	if v := md.Get("tracestate"); len(v) > 0 {
+		tracestate = v[0]
+	}
+	return traceContext(ctx, traceparent, tracestate)
+}
+
 // permissionsStreamingProxy forwards only the streaming RPCs to the bufconn backend.
 type permissionsStreamingProxy struct {
 	pb.UnimplementedPermissionsServiceServer
@@ -30,7 +48,7 @@ type permissionsStreamingProxy struct {
 }
 
 func (p *permissionsStreamingProxy) ReadRelationships(req *pb.ReadRelationshipsRequest, srv grpc.ServerStreamingServer[pb.ReadRelationshipsResponse]) error {
-	ctx := srv.Context()
+	ctx := forwardTraceContext(srv.Context())
 	stream, err := p.client.ReadRelationships(ctx, req)
 	if err != nil {
 		return err
@@ -50,7 +68,7 @@ func (p *permissionsStreamingProxy) ReadRelationships(req *pb.ReadRelationshipsR
 }
 
 func (p *permissionsStreamingProxy) LookupResources(req *pb.LookupResourcesRequest, srv grpc.ServerStreamingServer[pb.LookupResourcesResponse]) error {
-	ctx := srv.Context()
+	ctx := forwardTraceContext(srv.Context())
 	stream, err := p.client.LookupResources(ctx, req)
 	if err != nil {
 		return err
@@ -70,7 +88,7 @@ func (p *permissionsStreamingProxy) LookupResources(req *pb.LookupResourcesReque
 }
 
 func (p *permissionsStreamingProxy) LookupSubjects(req *pb.LookupSubjectsRequest, srv grpc.ServerStreamingServer[pb.LookupSubjectsResponse]) error {
-	ctx := srv.Context()
+	ctx := forwardTraceContext(srv.Context())
 	stream, err := p.client.LookupSubjects(ctx, req)
 	if err != nil {
 		return err
@@ -97,7 +115,7 @@ type watchStreamingProxy struct {
 }
 
 func (w *watchStreamingProxy) Watch(req *pb.WatchRequest, srv grpc.ServerStreamingServer[pb.WatchResponse]) error {
-	ctx := srv.Context()
+	ctx := forwardTraceContext(srv.Context())
 	stream, err := w.client.Watch(ctx, req)
 	if err != nil {
 		return err

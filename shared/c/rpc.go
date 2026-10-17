@@ -14,11 +14,12 @@ import (
 
 	pb "github.com/authzed/authzed-go/proto/authzed/api/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 )
 
 // runRPC is a helper for FFI RPCs: validate handle/transport, unmarshal req, call fn, marshal resp.
-func runRPC(handle C.ulonglong, reqBytes []byte, outResp **C.uchar, outLen *C.int, outErr **C.char,
+func runRPC(parent context.Context, handle C.ulonglong, reqBytes []byte, outResp **C.uchar, outLen *C.int, outErr **C.char,
 	unmarshalReq func([]byte) (proto.Message, error),
 	callRPC func(context.Context, *grpc.ClientConn, proto.Message) (proto.Message, error),
 ) {
@@ -44,7 +45,7 @@ func runRPC(handle C.ulonglong, reqBytes []byte, outResp **C.uchar, outLen *C.in
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 	resp, err := callRPC(ctx, instance.clientConn, req)
 	if err != nil {
@@ -62,6 +63,87 @@ func runRPC(handle C.ulonglong, reqBytes []byte, outResp **C.uchar, outLen *C.in
 	if n > 0 {
 		*outResp = (*C.uchar)(C.CBytes(respBytes))
 	}
+}
+
+// rpcMessages maps each unary method spicedb_rpc accepts to new request and response messages.
+var rpcMessages = map[string]func() (proto.Message, proto.Message){
+	pb.PermissionsService_CheckPermission_FullMethodName: func() (proto.Message, proto.Message) {
+		return &pb.CheckPermissionRequest{}, &pb.CheckPermissionResponse{}
+	},
+	pb.PermissionsService_CheckBulkPermissions_FullMethodName: func() (proto.Message, proto.Message) {
+		return &pb.CheckBulkPermissionsRequest{}, &pb.CheckBulkPermissionsResponse{}
+	},
+	pb.PermissionsService_WriteRelationships_FullMethodName: func() (proto.Message, proto.Message) {
+		return &pb.WriteRelationshipsRequest{}, &pb.WriteRelationshipsResponse{}
+	},
+	pb.PermissionsService_DeleteRelationships_FullMethodName: func() (proto.Message, proto.Message) {
+		return &pb.DeleteRelationshipsRequest{}, &pb.DeleteRelationshipsResponse{}
+	},
+	pb.PermissionsService_ExpandPermissionTree_FullMethodName: func() (proto.Message, proto.Message) {
+		return &pb.ExpandPermissionTreeRequest{}, &pb.ExpandPermissionTreeResponse{}
+	},
+	pb.SchemaService_ReadSchema_FullMethodName: func() (proto.Message, proto.Message) {
+		return &pb.ReadSchemaRequest{}, &pb.ReadSchemaResponse{}
+	},
+	pb.SchemaService_WriteSchema_FullMethodName: func() (proto.Message, proto.Message) {
+		return &pb.WriteSchemaRequest{}, &pb.WriteSchemaResponse{}
+	},
+}
+
+// traceContext returns parent carrying a W3C traceparent and tracestate as gRPC metadata, so SpiceDB's
+// server spans join the caller's trace. An empty traceparent leaves parent unchanged.
+func traceContext(parent context.Context, traceparent, tracestate string) context.Context {
+	if traceparent == "" {
+		return parent
+	}
+	md := metadata.Pairs("traceparent", traceparent)
+	if tracestate != "" {
+		md.Set("tracestate", tracestate)
+	}
+	return metadata.NewOutgoingContext(parent, md)
+}
+
+// spicedb_rpc invokes a unary method by its full gRPC name, such as
+// "/authzed.api.v1.PermissionsService/CheckPermission", under the caller's W3C trace context.
+// traceparent and tracestate may be NULL. Responses and errors are returned as for the per-method exports.
+//
+//export spicedb_rpc
+func spicedb_rpc(
+	handle C.ulonglong,
+	method *C.char,
+	traceparent *C.char,
+	tracestate *C.char,
+	requestBytes *C.uchar,
+	requestLen C.int,
+	outResponseBytes **C.uchar,
+	outResponseLen *C.int,
+	outError **C.char,
+) {
+	name := C.GoString(method)
+	messages, ok := rpcMessages[name]
+	if !ok {
+		*outResponseBytes = nil
+		*outResponseLen = 0
+		*outError = C.CString(fmt.Sprintf("unsupported method: %s", name))
+		return
+	}
+	parent := traceContext(context.Background(), C.GoString(traceparent), C.GoString(tracestate))
+	reqBytes := C.GoBytes(unsafe.Pointer(requestBytes), requestLen)
+	req, resp := messages()
+	runRPC(parent, handle, reqBytes, outResponseBytes, outResponseLen, outError,
+		func(b []byte) (proto.Message, error) {
+			if err := proto.Unmarshal(b, req); err != nil {
+				return nil, err
+			}
+			return req, nil
+		},
+		func(ctx context.Context, conn *grpc.ClientConn, req proto.Message) (proto.Message, error) {
+			if err := conn.Invoke(ctx, name, req, resp); err != nil {
+				return nil, err
+			}
+			return resp, nil
+		},
+	)
 }
 
 // spicedb_free_bytes frees a byte buffer returned by the permissions/schema RPC FFI functions
@@ -87,7 +169,7 @@ func spicedb_permissions_check_bulk_permissions(
 	outError **C.char,
 ) {
 	reqBytes := C.GoBytes(unsafe.Pointer(requestBytes), requestLen)
-	runRPC(handle, reqBytes, outResponseBytes, outResponseLen, outError,
+	runRPC(context.Background(), handle, reqBytes, outResponseBytes, outResponseLen, outError,
 		func(b []byte) (proto.Message, error) {
 			var req pb.CheckBulkPermissionsRequest
 			if err := proto.Unmarshal(b, &req); err != nil {
@@ -113,7 +195,7 @@ func spicedb_permissions_check_permission(
 	outError **C.char,
 ) {
 	reqBytes := C.GoBytes(unsafe.Pointer(requestBytes), requestLen)
-	runRPC(handle, reqBytes, outResponseBytes, outResponseLen, outError,
+	runRPC(context.Background(), handle, reqBytes, outResponseBytes, outResponseLen, outError,
 		func(b []byte) (proto.Message, error) {
 			var req pb.CheckPermissionRequest
 			if err := proto.Unmarshal(b, &req); err != nil {
@@ -139,7 +221,7 @@ func spicedb_permissions_delete_relationships(
 	outError **C.char,
 ) {
 	reqBytes := C.GoBytes(unsafe.Pointer(requestBytes), requestLen)
-	runRPC(handle, reqBytes, outResponseBytes, outResponseLen, outError,
+	runRPC(context.Background(), handle, reqBytes, outResponseBytes, outResponseLen, outError,
 		func(b []byte) (proto.Message, error) {
 			var req pb.DeleteRelationshipsRequest
 			if err := proto.Unmarshal(b, &req); err != nil {
@@ -165,7 +247,7 @@ func spicedb_permissions_expand_permission_tree(
 	outError **C.char,
 ) {
 	reqBytes := C.GoBytes(unsafe.Pointer(requestBytes), requestLen)
-	runRPC(handle, reqBytes, outResponseBytes, outResponseLen, outError,
+	runRPC(context.Background(), handle, reqBytes, outResponseBytes, outResponseLen, outError,
 		func(b []byte) (proto.Message, error) {
 			var req pb.ExpandPermissionTreeRequest
 			if err := proto.Unmarshal(b, &req); err != nil {
@@ -191,7 +273,7 @@ func spicedb_permissions_write_relationships(
 	outError **C.char,
 ) {
 	reqBytes := C.GoBytes(unsafe.Pointer(requestBytes), requestLen)
-	runRPC(handle, reqBytes, outResponseBytes, outResponseLen, outError,
+	runRPC(context.Background(), handle, reqBytes, outResponseBytes, outResponseLen, outError,
 		func(b []byte) (proto.Message, error) {
 			var req pb.WriteRelationshipsRequest
 			if err := proto.Unmarshal(b, &req); err != nil {
@@ -217,7 +299,7 @@ func spicedb_schema_read_schema(
 	outError **C.char,
 ) {
 	reqBytes := C.GoBytes(unsafe.Pointer(requestBytes), requestLen)
-	runRPC(handle, reqBytes, outResponseBytes, outResponseLen, outError,
+	runRPC(context.Background(), handle, reqBytes, outResponseBytes, outResponseLen, outError,
 		func(b []byte) (proto.Message, error) {
 			var req pb.ReadSchemaRequest
 			if err := proto.Unmarshal(b, &req); err != nil {
@@ -243,7 +325,7 @@ func spicedb_schema_write_schema(
 	outError **C.char,
 ) {
 	reqBytes := C.GoBytes(unsafe.Pointer(requestBytes), requestLen)
-	runRPC(handle, reqBytes, outResponseBytes, outResponseLen, outError,
+	runRPC(context.Background(), handle, reqBytes, outResponseBytes, outResponseLen, outError,
 		func(b []byte) (proto.Message, error) {
 			var req pb.WriteSchemaRequest
 			if err := proto.Unmarshal(b, &req); err != nil {

@@ -49,6 +49,12 @@ All RPC FFI functions use the same ABI: `(handle, request_bytes, request_len, ou
 
 **SchemaService:** `spicedb_schema_read_schema`, `spicedb_schema_write_schema`
 
+### `spicedb_rpc(handle, method, traceparent, tracestate, request_bytes, request_len, out_response_bytes, out_response_len, out_error)`
+
+Invoke any of the unary methods above by its full gRPC name, such as `/authzed.api.v1.PermissionsService/CheckPermission`, under the caller's W3C trace context. `traceparent` and `tracestate` may be `NULL`. When `otlp_endpoint` is set, SpiceDB's server spans then join the caller's trace instead of starting their own. An unknown method returns the error `unsupported method: <name>`. Responses and errors are freed as for the per-method functions.
+
+The streaming proxy forwards `traceparent` and `tracestate` from the incoming gRPC metadata in the same way.
+
 Streaming RPCs (Watch, ReadRelationships, LookupResources, LookupSubjects) are not exposed via FFI. For memory transport, use the **`streaming_address`** returned by `spicedb_start` to connect a gRPC client for those APIs.
 
 ### `spicedb_free_bytes(ptr)`

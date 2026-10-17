@@ -65,6 +65,10 @@ public final class StartOptions {
   @SerializedName("otlp_endpoint")
   public String otlpEndpoint;
 
+  /** {@code service.name} on exported traces (default: {@code "spicedb"}). */
+  @SerializedName("otlp_service_name")
+  public String otlpServiceName;
+
   /**
    * If set, starts a Prometheus HTTP server on this port at {@code /metrics}. Only used when
    * metricsEnabled=true.
@@ -132,6 +136,11 @@ public final class StartOptions {
 
     public Builder otlpEndpoint(String endpoint) {
       opts.otlpEndpoint = endpoint;
+      return this;
+    }
+
+    public Builder otlpServiceName(String serviceName) {
+      opts.otlpServiceName = serviceName;
       return this;
     }
 

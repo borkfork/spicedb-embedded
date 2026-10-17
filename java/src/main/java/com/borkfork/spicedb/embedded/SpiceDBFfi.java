@@ -3,19 +3,34 @@ package com.borkfork.spicedb.embedded;
 import com.sun.jna.Pointer;
 import com.sun.jna.ptr.IntByReference;
 import com.sun.jna.ptr.PointerByReference;
+import java.util.Map;
 
 /** Helper to call SpiceDB RPCs via JNA and return response bytes. */
 final class SpiceDBFfi {
 
+  private static final String PERMISSIONS = "/authzed.api.v1.PermissionsService/";
+  private static final String SCHEMA = "/authzed.api.v1.SchemaService/";
+
   private SpiceDBFfi() {}
 
-  static byte[] callRpc(long handle, byte[] requestBytes, RpcCall rpc) {
+  /** Invokes a unary method by its full gRPC name under the current trace context. */
+  static byte[] callRpc(long handle, String method, byte[] requestBytes) {
     SpiceDB lib = SpiceDB.load();
     PointerByReference outResp = new PointerByReference();
     IntByReference outLen = new IntByReference();
     PointerByReference outErr = new PointerByReference();
+    Map<String, String> trace = TraceContext.current();
 
-    rpc.call(lib, handle, requestBytes, requestBytes.length, outResp, outLen, outErr);
+    lib.spicedb_rpc(
+        handle,
+        method,
+        trace.get(TraceContext.TRACEPARENT),
+        trace.get(TraceContext.TRACESTATE),
+        requestBytes,
+        requestBytes.length,
+        outResp,
+        outLen,
+        outErr);
 
     Pointer errPtr = outErr.getValue();
     if (errPtr != null) {
@@ -37,70 +52,31 @@ final class SpiceDBFfi {
     return copy;
   }
 
-  interface RpcCall {
-    void call(
-        SpiceDB lib,
-        long handle,
-        byte[] requestBytes,
-        int requestLen,
-        PointerByReference outResp,
-        IntByReference outLen,
-        PointerByReference outErr);
-  }
-
   static byte[] checkPermission(long handle, byte[] requestBytes) {
-    return callRpc(
-        handle,
-        requestBytes,
-        (lib, h, req, len, outResp, outLen, outErr) ->
-            lib.spicedb_permissions_check_permission(h, req, len, outResp, outLen, outErr));
+    return callRpc(handle, PERMISSIONS + "CheckPermission", requestBytes);
   }
 
   static byte[] writeSchema(long handle, byte[] requestBytes) {
-    return callRpc(
-        handle,
-        requestBytes,
-        (lib, h, req, len, outResp, outLen, outErr) ->
-            lib.spicedb_schema_write_schema(h, req, len, outResp, outLen, outErr));
+    return callRpc(handle, SCHEMA + "WriteSchema", requestBytes);
   }
 
   static byte[] writeRelationships(long handle, byte[] requestBytes) {
-    return callRpc(
-        handle,
-        requestBytes,
-        (lib, h, req, len, outResp, outLen, outErr) ->
-            lib.spicedb_permissions_write_relationships(h, req, len, outResp, outLen, outErr));
+    return callRpc(handle, PERMISSIONS + "WriteRelationships", requestBytes);
   }
 
   static byte[] deleteRelationships(long handle, byte[] requestBytes) {
-    return callRpc(
-        handle,
-        requestBytes,
-        (lib, h, req, len, outResp, outLen, outErr) ->
-            lib.spicedb_permissions_delete_relationships(h, req, len, outResp, outLen, outErr));
+    return callRpc(handle, PERMISSIONS + "DeleteRelationships", requestBytes);
   }
 
   static byte[] checkBulkPermissions(long handle, byte[] requestBytes) {
-    return callRpc(
-        handle,
-        requestBytes,
-        (lib, h, req, len, outResp, outLen, outErr) ->
-            lib.spicedb_permissions_check_bulk_permissions(h, req, len, outResp, outLen, outErr));
+    return callRpc(handle, PERMISSIONS + "CheckBulkPermissions", requestBytes);
   }
 
   static byte[] expandPermissionTree(long handle, byte[] requestBytes) {
-    return callRpc(
-        handle,
-        requestBytes,
-        (lib, h, req, len, outResp, outLen, outErr) ->
-            lib.spicedb_permissions_expand_permission_tree(h, req, len, outResp, outLen, outErr));
+    return callRpc(handle, PERMISSIONS + "ExpandPermissionTree", requestBytes);
   }
 
   static byte[] readSchema(long handle, byte[] requestBytes) {
-    return callRpc(
-        handle,
-        requestBytes,
-        (lib, h, req, len, outResp, outLen, outErr) ->
-            lib.spicedb_schema_read_schema(h, req, len, outResp, outLen, outErr));
+    return callRpc(handle, SCHEMA + "ReadSchema", requestBytes);
   }
 }
