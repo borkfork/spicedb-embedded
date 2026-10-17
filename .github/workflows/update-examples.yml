@@ -1,6 +1,7 @@
 # Update example version pins and lockfiles after a release is published.
-# Examples depend on the published registry packages (crates.io, npm, PyPI, etc.),
-# so lockfiles can only be resolved after publish completes.
+# Examples depend on the published registry packages (npm, PyPI, NuGet, Maven),
+# so lockfiles can only be resolved after publish completes. The Rust example is
+# a workspace member whose pin release-please bumps, so it is not updated here.
 #
 # Triggered by: publish.yml dispatch after all registries are updated.
 
@@ -15,6 +16,7 @@ on:
         type: string
 
 permissions:
+  actions: write # Dispatch CI on the PR branch
   contents: write
   pull-requests: write
 
@@ -28,8 +30,9 @@ env:
 jobs:
   update-examples:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     env:
-      MISE_ENABLE_TOOLS: "rust,node"
+      MISE_ENABLE_TOOLS: "node"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,7 +40,7 @@ jobs:
 
       - uses: jdx/mise-action@v3
         with:
-          install_args: "rust node"
+          install_args: "node"
           cache_save: false
 
       - name: Update example version pins
@@ -45,7 +48,6 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          MAJOR_MINOR="${VERSION%.*}"
 
           # Java pom.xml: update <version> on lines following <artifactId>spicedb-embedded</artifactId>
           sed -i '/<artifactId>spicedb-embedded<\/artifactId>/{n;s|<version>[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*</version>|<version>'"${VERSION}"'</version>|}' \
@@ -63,12 +65,12 @@ jobs:
           sed -i 's|"spicedb-embedded>=[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*"|"spicedb-embedded>='"${VERSION}"'"|' \
             examples/python/google-docs/pyproject.toml
 
-          # Rust Cargo.toml: update major.minor semver range
-          sed -i 's|spicedb-embedded = "[0-9][0-9]*\.[0-9][0-9]*"|spicedb-embedded = "'"${MAJOR_MINOR}"'"|' \
-            examples/rust/google-docs/Cargo.toml
-
-      - name: Update Cargo.lock
-        run: cargo update
+          # Every pin must now name the release; a pattern that stopped matching fails here.
+          grep -q "<version>${VERSION}</version>" examples/java/google-docs/pom.xml
+          grep -q "SpiceDbEmbedded\" Version=\"${VERSION}\"" examples/csharp/google-docs/GoogleDocsExample.csproj
+          grep -q "\"spicedb-embedded\": \"${VERSION}\"" examples/node/google-docs/package.json
+          grep -q "\"spicedb-embedded>=${VERSION}\"" examples/python/google-docs/pyproject.toml
+          grep -q "version = \"${VERSION}\".*x-release-please-version" examples/rust/google-docs/Cargo.toml
 
       - name: Update Node lockfiles
         run: |
@@ -76,10 +78,12 @@ jobs:
           npm install --prefix examples/node/google-docs
 
       - name: Create pull request
+        id: pr
         env:
           VERSION: ${{ inputs.version }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
@@ -93,4 +97,39 @@ jobs:
           PR_URL=$(gh pr create \
             --title "chore: update examples to v${VERSION}" \
             --body "$BODY")
-          gh pr merge "$PR_URL" --auto --squash
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "url=$PR_URL" >> "$GITHUB_OUTPUT"
+
+      # The push above used GITHUB_TOKEN, which starts no workflows, so the PR has
+      # no ci-gate check. A dispatched run reports its checks on the same commit.
+      - name: Run CI on the PR branch
+        if: steps.pr.outputs.branch != ''
+        env:
+          BRANCH: ${{ steps.pr.outputs.branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SHA=$(git rev-parse HEAD)
+          gh workflow run ci.yml --ref "$BRANCH"
+          RUN_ID=""
+          for _ in $(seq 1 30); do
+            RUN_ID=$(gh run list --workflow ci.yml --branch "$BRANCH" --event workflow_dispatch --commit "$SHA" \
+              --json databaseId -q '.[0].databaseId // empty')
+            [ -n "$RUN_ID" ] && break
+            sleep 10
+          done
+          [ -n "$RUN_ID" ] || { echo "::error::CI run for $BRANCH did not start"; exit 1; }
+          gh run watch "$RUN_ID" --exit-status --interval 60
+
+      # Auto-merge is off and main merges through a merge queue, so the PR is
+      # enqueued once ci-gate has passed.
+      - name: Add the PR to the merge queue
+        if: steps.pr.outputs.url != ''
+        env:
+          PR_URL: ${{ steps.pr.outputs.url }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          PR_ID=$(gh pr view "$PR_URL" --json id -q .id)
+          QUERY="mutation(\$id: ID!) { enqueuePullRequest(input: {pullRequestId: \$id}) { mergeQueueEntry { state } } }"
+          gh api graphql -f query="$QUERY" -f id="$PR_ID"
