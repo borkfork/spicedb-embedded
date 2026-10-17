@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	pb "github.com/authzed/authzed-go/proto/authzed/api/v1"
 	"golang.org/x/sync/errgroup"
@@ -31,13 +32,12 @@ func forwardTraceContext(ctx context.Context) context.Context {
 	if !ok {
 		return ctx
 	}
-	var traceparent, tracestate string
+	var traceparent string
 	if v := md.Get("traceparent"); len(v) > 0 {
 		traceparent = v[0]
 	}
-	if v := md.Get("tracestate"); len(v) > 0 {
-		tracestate = v[0]
-	}
+	// W3C allows tracestate across several header values; they join in order with commas.
+	tracestate := strings.Join(md.Get("tracestate"), ",")
 	return traceContext(ctx, traceparent, tracestate)
 }
 
