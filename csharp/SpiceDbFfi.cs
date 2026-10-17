@@ -41,34 +41,13 @@ internal static class SpiceDbFfi
     [DllImport(LibraryName, EntryPoint = "spicedb_free_bytes", CallingConvention = CallingConvention.Cdecl)]
     private static extern void SpicedbFreeBytes(IntPtr ptr);
 
-    [DllImport(LibraryName, EntryPoint = "spicedb_permissions_check_permission", CallingConvention = CallingConvention.Cdecl)]
-    private static extern void SpicedbPermissionsCheckPermission(ulong handle, byte[] requestBytes, int requestLen,
+    [DllImport(LibraryName, EntryPoint = "spicedb_rpc", CallingConvention = CallingConvention.Cdecl)]
+    private static extern void SpicedbRpc(ulong handle,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string method,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string? traceParent,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string? traceState,
+        byte[] requestBytes, int requestLen,
         out IntPtr outResponseBytes, out int outResponseLen, out IntPtr outError);
-
-    [DllImport(LibraryName, EntryPoint = "spicedb_schema_write_schema", CallingConvention = CallingConvention.Cdecl)]
-    private static extern void SpicedbSchemaWriteSchema(ulong handle, byte[] requestBytes, int requestLen,
-        out IntPtr outResponseBytes, out int outResponseLen, out IntPtr outError);
-
-    [DllImport(LibraryName, EntryPoint = "spicedb_permissions_write_relationships", CallingConvention = CallingConvention.Cdecl)]
-    private static extern void SpicedbPermissionsWriteRelationships(ulong handle, byte[] requestBytes, int requestLen,
-        out IntPtr outResponseBytes, out int outResponseLen, out IntPtr outError);
-
-    [DllImport(LibraryName, EntryPoint = "spicedb_permissions_delete_relationships", CallingConvention = CallingConvention.Cdecl)]
-    private static extern void SpicedbPermissionsDeleteRelationships(ulong handle, byte[] requestBytes, int requestLen,
-        out IntPtr outResponseBytes, out int outResponseLen, out IntPtr outError);
-
-    [DllImport(LibraryName, EntryPoint = "spicedb_permissions_check_bulk_permissions", CallingConvention = CallingConvention.Cdecl)]
-    private static extern void SpicedbPermissionsCheckBulkPermissions(ulong handle, byte[] requestBytes, int requestLen,
-        out IntPtr outResponseBytes, out int outResponseLen, out IntPtr outError);
-
-    [DllImport(LibraryName, EntryPoint = "spicedb_permissions_expand_permission_tree", CallingConvention = CallingConvention.Cdecl)]
-    private static extern void SpicedbPermissionsExpandPermissionTree(ulong handle, byte[] requestBytes, int requestLen,
-        out IntPtr outResponseBytes, out int outResponseLen, out IntPtr outError);
-
-    [DllImport(LibraryName, EntryPoint = "spicedb_schema_read_schema", CallingConvention = CallingConvention.Cdecl)]
-    private static extern void SpicedbSchemaReadSchema(ulong handle, byte[] requestBytes, int requestLen,
-        out IntPtr outResponseBytes, out int outResponseLen, out IntPtr outError);
-
     private static byte[] CopyResponseAndFree(IntPtr outResp, int outLen, IntPtr outErr)
     {
         if (outErr != IntPtr.Zero)
@@ -91,48 +70,30 @@ internal static class SpiceDbFfi
         return copy;
     }
 
+    private const string PermissionsService = "/authzed.api.v1.PermissionsService/";
+    private const string SchemaService = "/authzed.api.v1.SchemaService/";
+    /// <summary>Invokes a unary method by its full gRPC name under the current trace context.</summary>
+    internal static byte[] Rpc(ulong handle, string method, byte[] requestBytes)
+    {
+        var (traceParent, traceState) = TraceContext.Current();
+        SpicedbRpc(handle, method, traceParent, traceState, requestBytes, requestBytes.Length,
+            out var r, out var len, out var e);
+        return CopyResponseAndFree(r, len, e);
+    }
     internal static byte[] CheckPermission(ulong handle, byte[] requestBytes)
-    {
-        SpicedbPermissionsCheckPermission(handle, requestBytes, requestBytes.Length, out var r, out var len, out var e);
-        return CopyResponseAndFree(r, len, e);
-    }
-
+        => Rpc(handle, PermissionsService + "CheckPermission", requestBytes);
     internal static byte[] WriteSchema(ulong handle, byte[] requestBytes)
-    {
-        SpicedbSchemaWriteSchema(handle, requestBytes, requestBytes.Length, out var r, out var len, out var e);
-        return CopyResponseAndFree(r, len, e);
-    }
-
+        => Rpc(handle, SchemaService + "WriteSchema", requestBytes);
     internal static byte[] WriteRelationships(ulong handle, byte[] requestBytes)
-    {
-        SpicedbPermissionsWriteRelationships(handle, requestBytes, requestBytes.Length, out var r, out var len, out var e);
-        return CopyResponseAndFree(r, len, e);
-    }
-
+        => Rpc(handle, PermissionsService + "WriteRelationships", requestBytes);
     internal static byte[] DeleteRelationships(ulong handle, byte[] requestBytes)
-    {
-        SpicedbPermissionsDeleteRelationships(handle, requestBytes, requestBytes.Length, out var r, out var len, out var e);
-        return CopyResponseAndFree(r, len, e);
-    }
-
+        => Rpc(handle, PermissionsService + "DeleteRelationships", requestBytes);
     internal static byte[] CheckBulkPermissions(ulong handle, byte[] requestBytes)
-    {
-        SpicedbPermissionsCheckBulkPermissions(handle, requestBytes, requestBytes.Length, out var r, out var len, out var e);
-        return CopyResponseAndFree(r, len, e);
-    }
-
+        => Rpc(handle, PermissionsService + "CheckBulkPermissions", requestBytes);
     internal static byte[] ExpandPermissionTree(ulong handle, byte[] requestBytes)
-    {
-        SpicedbPermissionsExpandPermissionTree(handle, requestBytes, requestBytes.Length, out var r, out var len, out var e);
-        return CopyResponseAndFree(r, len, e);
-    }
-
+        => Rpc(handle, PermissionsService + "ExpandPermissionTree", requestBytes);
     internal static byte[] ReadSchema(ulong handle, byte[] requestBytes)
-    {
-        SpicedbSchemaReadSchema(handle, requestBytes, requestBytes.Length, out var r, out var len, out var e);
-        return CopyResponseAndFree(r, len, e);
-    }
-
+        => Rpc(handle, SchemaService + "ReadSchema", requestBytes);
     public static StartResponse Start(StartOptions? options = null)
     {
         var opts = options ?? default;
@@ -293,6 +254,9 @@ public record struct StartOptions
     /// </summary>
     [JsonPropertyName("otlp_endpoint")]
     public string? OtlpEndpoint { get; init; }
+    /// <summary>service.name on exported traces (default: "spicedb").</summary>
+    [JsonPropertyName("otlp_service_name")]
+    public string? OtlpServiceName { get; init; }
 
     /// <summary>
     /// If set, starts a Prometheus HTTP server on this port at /metrics.

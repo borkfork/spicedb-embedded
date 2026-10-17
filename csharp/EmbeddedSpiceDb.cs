@@ -1,6 +1,7 @@
 using Authzed.Api.V1;
 using Google.Protobuf;
 using Grpc.Core;
+using Grpc.Core.Interceptors;
 using Grpc.Net.Client;
 
 namespace Borkfork.SpiceDb.Embedded;
@@ -14,21 +15,27 @@ namespace Borkfork.SpiceDb.Embedded;
 public sealed class EmbeddedSpiceDb : IDisposable
 {
     private readonly ulong _handle;
+    private readonly CallInvoker _streamingInvoker;
     private bool _disposed;
 
     private EmbeddedSpiceDb(ulong handle, GrpcChannel streamingChannel, string streamingAddress)
     {
         _handle = handle;
         StreamingChannel = streamingChannel;
+        _streamingInvoker = streamingChannel.Intercept(TraceContextInterceptor.Instance);
         StreamingAddress = streamingAddress;
     }
 
     /// <summary>
     ///     Channel connected to the streaming proxy (for Watch, ReadRelationships, etc.).
+    ///     Clients built on it directly do not add the caller's trace context; the clients from
+    ///     Permissions() and Watch() do.
     /// </summary>
     // ReSharper disable once MemberCanBePrivate.Global -- Public API for advanced streaming usage
     public GrpcChannel StreamingChannel { get; }
 
+    /// <summary>The native instance handle.</summary>
+    internal ulong Handle => _handle;
     /// <summary>
     ///     Streaming proxy address (Unix path or host:port).
     /// </summary>
@@ -144,7 +151,7 @@ public sealed class EmbeddedSpiceDb : IDisposable
     /// <summary>
     ///     Permissions service: unary RPCs via FFI, streaming (ReadRelationships, etc.) via proxy.
     /// </summary>
-    public EmbeddedPermissionsClient Permissions() => new(_handle, StreamingChannel);
+    public EmbeddedPermissionsClient Permissions() => new(_handle, _streamingInvoker);
 
     /// <summary>
     ///     Schema service (ReadSchema, WriteSchema) via FFI.
@@ -154,7 +161,7 @@ public sealed class EmbeddedSpiceDb : IDisposable
     /// <summary>
     ///     Watch service (streaming) via proxy.
     /// </summary>
-    public WatchService.WatchServiceClient Watch() => new(StreamingChannel);
+    public WatchService.WatchServiceClient Watch() => new(_streamingInvoker);
 }
 
 /// <summary>
@@ -166,10 +173,10 @@ public sealed class EmbeddedPermissionsClient
     private readonly ulong _handle;
     private readonly PermissionsService.PermissionsServiceClient _streamingClient;
 
-    internal EmbeddedPermissionsClient(ulong handle, GrpcChannel streamingChannel)
+    internal EmbeddedPermissionsClient(ulong handle, CallInvoker streamingInvoker)
     {
         _handle = handle;
-        _streamingClient = new PermissionsService.PermissionsServiceClient(streamingChannel);
+        _streamingClient = new PermissionsService.PermissionsServiceClient(streamingInvoker);
     }
 
     public CheckPermissionResponse CheckPermission(CheckPermissionRequest request, CallOptions? options = null)
