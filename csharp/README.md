@@ -186,6 +186,7 @@ var options = new StartOptions
     OtlpServiceName = "my-app-spicedb", // service.name on SpiceDB's spans; default "spicedb"
 };
 ```
+
 Every call carries `Activity.Current` when it has a W3C id (the .NET default), so SpiceDB's spans join your trace as children of the activity that made the call and follow its sampling decision. Without a current activity, each call starts its own trace.
 
 Both can be combined. `DatastoreMetricsEnabled` and `CacheMetricsEnabled` default to `true` when `MetricsEnabled` is set; set either to `false` to opt out.

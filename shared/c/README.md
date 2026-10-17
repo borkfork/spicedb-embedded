@@ -51,10 +51,12 @@ All RPC FFI functions use the same ABI: `(handle, request_bytes, request_len, ou
 
 ### `spicedb_rpc(handle, method, traceparent, tracestate, request_bytes, request_len, out_response_bytes, out_response_len, out_error)`
 
-Invoke any of the unary methods above by its full gRPC name, such as `/authzed.api.v1.PermissionsService/CheckPermission`, under the caller's W3C trace context. `traceparent` and `tracestate` may be `NULL`. When `otlp_endpoint` is set, SpiceDB's server spans then join the caller's trace instead of starting their own. An unknown method returns the error `unsupported method: <name>`. Responses and errors are freed as for the per-method functions.
+Invoke any of the unary methods above by its full gRPC name, such as `/authzed.api.v1.PermissionsService/CheckPermission`, under the caller's W3C trace context. `traceparent` and `tracestate` may be `NULL`. When `otlp_endpoint` is set, SpiceDB's server spans then join the caller's trace instead of starting their own. An unknown method returns the error `unsupported method: <name>`. Responses and errors are freed as for the per-method functions. Every binding in this repo calls `spicedb_rpc` with its language's current trace context; the per-method functions stay for other callers.
 
 The streaming proxy forwards `traceparent` and `tracestate` from the incoming gRPC metadata in the same way.
+
 Spans follow the caller's sampling decision, so a call under an unsampled trace exports no SpiceDB spans. A `traceparent` that isn't a valid header value, such as one containing a newline, fails the call.
+
 Exported traces carry `service.name` from the **otlp_service_name** start option, default `spicedb`. It overrides `OTEL_SERVICE_NAME` and `service.name` in `OTEL_RESOURCE_ATTRIBUTES`.
 
 Streaming RPCs (Watch, ReadRelationships, LookupResources, LookupSubjects) are not exposed via FFI. For memory transport, use the **`streaming_address`** returned by `spicedb_start` to connect a gRPC client for those APIs.

@@ -12,8 +12,9 @@ pub use memory::{RpcError, RpcResult};
 pub mod memory_transport {
     //! Safe, typed wrappers for memory-transport RPCs (marshall/unmarshall in this crate).
     pub use crate::memory::{
-        RpcError, RpcResult, check_bulk_permissions, check_permission, delete_relationships,
-        expand_permission_tree, read_schema, write_relationships, write_schema,
+        RpcError, RpcResult, TraceContext, call, check_bulk_permissions, check_permission,
+        delete_relationships, expand_permission_tree, methods, read_schema, write_relationships,
+        write_schema,
     };
 }
 
@@ -28,67 +29,16 @@ unsafe extern "C" {
     /// Frees a byte buffer returned by RPC FFI functions.
     pub(crate) fn spicedb_free_bytes(ptr: *mut std::ffi::c_void);
 
-    /// Invokes PermissionsService.CheckPermission. Request/response are marshalled protobuf (authzed.api.v1).
+    /// Invokes a unary method by its full gRPC name, e.g. `/authzed.api.v1.PermissionsService/CheckPermission`.
+    /// Request/response are marshalled protobuf (authzed.api.v1). `traceparent` and `tracestate` are
+    /// W3C trace context headers, or NULL; SpiceDB's server span joins that trace.
     /// On success: `*out_response_bytes` and `*out_response_len` are set; caller frees `*out_response_bytes` with `spicedb_free_bytes`.
     /// On error: `*out_response_bytes` is NULL, `*out_error` is set; caller frees `*out_error` with `spicedb_free`.
-    pub(crate) fn spicedb_permissions_check_permission(
+    pub(crate) fn spicedb_rpc(
         handle: c_ulonglong,
-        request_bytes: *const c_uchar,
-        request_len: c_int,
-        out_response_bytes: *mut *mut c_uchar,
-        out_response_len: *mut c_int,
-        out_error: *mut *mut c_char,
-    );
-
-    /// Invokes PermissionsService.WriteRelationships. Same ABI as other RPC FFI functions.
-    pub(crate) fn spicedb_permissions_write_relationships(
-        handle: c_ulonglong,
-        request_bytes: *const c_uchar,
-        request_len: c_int,
-        out_response_bytes: *mut *mut c_uchar,
-        out_response_len: *mut c_int,
-        out_error: *mut *mut c_char,
-    );
-
-    /// Invokes SchemaService.WriteSchema. Same ABI as other RPC FFI functions.
-    pub(crate) fn spicedb_schema_write_schema(
-        handle: c_ulonglong,
-        request_bytes: *const c_uchar,
-        request_len: c_int,
-        out_response_bytes: *mut *mut c_uchar,
-        out_response_len: *mut c_int,
-        out_error: *mut *mut c_char,
-    );
-
-    pub(crate) fn spicedb_permissions_delete_relationships(
-        handle: c_ulonglong,
-        request_bytes: *const c_uchar,
-        request_len: c_int,
-        out_response_bytes: *mut *mut c_uchar,
-        out_response_len: *mut c_int,
-        out_error: *mut *mut c_char,
-    );
-
-    pub(crate) fn spicedb_permissions_check_bulk_permissions(
-        handle: c_ulonglong,
-        request_bytes: *const c_uchar,
-        request_len: c_int,
-        out_response_bytes: *mut *mut c_uchar,
-        out_response_len: *mut c_int,
-        out_error: *mut *mut c_char,
-    );
-
-    pub(crate) fn spicedb_permissions_expand_permission_tree(
-        handle: c_ulonglong,
-        request_bytes: *const c_uchar,
-        request_len: c_int,
-        out_response_bytes: *mut *mut c_uchar,
-        out_response_len: *mut c_int,
-        out_error: *mut *mut c_char,
-    );
-
-    pub(crate) fn spicedb_schema_read_schema(
-        handle: c_ulonglong,
+        method: *const c_char,
+        traceparent: *const c_char,
+        tracestate: *const c_char,
         request_bytes: *const c_uchar,
         request_len: c_int,
         out_response_bytes: *mut *mut c_uchar,

@@ -225,7 +225,7 @@ run = "bash ./scripts/stage-csharp-prebuild.sh"
 [tasks.rust-test]
 description = "Run Rust tests (main crate only so only current platform's -sys is built)"
 depends = ["rust-stage-prebuild"]
-run = "cargo test -p spicedb-embedded --locked"
+run = "cargo test -p spicedb-embedded --locked --all-features"
 
 [tasks.rust-cargo-deny]
 description = "Run cargo-deny (license, advisory, ban checks)"
