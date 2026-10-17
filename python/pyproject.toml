@@ -31,7 +31,9 @@ Repository = "https://github.com/borkfork/spicedb-embedded"
 Documentation = "https://github.com/borkfork/spicedb-embedded/tree/main/python"
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0.0", "ruff==0.16.0"]
+# Unary calls and the streaming channel carry the current trace context when installed.
+opentelemetry = ["opentelemetry-api>=1.20.0"]
+dev = ["pytest>=7.0.0", "ruff==0.16.0", "opentelemetry-api>=1.20.0"]
 
 [build-system]
 requires = ["hatchling"]

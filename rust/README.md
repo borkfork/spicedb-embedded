@@ -220,8 +220,15 @@ let options = StartOptions {
 let options = StartOptions {
     metrics_enabled: Some(true),
     otlp_endpoint: Some("localhost:4317".into()),
+    otlp_service_name: Some("my-app-spicedb".into()), // service.name on SpiceDB's spans; default "spicedb"
     ..Default::default()
 };
+```
+
+With the `opentelemetry` feature, unary calls carry the current `opentelemetry::Context` (which `tracing-opentelemetry` sets when a span is entered), so SpiceDB's spans join your trace as children of the span that made the call and follow its sampling decision. The feature depends on `opentelemetry` 0.33; an app on another 0.x release has a separate `Context` and propagates nothing. Without the feature, each call starts its own trace. You build the streaming channel yourself, so add `spicedb_embedded::trace_context_interceptor` to its clients for the same behavior there:
+
+```rust
+let client = PermissionsServiceClient::with_interceptor(channel, spicedb_embedded::trace_context_interceptor);
 ```
 
 Both can be combined. `datastore_metrics_enabled` and `cache_metrics_enabled` default to `true` when `metrics_enabled` is set; set them to `Some(false)` to opt out of either.

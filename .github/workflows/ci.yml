@@ -269,7 +269,7 @@ jobs:
         run: mise run rust-cargo-deny
 
       - name: Test
-        run: cargo test -p spicedb-embedded --locked
+        run: cargo test -p spicedb-embedded --locked --all-features
 
       - name: Example tests
         run: mise run example-rust-test

@@ -35,7 +35,10 @@ import (
 	spicedbdatastore "github.com/authzed/spicedb/pkg/datastore"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
@@ -118,6 +121,8 @@ func spicedb_free(ptr *C.char) {
 //     (default: true when metrics_enabled=true).
 //   - otlp_endpoint: OTLP gRPC endpoint for OpenTelemetry traces, e.g. "localhost:4317". Insecure.
 //     Only used when metrics_enabled=true.
+//   - otlp_service_name: service.name on exported traces. Default "spicedb", which overrides
+//     OTEL_SERVICE_NAME.
 //   - metrics_port: if > 0, starts a Prometheus HTTP server on this port at /metrics.
 //     Only used when metrics_enabled=true.
 type StartOptions struct {
@@ -137,6 +142,9 @@ type StartOptions struct {
 	// OTLPEndpoint, if non-empty, configures OpenTelemetry tracing to push to this OTLP gRPC endpoint.
 	// Only used when MetricsEnabled=true. Example: "localhost:4317" (insecure).
 	OTLPEndpoint            string `json:"otlp_endpoint,omitempty"`
+	// OTLPServiceName is service.name on exported traces. Defaults to "spicedb", ahead of OTEL_SERVICE_NAME,
+	// which an embedding process sets for itself.
+	OTLPServiceName         string `json:"otlp_service_name,omitempty"`
 	// MetricsPort, if > 0, starts a Prometheus HTTP server at /metrics on this port.
 	// Only used when MetricsEnabled=true.
 	MetricsPort             int    `json:"metrics_port,omitempty"`
@@ -186,7 +194,7 @@ func spicedb_start(optionsJSON *C.char) *C.char {
 	instance.transport = "memory"
 
 	if opts.MetricsEnabled && opts.OTLPEndpoint != "" {
-		prev, tp, err := setupOTelTracing(ctx, opts.OTLPEndpoint)
+		prev, tp, err := setupOTelTracing(ctx, opts.OTLPEndpoint, opts.OTLPServiceName)
 		if err != nil {
 			cancel()
 			return makeError(fmt.Sprintf("failed to configure OTLP tracing: %v", err))
@@ -335,10 +343,11 @@ func boolPtrOrDefault(b *bool, def bool) bool {
 	return *b
 }
 
-// setupOTelTracing configures the global OpenTelemetry TracerProvider to export via OTLP gRPC.
+// setupOTelTracing configures the global OpenTelemetry TracerProvider to export via OTLP gRPC, and the
+// W3C trace context propagator so server spans join a caller's trace from spicedb_rpc or the streaming proxy.
 // endpoint should be "host:port" (e.g. "localhost:4317"). Uses insecure transport.
 // Returns the previous global TracerProvider so it can be restored on shutdown.
-func setupOTelTracing(ctx context.Context, endpoint string) (prev oteltrace.TracerProvider, tp *sdktrace.TracerProvider, err error) {
+func setupOTelTracing(ctx context.Context, endpoint, serviceName string) (prev oteltrace.TracerProvider, tp *sdktrace.TracerProvider, err error) {
 	exporter, err := otlptracegrpc.New(ctx,
 		otlptracegrpc.WithEndpoint(endpoint),
 		otlptracegrpc.WithInsecure(),
@@ -346,9 +355,17 @@ func setupOTelTracing(ctx context.Context, endpoint string) (prev oteltrace.Trac
 	if err != nil {
 		return nil, nil, fmt.Errorf("creating OTLP gRPC exporter: %w", err)
 	}
+	if serviceName == "" {
+		serviceName = "spicedb"
+	}
+	res, err := resource.Merge(resource.Default(), resource.NewSchemaless(attribute.String("service.name", serviceName)))
+	if err != nil {
+		return nil, nil, fmt.Errorf("building trace resource: %w", err)
+	}
 	prev = otel.GetTracerProvider()
-	tp = sdktrace.NewTracerProvider(sdktrace.WithBatcher(exporter))
+	tp = sdktrace.NewTracerProvider(sdktrace.WithBatcher(exporter), sdktrace.WithResource(res))
 	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.TraceContext{})
 	return prev, tp, nil
 }
 

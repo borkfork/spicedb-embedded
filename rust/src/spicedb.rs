@@ -57,6 +57,9 @@ pub struct StartOptions {
     /// Only used when `metrics_enabled=true`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub otlp_endpoint: Option<String>,
+    /// `service.name` on exported traces (default: `"spicedb"`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub otlp_service_name: Option<String>,
     /// If set, starts a Prometheus HTTP server on this port at `/metrics`.
     /// Only used when `metrics_enabled=true`.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -81,7 +84,17 @@ fn parse_json_response(response_str: &str) -> Result<serde_json::Value, SpiceDBE
     }
 }
 
-use spicedb_embedded_sys::memory_transport;
+use spicedb_embedded_sys::memory_transport::{self, methods};
+
+/// Invokes a unary method under the current trace context.
+fn call<Req: prost::Message, Resp: prost::Message + Default>(
+    handle: u64,
+    method: &str,
+    request: &Req,
+) -> Result<Resp, SpiceDBError> {
+    memory_transport::call(handle, method, &crate::trace_context::current(), request)
+        .map_err(|e| SpiceDBError::SpiceDB(e.0))
+}
 use spicedb_grpc_tonic::v1::{
     CheckBulkPermissionsRequest, CheckBulkPermissionsResponse, CheckPermissionRequest,
     CheckPermissionResponse, DeleteRelationshipsRequest, DeleteRelationshipsResponse,
@@ -261,8 +274,7 @@ impl MemoryPermissionsClient {
         &self,
         request: &CheckPermissionRequest,
     ) -> Result<CheckPermissionResponse, SpiceDBError> {
-        memory_transport::check_permission(self.handle, request)
-            .map_err(|e| SpiceDBError::SpiceDB(e.0))
+        call(self.handle, methods::CHECK_PERMISSION, request)
     }
 
     /// `WriteRelationships`.
@@ -274,8 +286,7 @@ impl MemoryPermissionsClient {
         &self,
         request: &WriteRelationshipsRequest,
     ) -> Result<WriteRelationshipsResponse, SpiceDBError> {
-        memory_transport::write_relationships(self.handle, request)
-            .map_err(|e| SpiceDBError::SpiceDB(e.0))
+        call(self.handle, methods::WRITE_RELATIONSHIPS, request)
     }
 
     /// `DeleteRelationships`.
@@ -287,8 +298,7 @@ impl MemoryPermissionsClient {
         &self,
         request: &DeleteRelationshipsRequest,
     ) -> Result<DeleteRelationshipsResponse, SpiceDBError> {
-        memory_transport::delete_relationships(self.handle, request)
-            .map_err(|e| SpiceDBError::SpiceDB(e.0))
+        call(self.handle, methods::DELETE_RELATIONSHIPS, request)
     }
 
     /// `CheckBulkPermissions`.
@@ -300,8 +310,7 @@ impl MemoryPermissionsClient {
         &self,
         request: &CheckBulkPermissionsRequest,
     ) -> Result<CheckBulkPermissionsResponse, SpiceDBError> {
-        memory_transport::check_bulk_permissions(self.handle, request)
-            .map_err(|e| SpiceDBError::SpiceDB(e.0))
+        call(self.handle, methods::CHECK_BULK_PERMISSIONS, request)
     }
 
     /// `ExpandPermissionTree`.
@@ -313,8 +322,7 @@ impl MemoryPermissionsClient {
         &self,
         request: &ExpandPermissionTreeRequest,
     ) -> Result<ExpandPermissionTreeResponse, SpiceDBError> {
-        memory_transport::expand_permission_tree(self.handle, request)
-            .map_err(|e| SpiceDBError::SpiceDB(e.0))
+        call(self.handle, methods::EXPAND_PERMISSION_TREE, request)
     }
 }
 
@@ -333,7 +341,7 @@ impl MemorySchemaClient {
         &self,
         request: &ReadSchemaRequest,
     ) -> Result<ReadSchemaResponse, SpiceDBError> {
-        memory_transport::read_schema(self.handle, request).map_err(|e| SpiceDBError::SpiceDB(e.0))
+        call(self.handle, methods::READ_SCHEMA, request)
     }
 
     /// `WriteSchema`.
@@ -345,7 +353,7 @@ impl MemorySchemaClient {
         &self,
         request: &WriteSchemaRequest,
     ) -> Result<WriteSchemaResponse, SpiceDBError> {
-        memory_transport::write_schema(self.handle, request).map_err(|e| SpiceDBError::SpiceDB(e.0))
+        call(self.handle, methods::WRITE_SCHEMA, request)
     }
 }
 
@@ -709,6 +717,78 @@ definition document {
             count += 1;
         }
         assert_eq!(count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_calls_succeed_under_a_trace_context() {
+        let spicedb = EmbeddedSpiceDB::start_with_schema(TEST_SCHEMA, &[], None).unwrap();
+        let channel = connect_streaming(spicedb.streaming_address(), spicedb.streaming_transport())
+            .await
+            .unwrap();
+        #[cfg(feature = "opentelemetry")]
+        let _guard = crate::trace_context::tests::otel::attach();
+
+        let schema = spicedb.schema().read_schema(&ReadSchemaRequest {}).unwrap();
+        assert!(schema.schema_text.contains("definition document"));
+
+        let mut client =
+            spicedb_grpc_tonic::v1::permissions_service_client::PermissionsServiceClient::with_interceptor(
+                channel,
+                crate::trace_context_interceptor,
+            );
+        let mut stream = client
+            .read_relationships(ReadRelationshipsRequest {
+                relationship_filter: Some(RelationshipFilter {
+                    resource_type: "document".into(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(stream.next().await.is_none());
+    }
+
+    #[test]
+    fn test_every_unary_method_name_is_known() {
+        use spicedb_embedded_sys::memory_transport::{TraceContext, methods};
+
+        let spicedb = EmbeddedSpiceDB::start_with_schema(TEST_SCHEMA, &[], None).unwrap();
+        for method in [
+            methods::CHECK_PERMISSION,
+            methods::WRITE_RELATIONSHIPS,
+            methods::DELETE_RELATIONSHIPS,
+            methods::CHECK_BULK_PERMISSIONS,
+            methods::EXPAND_PERMISSION_TREE,
+            methods::READ_SCHEMA,
+            methods::WRITE_SCHEMA,
+        ] {
+            // An empty request may fail validation, but its method must be one spicedb_rpc accepts.
+            if let Err(e) = memory_transport::call::<(), ()>(
+                spicedb.handle(),
+                method,
+                &TraceContext::default(),
+                &(),
+            ) {
+                assert!(!e.0.starts_with("unsupported method"), "{method}: {e}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_an_unknown_method_is_an_error() {
+        use spicedb_embedded_sys::memory_transport::TraceContext;
+
+        let spicedb = EmbeddedSpiceDB::start_with_schema(TEST_SCHEMA, &[], None).unwrap();
+        let e = memory_transport::call::<(), ()>(
+            spicedb.handle(),
+            "/authzed.api.v1.Nope/Nope",
+            &TraceContext::default(),
+            &(),
+        )
+        .unwrap_err();
+        assert_eq!(e.0, "unsupported method: /authzed.api.v1.Nope/Nope");
     }
 
     /// Performance test - run with `cargo test perf_ -- --nocapture --ignored`

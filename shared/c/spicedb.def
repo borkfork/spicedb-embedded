@@ -13,3 +13,4 @@ EXPORTS
     spicedb_permissions_expand_permission_tree
     spicedb_schema_read_schema
     spicedb_schema_write_schema
+    spicedb_rpc

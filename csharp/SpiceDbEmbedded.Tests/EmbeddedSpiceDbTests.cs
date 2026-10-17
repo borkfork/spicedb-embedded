@@ -6,7 +6,7 @@ namespace SpiceDbEmbedded.Tests;
 
 public class EmbeddedSpiceDbTests
 {
-    private static readonly string TestSchema = """
+    internal static readonly string TestSchema = """
                                                 definition user {}
 
                                                 definition document {

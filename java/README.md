@@ -228,8 +228,11 @@ var options = StartOptions.builder()
 var options = StartOptions.builder()
     .metricsEnabled(true)
     .otlpEndpoint("localhost:4317")
+    .otlpServiceName("my-app-spicedb") // service.name on SpiceDB's spans; default "spicedb"
     .build();
 ```
+
+With `io.opentelemetry:opentelemetry-api` on the classpath, every call carries the current OpenTelemetry context, so SpiceDB's spans join your trace as children of the span that made the call and follow its sampling decision. Without it, each call starts its own trace.
 
 Both can be combined. `datastoreMetricsEnabled` and `cacheMetricsEnabled` default to `true` when `metricsEnabled` is set; call `.datastoreMetricsEnabled(false)` or `.cacheMetricsEnabled(false)` to opt out of either.
 

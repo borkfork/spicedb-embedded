@@ -22,6 +22,7 @@ import {
   type SpiceDBStartOptions,
 } from "./ffi.js";
 import { getTarget as getTcpTarget } from "./tcp_channel.js";
+import { traceContextInterceptor } from "./trace_context.js";
 import { getTarget as getUnixSocketTarget } from "./unix_socket_channel.js";
 
 const {
@@ -120,7 +121,9 @@ export class EmbeddedSpiceDB {
 
     const target = streamingTarget(streaming_address, streaming_transport);
     const creds = grpc.credentials.createInsecure();
-    const streamingClient = NewClientWithChannelCredentials(target, creds, 0);
+    const streamingClient = NewClientWithChannelCredentials(target, creds, 0, {
+      interceptors: [traceContextInterceptor],
+    });
 
     const db = new EmbeddedSpiceDB(handle, streaming_address, streamingClient);
 

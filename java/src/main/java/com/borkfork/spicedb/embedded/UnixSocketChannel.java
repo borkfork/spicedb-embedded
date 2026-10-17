@@ -30,6 +30,7 @@ final class UnixSocketChannel {
           .eventLoopGroup(group)
           .channelType(EpollDomainSocketChannel.class)
           .usePlaintext()
+          .intercept(TraceContext.INTERCEPTOR)
           .build();
     } else if (os.contains("mac")) {
       EventLoopGroup group = new KQueueEventLoopGroup();
@@ -37,6 +38,7 @@ final class UnixSocketChannel {
           .eventLoopGroup(group)
           .channelType(KQueueDomainSocketChannel.class)
           .usePlaintext()
+          .intercept(TraceContext.INTERCEPTOR)
           .build();
     } else {
       throw new UnsupportedOperationException("Unix domain sockets not supported on " + os);

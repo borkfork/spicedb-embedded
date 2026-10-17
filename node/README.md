@@ -212,7 +212,10 @@ const options: SpiceDBStartOptions = {
 const options: SpiceDBStartOptions = {
   metrics_enabled: true,
   otlp_endpoint: "localhost:4317",
+  otlp_service_name: "my-app-spicedb", // service.name on SpiceDB's spans; default "spicedb"
 };
 ```
+
+With `@opentelemetry/api` installed and a context manager registered (as the OpenTelemetry Node SDK does), every call carries the active OpenTelemetry context, so SpiceDB's spans join your trace as children of the span that made the call and follow its sampling decision. Without it, each call starts its own trace.
 
 Both can be combined. `datastore_metrics_enabled` and `cache_metrics_enabled` default to `true` when `metrics_enabled` is set; set either to `false` to opt out.

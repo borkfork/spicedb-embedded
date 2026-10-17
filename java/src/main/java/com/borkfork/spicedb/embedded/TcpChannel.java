@@ -49,6 +49,7 @@ final class TcpChannel {
         .eventLoopGroup(new NioEventLoopGroup())
         .channelType(NioSocketChannel.class)
         .usePlaintext()
+        .intercept(TraceContext.INTERCEPTOR)
         .build();
   }
 }

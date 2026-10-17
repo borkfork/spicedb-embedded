@@ -34,7 +34,17 @@
     "@grpc/grpc-js": "^1.14.6",
     "koffi": "^3.3.3"
   },
+  "peerDependencies": {
+    "@opentelemetry/api": "^1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@opentelemetry/api": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/context-async-hooks": "^2.12.0",
     "@types/node": "^24.19.2",
     "eslint": "^10.12.0",
     "prettier": "^3.9.10",

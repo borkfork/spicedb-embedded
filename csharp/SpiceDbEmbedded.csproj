@@ -27,6 +27,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="SpiceDbEmbedded.Tests"/>
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Authzed.Net" Version="1.6.0"/>
     <PackageReference Include="Grpc.Net.Client" Version="2.84.0"/>
     <PackageReference Include="System.Text.Json" Version="10.0.12"/>

@@ -204,8 +204,11 @@ options = StartOptions(
 options = StartOptions(
     metrics_enabled=True,
     otlp_endpoint="localhost:4317",
+    otlp_service_name="my-app-spicedb",  # service.name on SpiceDB's spans; default "spicedb"
 )
 ```
+
+With `opentelemetry-api` installed (`pip install "spicedb-embedded[opentelemetry]"`), every call carries the current OpenTelemetry context, so SpiceDB's spans join your trace as children of the span that made the call and follow its sampling decision. Without it, each call starts its own trace.
 
 Both can be combined. `datastore_metrics_enabled` and `cache_metrics_enabled` default to `True` when `metrics_enabled` is set; pass `False` to opt out of either.
 

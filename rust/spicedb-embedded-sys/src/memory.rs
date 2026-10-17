@@ -3,7 +3,10 @@
 //! All marshalling/unmarshalling and unsafe FFI calls are contained here.
 //! The main crate uses these functions for idiomatic, safe APIs.
 
-use std::os::raw::{c_char, c_int, c_uchar, c_ulonglong};
+use std::{
+    ffi::CString,
+    os::raw::{c_char, c_int, c_uchar, c_ulonglong},
+};
 
 use prost::Message;
 use spicedb_grpc_tonic::v1::{
@@ -29,29 +32,79 @@ impl std::error::Error for RpcError {}
 /// Result type for memory-transport RPCs.
 pub type RpcResult<T> = Result<T, RpcError>;
 
+/// W3C trace context for a call. SpiceDB's server span joins this trace when `traceparent` is set.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TraceContext {
+    /// The `traceparent` header, e.g. `00-<trace-id>-<span-id>-01`.
+    pub traceparent: Option<String>,
+    /// The `tracestate` header.
+    pub tracestate: Option<String>,
+}
+
+/// Full gRPC names of the unary methods [`call`] accepts.
+pub mod methods {
+    /// PermissionsService.CheckPermission.
+    pub const CHECK_PERMISSION: &str = "/authzed.api.v1.PermissionsService/CheckPermission";
+    /// PermissionsService.WriteRelationships.
+    pub const WRITE_RELATIONSHIPS: &str = "/authzed.api.v1.PermissionsService/WriteRelationships";
+    /// PermissionsService.DeleteRelationships.
+    pub const DELETE_RELATIONSHIPS: &str = "/authzed.api.v1.PermissionsService/DeleteRelationships";
+    /// PermissionsService.CheckBulkPermissions.
+    pub const CHECK_BULK_PERMISSIONS: &str =
+        "/authzed.api.v1.PermissionsService/CheckBulkPermissions";
+    /// PermissionsService.ExpandPermissionTree.
+    pub const EXPAND_PERMISSION_TREE: &str =
+        "/authzed.api.v1.PermissionsService/ExpandPermissionTree";
+    /// SchemaService.ReadSchema.
+    pub const READ_SCHEMA: &str = "/authzed.api.v1.SchemaService/ReadSchema";
+    /// SchemaService.WriteSchema.
+    pub const WRITE_SCHEMA: &str = "/authzed.api.v1.SchemaService/WriteSchema";
+}
+
+fn c_string(value: &str) -> RpcResult<CString> {
+    CString::new(value).map_err(|_| RpcError(format!("contains a NUL byte: {value:?}")))
+}
+
+fn c_string_or_null(value: Option<&String>) -> RpcResult<Option<CString>> {
+    value.map(|v| c_string(v)).transpose()
+}
+
+/// Invokes a unary method by its full gRPC name (see [`methods`]) under `trace`.
+pub fn call<Req: Message, Resp: Message + Default>(
+    handle: u64,
+    method: &str,
+    trace: &TraceContext,
+    request: &Req,
+) -> RpcResult<Resp> {
+    let bytes = raw_call(handle, method, trace, &request.encode_to_vec())?;
+    Resp::decode(&bytes[..]).map_err(|e| RpcError(e.to_string()))
+}
+
 /// Raw call: request bytes in, response bytes or error string. Handles all unsafe FFI and buffer freeing.
 fn raw_call(
     handle: u64,
+    method: &str,
+    trace: &TraceContext,
     request_bytes: &[u8],
-    f: unsafe extern "C" fn(
-        c_ulonglong,
-        *const c_uchar,
-        c_int,
-        *mut *mut c_uchar,
-        *mut c_int,
-        *mut *mut c_char,
-    ),
 ) -> RpcResult<Vec<u8>> {
     let request_len = c_int::try_from(request_bytes.len())
         .map_err(|_| RpcError("request too large for FFI (exceeds c_int::MAX)".into()))?;
+    let method = c_string(method)?;
+    let traceparent = c_string_or_null(trace.traceparent.as_ref())?;
+    let tracestate = c_string_or_null(trace.tracestate.as_ref())?;
 
     let mut out_response_bytes: *mut c_uchar = std::ptr::null_mut();
     let mut out_response_len: c_int = 0;
     let mut out_error: *mut c_char = std::ptr::null_mut();
 
     unsafe {
-        f(
+        crate::spicedb_rpc(
             handle as c_ulonglong,
+            method.as_ptr(),
+            traceparent
+                .as_ref()
+                .map_or(std::ptr::null(), |s| s.as_ptr()),
+            tracestate.as_ref().map_or(std::ptr::null(), |s| s.as_ptr()),
             request_bytes.as_ptr(),
             request_len,
             &mut out_response_bytes,
@@ -93,12 +146,12 @@ pub fn check_permission(
     handle: u64,
     request: &CheckPermissionRequest,
 ) -> RpcResult<CheckPermissionResponse> {
-    let mut buf = Vec::new();
-    request
-        .encode(&mut buf)
-        .map_err(|e| RpcError(e.to_string()))?;
-    let bytes = raw_call(handle, &buf, crate::spicedb_permissions_check_permission)?;
-    CheckPermissionResponse::decode(&bytes[..]).map_err(|e| RpcError(e.to_string()))
+    call(
+        handle,
+        methods::CHECK_PERMISSION,
+        &TraceContext::default(),
+        request,
+    )
 }
 
 /// PermissionsService.WriteRelationships.
@@ -106,12 +159,12 @@ pub fn write_relationships(
     handle: u64,
     request: &WriteRelationshipsRequest,
 ) -> RpcResult<WriteRelationshipsResponse> {
-    let mut buf = Vec::new();
-    request
-        .encode(&mut buf)
-        .map_err(|e| RpcError(e.to_string()))?;
-    let bytes = raw_call(handle, &buf, crate::spicedb_permissions_write_relationships)?;
-    WriteRelationshipsResponse::decode(&bytes[..]).map_err(|e| RpcError(e.to_string()))
+    call(
+        handle,
+        methods::WRITE_RELATIONSHIPS,
+        &TraceContext::default(),
+        request,
+    )
 }
 
 /// PermissionsService.DeleteRelationships.
@@ -119,16 +172,12 @@ pub fn delete_relationships(
     handle: u64,
     request: &DeleteRelationshipsRequest,
 ) -> RpcResult<DeleteRelationshipsResponse> {
-    let mut buf = Vec::new();
-    request
-        .encode(&mut buf)
-        .map_err(|e| RpcError(e.to_string()))?;
-    let bytes = raw_call(
+    call(
         handle,
-        &buf,
-        crate::spicedb_permissions_delete_relationships,
-    )?;
-    DeleteRelationshipsResponse::decode(&bytes[..]).map_err(|e| RpcError(e.to_string()))
+        methods::DELETE_RELATIONSHIPS,
+        &TraceContext::default(),
+        request,
+    )
 }
 
 /// PermissionsService.CheckBulkPermissions.
@@ -136,16 +185,12 @@ pub fn check_bulk_permissions(
     handle: u64,
     request: &CheckBulkPermissionsRequest,
 ) -> RpcResult<CheckBulkPermissionsResponse> {
-    let mut buf = Vec::new();
-    request
-        .encode(&mut buf)
-        .map_err(|e| RpcError(e.to_string()))?;
-    let bytes = raw_call(
+    call(
         handle,
-        &buf,
-        crate::spicedb_permissions_check_bulk_permissions,
-    )?;
-    CheckBulkPermissionsResponse::decode(&bytes[..]).map_err(|e| RpcError(e.to_string()))
+        methods::CHECK_BULK_PERMISSIONS,
+        &TraceContext::default(),
+        request,
+    )
 }
 
 /// PermissionsService.ExpandPermissionTree.
@@ -153,36 +198,32 @@ pub fn expand_permission_tree(
     handle: u64,
     request: &ExpandPermissionTreeRequest,
 ) -> RpcResult<ExpandPermissionTreeResponse> {
-    let mut buf = Vec::new();
-    request
-        .encode(&mut buf)
-        .map_err(|e| RpcError(e.to_string()))?;
-    let bytes = raw_call(
+    call(
         handle,
-        &buf,
-        crate::spicedb_permissions_expand_permission_tree,
-    )?;
-    ExpandPermissionTreeResponse::decode(&bytes[..]).map_err(|e| RpcError(e.to_string()))
+        methods::EXPAND_PERMISSION_TREE,
+        &TraceContext::default(),
+        request,
+    )
 }
 
 // --- SchemaService ---
 
 /// SchemaService.ReadSchema.
 pub fn read_schema(handle: u64, request: &ReadSchemaRequest) -> RpcResult<ReadSchemaResponse> {
-    let mut buf = Vec::new();
-    request
-        .encode(&mut buf)
-        .map_err(|e| RpcError(e.to_string()))?;
-    let bytes = raw_call(handle, &buf, crate::spicedb_schema_read_schema)?;
-    ReadSchemaResponse::decode(&bytes[..]).map_err(|e| RpcError(e.to_string()))
+    call(
+        handle,
+        methods::READ_SCHEMA,
+        &TraceContext::default(),
+        request,
+    )
 }
 
 /// SchemaService.WriteSchema.
 pub fn write_schema(handle: u64, request: &WriteSchemaRequest) -> RpcResult<WriteSchemaResponse> {
-    let mut buf = Vec::new();
-    request
-        .encode(&mut buf)
-        .map_err(|e| RpcError(e.to_string()))?;
-    let bytes = raw_call(handle, &buf, crate::spicedb_schema_write_schema)?;
-    WriteSchemaResponse::decode(&bytes[..]).map_err(|e| RpcError(e.to_string()))
+    call(
+        handle,
+        methods::WRITE_SCHEMA,
+        &TraceContext::default(),
+        request,
+    )
 }

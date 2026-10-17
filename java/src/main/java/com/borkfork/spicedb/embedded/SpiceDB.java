@@ -55,56 +55,16 @@ interface SpiceDB extends Library {
   /** Free a byte buffer returned by the RPC FFI functions (out_response_bytes). */
   void spicedb_free_bytes(Pointer ptr);
 
-  void spicedb_permissions_check_permission(
+  /**
+   * Invoke a unary RPC by its full gRPC name, such as {@code
+   * /authzed.api.v1.PermissionsService/CheckPermission}. traceparent and tracestate are the
+   * caller's W3C trace context and may be null.
+   */
+  void spicedb_rpc(
       long handle,
-      byte[] requestBytes,
-      int requestLen,
-      PointerByReference outResponseBytes,
-      IntByReference outResponseLen,
-      PointerByReference outError);
-
-  void spicedb_schema_write_schema(
-      long handle,
-      byte[] requestBytes,
-      int requestLen,
-      PointerByReference outResponseBytes,
-      IntByReference outResponseLen,
-      PointerByReference outError);
-
-  void spicedb_permissions_write_relationships(
-      long handle,
-      byte[] requestBytes,
-      int requestLen,
-      PointerByReference outResponseBytes,
-      IntByReference outResponseLen,
-      PointerByReference outError);
-
-  void spicedb_permissions_delete_relationships(
-      long handle,
-      byte[] requestBytes,
-      int requestLen,
-      PointerByReference outResponseBytes,
-      IntByReference outResponseLen,
-      PointerByReference outError);
-
-  void spicedb_permissions_check_bulk_permissions(
-      long handle,
-      byte[] requestBytes,
-      int requestLen,
-      PointerByReference outResponseBytes,
-      IntByReference outResponseLen,
-      PointerByReference outError);
-
-  void spicedb_permissions_expand_permission_tree(
-      long handle,
-      byte[] requestBytes,
-      int requestLen,
-      PointerByReference outResponseBytes,
-      IntByReference outResponseLen,
-      PointerByReference outError);
-
-  void spicedb_schema_read_schema(
-      long handle,
+      String method,
+      String traceparent,
+      String tracestate,
       byte[] requestBytes,
       int requestLen,
       PointerByReference outResponseBytes,

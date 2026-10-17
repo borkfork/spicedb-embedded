@@ -49,10 +49,12 @@
 //! ```
 
 mod spicedb;
+pub mod trace_context;
 
 pub use spicedb::{EmbeddedSpiceDB, MemoryPermissionsClient, MemorySchemaClient, StartOptions};
 // Re-export spicedb-grpc so users have direct access to all generated types
 pub use spicedb_grpc_tonic::v1;
+pub use trace_context::interceptor as trace_context_interceptor;
 
 /// Errors from embedded `SpiceDB` operations
 #[derive(Debug, thiserror::Error)]
