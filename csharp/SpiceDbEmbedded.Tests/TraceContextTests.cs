@@ -77,7 +77,7 @@ public class TraceContextTests
     [Fact]
     public void EveryUnaryMethodNameIsKnown()
     {
-        var calls = new Func<ulong, byte[], byte[]>[]
+        var calls = new[]
         {
             SpiceDbFfi.CheckPermission,
             SpiceDbFfi.WriteSchema,
