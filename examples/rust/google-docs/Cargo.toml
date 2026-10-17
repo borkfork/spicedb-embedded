@@ -18,7 +18,7 @@ path = "src/main.rs"
 axum = { version = "0.8.8", features = ["json"] }
 serde_json = "1"
 # Path dep when built in the workspace; for standalone use, drop `path`. Release-please bumps the version.
-spicedb-embedded = { version = "0.7.1", path = "../../../rust" } # x-release-please-version
+spicedb-embedded = { version = "0.8.0", path = "../../../rust" } # x-release-please-version
 tokio = { version = "1", features = ["full"] }
 tower = "0.5"
 
