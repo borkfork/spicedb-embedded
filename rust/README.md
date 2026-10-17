@@ -225,7 +225,7 @@ let options = StartOptions {
 };
 ```
 
-With the `opentelemetry` feature, unary calls carry the current `opentelemetry::Context`, so SpiceDB's spans join your trace as children of the span that made the call and follow its sampling decision. Without it, each call starts its own trace. You build the streaming channel yourself, so add `spicedb_embedded::trace_context_interceptor` to its clients for the same behavior there:
+With the `opentelemetry` feature, unary calls carry the current `opentelemetry::Context` (which `tracing-opentelemetry` sets when a span is entered), so SpiceDB's spans join your trace as children of the span that made the call and follow its sampling decision. The feature depends on `opentelemetry` 0.33; an app on another 0.x release has a separate `Context` and propagates nothing. Without the feature, each call starts its own trace. You build the streaming channel yourself, so add `spicedb_embedded::trace_context_interceptor` to its clients for the same behavior there:
 
 ```rust
 let client = PermissionsServiceClient::with_interceptor(channel, spicedb_embedded::trace_context_interceptor);
