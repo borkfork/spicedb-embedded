@@ -13,7 +13,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="SpiceDbEmbedded" Version="0.7.1" />
+    <PackageReference Include="SpiceDbEmbedded" Version="0.8.0" />
   </ItemGroup>
 
 </Project>
