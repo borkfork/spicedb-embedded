@@ -35,7 +35,7 @@
     "koffi": "^3.3.3"
   },
   "peerDependencies": {
-    "@opentelemetry/api": "^1.0.0"
+    "@opentelemetry/api": "^1.9.1"
   },
   "peerDependenciesMeta": {
     "@opentelemetry/api": {
@@ -46,13 +46,13 @@
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/context-async-hooks": "^2.12.0",
     "@types/node": "^24.19.2",
-    "eslint": "^10.12.0",
+    "eslint": "^10.13.0",
     "prettier": "^3.9.10",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   },
   "engines": {
-    "node": ">=24.21.0"
+    "node": ">=24.22.0"
   },
   "license": "Apache-2.0",
   "repository": {
