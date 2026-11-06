@@ -24,9 +24,9 @@ path = "src/lib.rs"
 [dependencies]
 prost = "0.14.4"
 prost-types = "0.14.4"
-tonic = "0.14.6"
-tonic-prost = "0.14.6"
+tonic = "0.14.9"
+tonic-prost = "0.14.9"
 
 [build-dependencies]
-tonic-prost-build = "0.14.6"
+tonic-prost-build = "0.14.9"
 walkdir = "2.5.0"
